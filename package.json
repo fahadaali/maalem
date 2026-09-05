@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "node scripts/sync-schema-sql.mjs && prisma generate && next build",
+    "dev": "node scripts/build-sw.mjs && next dev --turbopack",
+    "build": "node scripts/build-sw.mjs && node scripts/sync-schema-sql.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma db push",
@@ -13,15 +13,16 @@
     "vapid": "node scripts/vapid.mjs",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
     "postinstall": "prisma generate",
-    "cf:build": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build",
-    "cf:preview": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:build": "node scripts/build-sw.mjs && node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build",
+    "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
+    "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "d1:migrate:local": "wrangler d1 migrations apply maalem-db --local",
     "d1:migrate": "wrangler d1 migrations apply maalem-db --remote",
     "d1:migration:new": "prisma migrate diff --from-local-d1 --to-schema-datamodel prisma/schema.prisma --script",
     "d1:seed": "node scripts/d1-seed.mjs",
-    "sync:schema": "node scripts/sync-schema-sql.mjs"
+    "sync:schema": "node scripts/sync-schema-sql.mjs",
+    "build:sw": "node scripts/build-sw.mjs"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.6",
