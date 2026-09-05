@@ -1,0 +1,23 @@
+{
+  "name": "معالم التربية",
+  "short_name": "معالم",
+  "description": "منصة برنامج «معالم التربية» لتأهيل المشرفين التربويين الجدد",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/app?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "بطاقة القراءة", "url": "/app/reading", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "التقرير الأسبوعي", "url": "/app/reports", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "الإشعارات", "url": "/app/notifications", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #111111;
+  --ink-2: #3d3d3d;
+  --muted: #737373;
+  --line: #e4e4e4;
+  --line-2: #cfcfcf;
+  --paper: #ffffff;
+  --paper-2: #f6f6f6;
+  --paper-3: #ececec;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --font-sans: var(--font-thmanyah-sans), "Segoe UI", Tahoma, Arial, sans-serif;
+  --font-display: var(--font-thmanyah-display), var(--font-thmanyah-sans), Georgia, serif;
+  --radius-card: 14px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+/* عناصر النماذج */
+.input, .textarea, .select {
+  width: 100%;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.6rem 0.85rem;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus, .textarea:focus, .select:focus { border-color: var(--ink); }
+.textarea { min-height: 6rem; resize: vertical; }
+.label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 0.3rem; font-weight: 500; }
+.field { margin-bottom: 1rem; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  border-radius: 10px; padding: 0.55rem 1.1rem; font-weight: 500; font-size: 0.95rem;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+  cursor: pointer; transition: opacity 0.15s, background 0.15s; text-decoration: none; white-space: nowrap;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-secondary { background: var(--paper); color: var(--ink); border-color: var(--line-2); }
+.btn-secondary:hover { background: var(--paper-2); opacity: 1; }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+.btn-ghost:hover { background: var(--paper-2); opacity: 1; }
+.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.85rem; border-radius: 8px; }
+
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 1.1rem 1.2rem; }
+.card-muted { background: var(--paper-2); border-color: transparent; }
+
+.badge { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.78rem; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--paper); white-space: nowrap; }
+.badge-ink { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.badge-soft { background: var(--paper-3); border-color: transparent; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-card); }
+.table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 100%; }
+.table th, .table td { padding: 0.6rem 0.8rem; text-align: start; vertical-align: top; border-bottom: 1px solid var(--line); }
+.table th { background: var(--paper-2); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.table tr:last-child td { border-bottom: none; }
+
+.progress { height: 6px; background: var(--paper-3); border-radius: 999px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--ink); border-radius: 999px; }
+
+.prose-ar p { margin-bottom: 0.75rem; }
+
+.nav-link { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; border-radius: 10px; color: var(--ink-2); font-size: 0.95rem; }
+.nav-link:hover { background: var(--paper-2); }
+.nav-link[aria-current="page"] { background: var(--ink); color: var(--paper); }
+
+.tabbar-link { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.68rem; color: var(--muted); padding: 0.35rem 0; flex: 1; }
+.tabbar-link[aria-current="page"] { color: var(--ink); font-weight: 600; }
+
+.divider { border-top: 1px solid var(--line); margin: 1.25rem 0; }
+
+@media print {
+  .no-print { display: none !important; }
+}

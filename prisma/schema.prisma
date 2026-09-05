@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  name         String
+  phone        String?
+  email        String?
+  passwordHash String
+  role         String   @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
+  active       Boolean  @default(true)
+  mentorId     String?
+  mentor       User?    @relation("Mentorship", fields: [mentorId], references: [id])
+  mentees      User[]   @relation("Mentorship")
+  createdAt    DateTime @default(now())
+
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+  attendance        Attendance[]
+  readingCards      ReadingCard[]
+  weeklyReports     WeeklyReport[]
+  quizAttempts      QuizAttempt[]
+  submissions       Submission[]
+  fieldLogs         FieldLog[]
+  leadership        LeadershipActivity[]
+  peerEvaluations   PeerEvaluation[]
+  project           GraduationProject?
+  learningPlan      LearningPlan?
+  reflections       Reflection[]
+  habits            Habit[]
+  tadabbur          TadabburStop[]
+  feedbackSessions  FeedbackSession[]
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  url       String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Attendance {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  week   Int
+  type   String // INPERSON | REMOTE
+  status String // PRESENT | LATE | EXCUSED | ABSENT
+  note   String?
+
+  @@unique([userId, week, type])
+}
+
+model ReadingCard {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  book      String
+  fromPage  Int
+  toPage    Int
+  benefit   String
+  question  String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model WeeklyReport {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  week         Int
+  reading      String
+  benefits     String
+  taskProgress String
+  fieldNote    String?
+  quizResult   String?
+  application  String?
+  difficulty   String?
+  submittedAt  DateTime  @default(now())
+  feedback     String?
+  reviewedAt   DateTime?
+
+  @@unique([userId, week])
+}
+
+model Quiz {
+  id        String        @id @default(cuid())
+  title     String
+  kind      String        @default("FIQH") // FIQH | QURAN | OTHER
+  week      Int?
+  passMark  Int           @default(70)
+  published Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+model Question {
+  id           String @id @default(cuid())
+  quizId       String
+  quiz         Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  order        Int
+  text         String
+  options      String // JSON array of strings
+  correctIndex Int
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score     Int
+  total     Int
+  answers   String // JSON array of chosen indexes
+  createdAt DateTime @default(now())
+
+  @@unique([quizId, userId])
+}
+
+model Assignment {
+  id          String       @id @default(cuid())
+  week        Int
+  title       String
+  description String?
+  competency  String?
+  dueAt       DateTime
+  createdAt   DateTime     @default(now())
+  submissions Submission[]
+}
+
+model Submission {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content      String
+  link         String?
+  submittedAt  DateTime   @default(now())
+  // rubric (Appendix 2) 1..4 each
+  completeness Int?
+  referencing  Int?
+  application  Int?
+  punctuality  Int?
+  feedback     String?
+  gradedAt     DateTime?
+
+  @@unique([assignmentId, userId])
+}
+
+model FieldLog {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime
+  hours      Float
+  mentorName String
+  note       String
+  approvedAt DateTime?
+  approvedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, date])
+}
+
+model LeadershipActivity {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  date        DateTime
+  report      String?
+  createdAt   DateTime         @default(now())
+  evaluations PeerEvaluation[]
+}
+
+model PeerEvaluation {
+  id          String             @id @default(cuid())
+  activityId  String
+  activity    LeadershipActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  evaluatorId String
+  evaluator   User               @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+  c1          Int
+  c2          Int
+  c3          Int
+  c4          Int
+  c5          Int
+  comment     String?
+  createdAt   DateTime           @default(now())
+
+  @@unique([activityId, evaluatorId])
+}
+
+model GraduationProject {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic        String
+  problem      String?
+  mentorName   String?
+  status       String    @default("PROPOSED") // PROPOSED | APPROVED | DRAFT | FINAL | JUDGED
+  draftLink    String?
+  finalLink    String?
+  adminNote    String?
+  // judging (30): 5 + 7 + 8 + 5 + 5
+  clarity      Int?
+  grounding    Int?
+  design       Int?
+  integration  Int?
+  presentation Int?
+  judgeNote    String?
+  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+}
+
+model LearningPlan {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goals        String
+  weeklyPlan   String
+  memorization String
+  updatedAt    DateTime @updatedAt
+}
+
+model Reflection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @default(now())
+  text      String
+}
+
+model Habit {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime   @default(now())
+  logs      HabitLog[]
+}
+
+model HabitLog {
+  id      String   @id @default(cuid())
+  habitId String
+  habit   Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date    String // YYYY-MM-DD
+
+  @@unique([habitId, date])
+}
+
+model TadabburStop {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  week      Int
+  topic     String
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model FeedbackSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @default(now())
+  notes     String
+}
+
+model ChecklistItem {
+  id     String    @id @default(cuid())
+  group  String
+  order  Int
+  label  String
+  done   Boolean   @default(false)
+  doneAt DateTime?
+
+  @@unique([group, order])
+}
+
+model Setting {
+  key   String @id
+  value String
+}
