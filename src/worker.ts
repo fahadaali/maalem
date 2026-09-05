@@ -6,7 +6,7 @@ import nextApp from "../.open-next/worker.js";
 export default {
   fetch: nextApp.fetch,
   async scheduled(_event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
-    const base = env.NEXT_PUBLIC_APP_URL || "http://localhost";
+    const base = env.APP_URL || "https://maalem.local";
     const req = new Request(`${base}/api/cron/reminders`, { headers: { authorization: `Bearer ${env.CRON_SECRET ?? ""}` } });
     ctx.waitUntil(nextApp.fetch(req, env, ctx));
   },

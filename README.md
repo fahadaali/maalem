@@ -35,7 +35,7 @@
 ```bash
 npm install
 cp .env.example .env        # ثم عدّل القيم
-npm run vapid               # يولّد مفاتيح الإشعارات — انسخها إلى .env
+npm run vapid               # يولّد مفاتيح الإشعارات (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY) — انسخها إلى .env
 npm run setup               # إنشاء قاعدة البيانات وبذر البيانات الأساسية
 npm run dev                 # أو: npm run build && npm start
 ```
@@ -52,7 +52,7 @@ npm run dev                 # أو: npm run build && npm start
 
 ## النشر على Cloudflare (الاستضافة وقاعدة البيانات والتخزين)
 
-المنصة مهيأة للعمل على
+المنصة تعمل على
 Cloudflare Workers
 عبر
 OpenNext،
@@ -62,32 +62,63 @@ D1
 R2
 والتذكيرات اليومية عبر
 Cron Triggers.
+إشعارات الدفع تُرسل بتنفيذ يعتمد على
+WebCrypto
+فيعمل على العامل مباشرة.
+
+### 1) الموارد المطلوبة (مرة واحدة)
 
 ```bash
 npx wrangler login
-npx wrangler d1 create maalem-db          # انسخ database_id إلى wrangler.jsonc
+npx wrangler d1 create maalem-db            # انسخ database_id إلى wrangler.jsonc
 npx wrangler r2 bucket create maalem-files
-npm run d1:migrate                        # تطبيق migrations/ على D1 البعيدة
-npx wrangler secret put AUTH_SECRET
-npx wrangler secret put CRON_SECRET
-npx wrangler secret put NEXT_PUBLIC_VAPID_PUBLIC_KEY
-npx wrangler secret put VAPID_PRIVATE_KEY
-npm run cf:deploy                         # البناء والنشر
-node scripts/d1-seed.mjs --remote --password='كلمة-مرور-قوية'   # حساب المدير والمهام والاختبارات
+npm run vapid                                # مفاتيح إشعارات الدفع
 ```
 
-- عدّل `NEXT_PUBLIC_APP_URL` و`VAPID_SUBJECT` في `wrangler.jsonc` قبل النشر.
-- المعاينة المحلية بالبيئة نفسها (D1 وR2 محليتان): `npm run d1:migrate:local` ثم `npm run d1:seed` ثم `npm run cf:preview`.
-- عند تعديل `prisma/schema.prisma` أنشئ ملف ترحيل جديداً في `migrations/` بالأمر `npm run d1:migration:new > migrations/000N_name.sql` ثم طبّقه.
+في `wrangler.jsonc`: ضع `database_id`، واجعل `name` مطابقاً لاسم العامل الذي أنشأته في لوحة
+Cloudflare
+(وإلا رُفض النشر من
+Workers Builds)،
+وحدّث `APP_URL` برابط العامل الفعلي.
+
+### 2) الأسرار
+
+من لوحة العامل (الإعدادات ← المتغيرات والأسرار) أو بسطر الأوامر:
+
+```bash
+npx wrangler secret put AUTH_SECRET        # نص عشوائي طويل (32 حرفاً فأكثر)
+npx wrangler secret put CRON_SECRET        # مفتاح نقطة التذكيرات
+npx wrangler secret put VAPID_PUBLIC_KEY   # من npm run vapid
+npx wrangler secret put VAPID_PRIVATE_KEY  # من npm run vapid
+```
+
+### 3) النشر من المستودع (Workers Builds)
+
+عند ربط العامل بالمستودع استخدم:
+
+| الإعداد | القيمة |
+|---|---|
+| أمر البناء | `npm run cf:build` |
+| أمر النشر | `npx opennextjs-cloudflare deploy` |
+| إصدار Node | 22 (محدد في `.node-version`) |
+
+كل دفعة إلى الفرع المرتبط تبني وتنشر تلقائياً. النشر اليدوي: `npm run cf:deploy`.
+
+### 4) الإعداد الأولي من المتصفح
+
+بعد أول نشر افتح `/setup`: ينشئ الجداول في
+D1
+مباشرة (لا حاجة لأوامر ترحيل)، وحساب مدير المشروع، والمهام والاختبارات الأساسية. يعمل مرة واحدة فقط ثم يُغلق.
+بديل سطر الأوامر: `npm run d1:migrate` ثم `node scripts/d1-seed.mjs --remote --password='…'`.
+
+### ملاحظات
+
+- المعاينة المحلية بالبيئة نفسها (D1 وR2 محليتان): انسخ `.dev.vars.example` إلى `.dev.vars` ثم `npm run cf:preview` وافتح `/setup`.
+- عند تعديل `prisma/schema.prisma` أنشئ ملف ترحيل جديداً: `npm run d1:migration:new > migrations/000N_name.sql` ثم `npm run sync:schema`؛ تُطبَّق الترحيلات الجديدة عبر `npm run d1:migrate` (أو تلقائياً في `/setup` على قاعدة فارغة).
 - التذكيرات تعمل تلقائياً كل يوم 04:00 بالتوقيت العالمي (07:00 بتوقيت الرياض) من `wrangler.jsonc`.
 - المرفقات (الشواهد وملفات المشاريع وسجلات المعايشة) تُرفع إلى
   R2
   عبر `/api/upload` وتُقدَّم بصلاحيات عبر `/api/files/…`؛ محلياً تُحفظ في `.data/uploads`.
-- إشعارات الدفع تعتمد على حزمة
-  web-push
-  تحت توافق
-  nodejs_compat؛
-  إن تعذّر إرسالها على العامل فالإشعارات داخل المنصة تبقى تعمل.
 
 ## البنية
 

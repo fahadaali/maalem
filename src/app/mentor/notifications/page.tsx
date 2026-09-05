@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import NotificationsList from "@/components/NotificationsList";
 import PushToggle from "@/components/PushToggle";
+import { vapidPublicKey } from "@/lib/notify";
 import { markAdminRead } from "@/app/admin/actions";
 
 export const metadata = { title: "الإشعارات" };
@@ -13,7 +14,7 @@ export default async function MentorNotifications() {
   return (
     <>
       <PageHeader title="الإشعارات" actions={items.some((i) => !i.readAt) && <form action={markAdminRead}><button className="btn btn-secondary btn-sm">تعليم الكل كمقروء</button></form>} />
-      <div className="mb-4"><PushToggle compact /></div>
+      <div className="mb-4"><PushToggle compact publicKey={vapidPublicKey()} /></div>
       <NotificationsList items={items} />
     </>
   );

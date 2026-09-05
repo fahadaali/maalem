@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "prisma generate && next build",
+    "build": "node scripts/sync-schema-sql.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma db push",
@@ -13,14 +13,15 @@
     "vapid": "node scripts/vapid.mjs",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
     "postinstall": "prisma generate",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:build": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build",
+    "cf:preview": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "node scripts/sync-schema-sql.mjs && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "d1:migrate:local": "wrangler d1 migrations apply maalem-db --local",
     "d1:migrate": "wrangler d1 migrations apply maalem-db --remote",
     "d1:migration:new": "prisma migrate diff --from-local-d1 --to-schema-datamodel prisma/schema.prisma --script",
-    "d1:seed": "node scripts/d1-seed.mjs"
+    "d1:seed": "node scripts/d1-seed.mjs",
+    "sync:schema": "node scripts/sync-schema-sql.mjs"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.6",
@@ -33,7 +34,6 @@
     "prisma": "^6.19.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "web-push": "^3.6.7",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -44,12 +44,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "15.5.25",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5",
     "wrangler": "^4.129.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

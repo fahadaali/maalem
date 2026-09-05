@@ -2,11 +2,15 @@ import Link from "next/link";
 import { login } from "../(auth)/actions";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
+import { redirect } from "next/navigation";
+import { needsSetup } from "@/lib/setup";
 
 export const metadata = { title: "تسجيل الدخول" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ err?: string; next?: string }> }) {
   const { err, next } = await searchParams;
+  if (await needsSetup()) redirect("/setup");
+  const authMissing = !process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 16;
   return (
     <main className="min-h-dvh flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
@@ -15,7 +19,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </Link>
         <p className="text-center text-muted text-sm mb-8">برنامج تأهيل المشرفين التربويين الجدد</p>
         <form action={login} className="card">
-          <FormMessage err={err} />
+          <FormMessage err={authMissing ? "السر AUTH_SECRET غير مضبوط على الخادم؛ لن يعمل تسجيل الدخول حتى إضافته." : err} />
           <input type="hidden" name="next" value={next ?? ""} />
           <div className="field">
             <label className="label" htmlFor="username">اسم المستخدم</label>

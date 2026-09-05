@@ -4,6 +4,7 @@ import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
+import { vapidPublicKey } from "@/lib/notify";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
 import Link from "next/link";
@@ -28,7 +29,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </dl>
         </Card>
         <Card title="الإشعارات">
-          <PushToggle />
+          <PushToggle publicKey={vapidPublicKey()} />
         </Card>
         <Card title="تثبيت التطبيق">
           <InstallButton />

@@ -4,11 +4,13 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Stat, Badge } from "@/components/ui";
 import { currentWeekNumber, dayName, formatHijri, formatGregorian, getWeek, weekdayIndex, reportDueDate, formatDateTime } from "@/lib/dates";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
+import FormMessage from "@/components/FormMessage";
 
 export const metadata = { title: "لوحة مدير المشروع" };
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ ok?: string }> }) {
   await requireRole("ADMIN");
+  const { ok } = await searchParams;
   const now = new Date();
   const weekNo = currentWeekNumber(now);
   const week = getWeek(weekNo);
@@ -38,6 +40,7 @@ export default async function AdminDashboard() {
         subtitle={weekNo < 0 ? "مرحلة التهيئة — قبل اللقاء الافتتاحي" : weekNo > 14 ? "ما بعد البرنامج — التقويم والإغلاق" : `الأسبوع ${week?.label} — ${week?.competency}`}
       />
 
+      <FormMessage ok={ok} />
       <Card className="mb-4 border-ink" title="مهام اليوم (مصفوفة المتابعة الأسبوعية)">
         {routine.length === 0 ? (
           <p className="text-sm text-muted">لا مهمة ثابتة اليوم. راجع البنود المعلّقة أدناه.</p>

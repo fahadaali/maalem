@@ -50,3 +50,4 @@ prisma/*.db-journal
 .wrangler
 .data
 .data-seed.sql
+.dev.vars

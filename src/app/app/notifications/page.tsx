@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import NotificationsList from "@/components/NotificationsList";
 import { markAllRead } from "../actions";
 import PushToggle from "@/components/PushToggle";
+import { vapidPublicKey } from "@/lib/notify";
 
 export const metadata = { title: "الإشعارات" };
 
@@ -24,7 +25,7 @@ export default async function NotificationsPage() {
           )
         }
       />
-      <div className="mb-4"><PushToggle compact /></div>
+      <div className="mb-4"><PushToggle compact publicKey={vapidPublicKey()} /></div>
       <NotificationsList items={items} />
     </>
   );

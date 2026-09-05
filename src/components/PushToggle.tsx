@@ -11,11 +11,11 @@ function urlBase64ToUint8Array(base64: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-export default function PushToggle({ compact }: { compact?: boolean }) {
+export default function PushToggle({ compact, publicKey }: { compact?: boolean; publicKey: string | null }) {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
   const [testSent, setTestSent] = useState(false);
-  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const key = publicKey;
 
   useEffect(() => {
     (async () => {

@@ -3,6 +3,7 @@ import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
+import { vapidPublicKey } from "@/lib/notify";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
 
@@ -16,7 +17,7 @@ export default async function MentorSettings({ searchParams }: { searchParams: P
       <PageHeader title="الإعدادات" subtitle={`${me.name} · ${me.username}`} />
       <FormMessage ok={ok} err={err} />
       <div className="space-y-4">
-        <Card title="الإشعارات"><PushToggle /></Card>
+        <Card title="الإشعارات"><PushToggle publicKey={vapidPublicKey()} /></Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>

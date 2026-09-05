@@ -15,8 +15,8 @@
   // التذكيرات المجدولة: 07:00 بتوقيت الرياض = 04:00 UTC يومياً
   "triggers": { "crons": ["0 4 * * *"] },
   "vars": {
-    "NEXT_PUBLIC_APP_URL": "https://maalem.example.workers.dev",
+    "APP_URL": "https://maalem.example.workers.dev",
     "VAPID_SUBJECT": "mailto:admin@example.com"
   }
-  // الأسرار تُضاف بـ: npx wrangler secret put AUTH_SECRET / CRON_SECRET / VAPID_PRIVATE_KEY / NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  // الأسرار تُضاف بـ: npx wrangler secret put AUTH_SECRET / CRON_SECRET / VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY
 }

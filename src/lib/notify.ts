@@ -1,15 +1,11 @@
-import webpush from "web-push";
 import { db } from "./db";
+import { PushError, sendPush, type VapidDetails } from "./webpush";
 
-let configured = false;
-function ensureConfigured() {
-  if (configured) return true;
-  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const priv = process.env.VAPID_PRIVATE_KEY;
-  if (!pub || !priv) return false;
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@example.com", pub, priv);
-  configured = true;
-  return true;
+function vapid(): VapidDetails | null {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return null;
+  return { publicKey, privateKey, subject: process.env.VAPID_SUBJECT || "mailto:admin@example.com" };
 }
 
 export type NotifyPayload = { title: string; body: string; url?: string };
@@ -21,21 +17,20 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload) {
     data: userIds.map((userId) => ({ userId, title: payload.title, body: payload.body, url: payload.url ?? null })),
   });
   let pushed = 0;
-  if (ensureConfigured()) {
+  const v = vapid();
+  if (v) {
     const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+    const message = JSON.stringify(payload);
     await Promise.all(
       subs.map(async (s) => {
         try {
-          await webpush.sendNotification(
-            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify(payload),
-            { TTL: 60 * 60 * 24 },
-          );
+          await sendPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, message, v, { ttl: 86400 });
           pushed++;
-        } catch (e: unknown) {
-          const status = (e as { statusCode?: number }).statusCode;
-          if (status === 404 || status === 410) {
+        } catch (e) {
+          if (e instanceof PushError && (e.statusCode === 404 || e.statusCode === 410)) {
             await db.pushSubscription.delete({ where: { id: s.id } }).catch(() => {});
+          } else {
+            console.warn("push failed", e instanceof PushError ? e.statusCode : (e as Error).message);
           }
         }
       }),
@@ -54,5 +49,10 @@ export async function notifyAdmins(payload: NotifyPayload) {
 }
 
 export function pushEnabled() {
-  return ensureConfigured();
+  return vapid() !== null;
+}
+
+/** المفتاح العام لإشعارات الدفع (يُقرأ وقت التشغيل ليعمل مع أسرار Cloudflare) */
+export function vapidPublicKey(): string | null {
+  return process.env.VAPID_PUBLIC_KEY || null;
 }

@@ -23,8 +23,12 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   JUDGED: "محكّم",
 };
 
+const DATE_LIKE = /^(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d(:[0-5]\d(\.\d+)?)?([+-][0-2]\d:[0-5]\d|Z))$|^\d{4}-[0-1]\d-[0-3]\d [0-2]\d:[0-5]\d:[0-5]\d$/;
+
+/** نص من نموذج، مع منع النصوص المطابقة تماماً لصيغة تاريخ كامل (يخلط محوّل D1 بينها وبين حقول التاريخ) */
 export function str(v: FormDataEntryValue | null | undefined): string {
-  return typeof v === "string" ? v.trim() : "";
+  const t = typeof v === "string" ? v.trim() : "";
+  return DATE_LIKE.test(t) ? `\u200f${t}` : t;
 }
 
 export function num(v: FormDataEntryValue | null | undefined, fallback = 0): number {

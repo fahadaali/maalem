@@ -5,20 +5,20 @@ import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
-import { pushEnabled } from "@/lib/notify";
+import { pushEnabled, vapidPublicKey } from "@/lib/notify";
 
 export const metadata = { title: "الإعدادات" };
 
 export default async function AdminSettingsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const me = await requireRole("ADMIN");
   const { ok, err } = await searchParams;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const appUrl = process.env.APP_URL || "";
   return (
     <>
       <PageHeader title="الإعدادات" subtitle={`${me.name} · ${me.username}`} />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
-        <Card title="الإشعارات على جهازي"><PushToggle /></Card>
+        <Card title="الإشعارات على جهازي"><PushToggle publicKey={vapidPublicKey()} /></Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>

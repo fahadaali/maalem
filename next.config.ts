@@ -5,7 +5,7 @@ import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@prisma/client", "@prisma/adapter-d1", "web-push"],
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-d1"],
 };
 
 export default nextConfig;
