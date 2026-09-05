@@ -29,7 +29,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </dl>
         </Card>
         <Card title="الإشعارات">
-          <PushToggle publicKey={vapidPublicKey()} />
+          <PushToggle publicKey={await vapidPublicKey()} />
         </Card>
         <Card title="تثبيت التطبيق">
           <InstallButton />

@@ -25,7 +25,7 @@ export default async function NotificationsPage() {
           )
         }
       />
-      <div className="mb-4"><PushToggle compact publicKey={vapidPublicKey()} /></div>
+      <div className="mb-4"><PushToggle compact publicKey={await vapidPublicKey()} /></div>
       <NotificationsList items={items} />
     </>
   );

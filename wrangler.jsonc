@@ -15,9 +15,9 @@
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "maalem-files" }],
   // التذكيرات المجدولة: 07:00 بتوقيت الرياض = 04:00 UTC يومياً
   "triggers": { "crons": ["0 4 * * *"] },
+  // متغيرات اختيارية فقط. لا أسرار مطلوبة: مفاتيح الجلسات والتذكيرات وإشعارات الدفع
+  // تُولَّد تلقائياً عند الإعداد الأولي وتُحفظ في قاعدة البيانات.
   "vars": {
-    "APP_URL": "https://maalem.example.workers.dev",
     "VAPID_SUBJECT": "mailto:admin@example.com"
   }
-  // الأسرار تُضاف بـ: npx wrangler secret put AUTH_SECRET / CRON_SECRET / VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY
 }

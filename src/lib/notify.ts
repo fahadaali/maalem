@@ -1,12 +1,6 @@
 import { db } from "./db";
-import { PushError, sendPush, type VapidDetails } from "./webpush";
-
-function vapid(): VapidDetails | null {
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
-  if (!publicKey || !privateKey) return null;
-  return { publicKey, privateKey, subject: process.env.VAPID_SUBJECT || "mailto:admin@example.com" };
-}
+import { PushError, sendPush } from "./webpush";
+import { getVapid } from "./secrets";
 
 export type NotifyPayload = { title: string; body: string; url?: string };
 
@@ -17,9 +11,9 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload) {
     data: userIds.map((userId) => ({ userId, title: payload.title, body: payload.body, url: payload.url ?? null })),
   });
   let pushed = 0;
-  const v = vapid();
-  if (v) {
-    const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  if (subs.length > 0) {
+    const v = await getVapid();
     const message = JSON.stringify(payload);
     await Promise.all(
       subs.map(async (s) => {
@@ -48,11 +42,15 @@ export async function notifyAdmins(payload: NotifyPayload) {
   return notifyRole("ADMIN", payload);
 }
 
-export function pushEnabled() {
-  return vapid() !== null;
+/** المفتاح العام لإشعارات الدفع — يُولَّد تلقائياً عند أول طلب ويبقى ثابتاً */
+export async function vapidPublicKey(): Promise<string | null> {
+  try {
+    return (await getVapid()).publicKey;
+  } catch {
+    return null;
+  }
 }
 
-/** المفتاح العام لإشعارات الدفع (يُقرأ وقت التشغيل ليعمل مع أسرار Cloudflare) */
-export function vapidPublicKey(): string | null {
-  return process.env.VAPID_PUBLIC_KEY || null;
+export async function pushEnabled(): Promise<boolean> {
+  return (await vapidPublicKey()) !== null;
 }

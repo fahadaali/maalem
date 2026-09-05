@@ -29,7 +29,7 @@ export default async function AdminNotificationsPage({ searchParams }: { searchP
 
   return (
     <>
-      <PageHeader title="الإشعارات" subtitle={`إشعارات الدفع ${pushEnabled() ? "مفعّلة على الخادم" : "غير مضبوطة على الخادم (تعمل الإشعارات داخل المنصة فقط)"} · ${subs} جهاز مشترك`} />
+      <PageHeader title="الإشعارات" subtitle={`إشعارات الدفع ${(await pushEnabled()) ? "مفعّلة" : "غير متاحة (تعمل الإشعارات داخل المنصة فقط)"} · ${subs} جهاز مشترك`} />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
         <Card title="إرسال إشعار">
@@ -65,7 +65,7 @@ export default async function AdminNotificationsPage({ searchParams }: { searchP
               </div>
             </div>
           )}
-          <p className="text-xs text-muted mt-4">التذكيرات التلقائية (السبت، الأحد، الثلاثاء، الخميس، الجمعة، والقراءة اليومية) تُرسل من نقطة التذكيرات المجدولة عند ضبط المجدول الخارجي.</p>
+          <p className="text-xs text-muted mt-4">التذكيرات التلقائية (السبت، الأحد، الثلاثاء، الخميس، الجمعة، والقراءة اليومية) تُرسل يومياً من مشغّل Cron دون تدخل.</p>
         </Card>
         <Card title="واردي" action={inbox.some((n) => !n.readAt) && <form action={markAdminRead}><button className="btn btn-ghost btn-sm">تعليم الكل كمقروء</button></form>}>
           <NotificationsList items={inbox} />

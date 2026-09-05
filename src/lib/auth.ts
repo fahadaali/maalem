@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "./db";
+import { getAuthSecret } from "./secrets";
 
 export const SESSION_COOKIE = "maalem_session";
 const SESSION_DAYS = 30;
@@ -16,10 +17,8 @@ export type SessionUser = {
   role: Role;
 };
 
-function secret() {
-  const s = process.env.AUTH_SECRET;
-  if (!s || s.length < 16) throw new Error("AUTH_SECRET غير مضبوط أو قصير جداً");
-  return new TextEncoder().encode(s);
+async function secret() {
+  return new TextEncoder().encode(await getAuthSecret());
 }
 
 export async function createSession(user: SessionUser) {
@@ -27,7 +26,7 @@ export async function createSession(user: SessionUser) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DAYS}d`)
-    .sign(secret());
+    .sign(await secret());
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -45,7 +44,7 @@ export async function destroySession() {
 
 export async function verifyToken(token: string): Promise<SessionUser | null> {
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, await secret());
     return (payload.u as SessionUser) ?? null;
   } catch {
     return null;

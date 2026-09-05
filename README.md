@@ -34,16 +34,15 @@
 
 ```bash
 npm install
-cp .env.example .env        # ثم عدّل القيم
-npm run vapid               # يولّد مفاتيح الإشعارات (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY) — انسخها إلى .env
+cp .env.example .env
 npm run setup               # إنشاء قاعدة البيانات وبذر البيانات الأساسية
 npm run dev                 # أو: npm run build && npm start
 ```
 
-- حساب مدير المشروع الابتدائي: `admin` وكلمة المرور `Admin@1448` (أو قيمة `SEED_ADMIN_PASSWORD`). غيّرها فور الدخول.
+- عند أول تشغيل افتح `/setup` لإنشاء حساب مدير المشروع، أو استخدم `npm run setup` لبذر حساب `admin` بكلمة المرور `Admin@1448` (أو قيمة `SEED_ADMIN_PASSWORD`).
 - لبيانات تجريبية (مشرف مرافق وثلاثة مشاركين بكلمة المرور `123456`): `SEED_DEMO=1 npm run db:seed`.
-- التذكيرات المجدولة: اضبط مجدولاً خارجياً يستدعي يومياً في الصباح بتوقيت الرياض:
-  `GET /api/cron/reminders?key=<CRON_SECRET>`
+- الأسرار تُولَّد تلقائياً محلياً أيضاً؛ لا حاجة لضبط شيء في `.env` عدا مسار قاعدة البيانات.
+- التذكيرات المجدولة تعمل تلقائياً على Cloudflare؛ ومحلياً يمكن استدعاؤها يدوياً من رابط يظهر في إعدادات مدير المشروع.
 - محلياً تعمل المنصة على
   SQLite
   في `prisma/dev.db`، وعلى Cloudflare تتصل بقاعدة
@@ -66,21 +65,7 @@ Cron Triggers.
 WebCrypto
 فيعمل على العامل مباشرة.
 
-### 1) الأسرار (الخطوة اليدوية الوحيدة)
-
-من لوحة العامل (الإعدادات ← المتغيرات والأسرار) أو بسطر الأوامر:
-
-```bash
-npm run vapid                              # يولّد مفتاحي إشعارات الدفع
-npx wrangler secret put AUTH_SECRET        # نص عشوائي طويل (32 حرفاً فأكثر)
-npx wrangler secret put CRON_SECRET        # مفتاح نقطة التذكيرات
-npx wrangler secret put VAPID_PUBLIC_KEY
-npx wrangler secret put VAPID_PRIVATE_KEY
-```
-
-حدّث كذلك `APP_URL` في `wrangler.jsonc` برابط العامل الفعلي.
-
-### 2) النشر من المستودع (Workers Builds)
+### 1) النشر من المستودع (Workers Builds)
 
 | الإعداد | القيمة |
 |---|---|
@@ -88,9 +73,14 @@ npx wrangler secret put VAPID_PRIVATE_KEY
 | أمر النشر | `npx opennextjs-cloudflare deploy` |
 | إصدار Node | 22 (محدد في `.node-version`) |
 
-يجب أن يطابق حقل `name` في `wrangler.jsonc` اسم العامل المرتبط بالمستودع، وإلا أنشأ النشر عاملاً آخر.
-
+الشرط الوحيد: أن يطابق حقل `name` في `wrangler.jsonc` اسم العامل المرتبط بالمستودع، وإلا أنشأ النشر عاملاً آخر.
 كل دفعة إلى الفرع المرتبط تبني وتنشر تلقائياً. النشر اليدوي: `npm run cf:deploy`.
+
+### 2) الأسرار — تلقائية
+
+لا يوجد سرّ واحد تضبطه. مفتاح توقيع الجلسات، ومفتاح نقطة التذكيرات، ومفتاحا إشعارات الدفع
+تُولَّد عشوائياً عند الإعداد الأولي وتُحفظ في قاعدة البيانات، وتبقى ثابتة بعدها.
+ويمكن تجاوز أيٍّ منها بمتغير بيئة بالاسم نفسه إن رغبت.
 
 ### 3) قاعدة D1 وحاوية R2 — تلقائية
 
@@ -108,7 +98,7 @@ D1
 
 ### ملاحظات
 
-- المعاينة المحلية بالبيئة نفسها (D1 وR2 محليتان): انسخ `.dev.vars.example` إلى `.dev.vars` ثم `npm run cf:preview` وافتح `/setup`.
+- المعاينة المحلية بالبيئة نفسها (D1 وR2 محليتان): `npm run cf:preview` ثم افتح `/setup` — لا إعدادات مطلوبة.
 - عند تعديل `prisma/schema.prisma` أنشئ ملف ترحيل جديداً: `npm run d1:migration:new > migrations/000N_name.sql` ثم `npm run sync:schema`؛ تُطبَّق الترحيلات الجديدة عبر `npm run d1:migrate` (أو تلقائياً في `/setup` على قاعدة فارغة).
 - التذكيرات تعمل تلقائياً كل يوم 04:00 بالتوقيت العالمي (07:00 بتوقيت الرياض) من `wrangler.jsonc`.
 - المرفقات (الشواهد وملفات المشاريع وسجلات المعايشة) تُرفع إلى
@@ -120,6 +110,9 @@ D1
 - `src/lib/program.ts` — بيانات البرنامج الثابتة المستخرجة من الخطة.
 - `src/lib/grades.ts` — احتساب التقييم المستمر (70) ومشروع التخرج (30) ومستويات الإتمام.
 - `src/lib/notify.ts` — الإشعارات داخل المنصة وإشعارات الدفع.
+- `src/lib/secrets.ts` — توليد أسرار المنصة تلقائياً وحفظها في قاعدة البيانات.
+- `src/lib/webpush.ts` — تنفيذ إشعارات الدفع على WebCrypto.
+- `src/lib/setup.ts` و`src/app/setup` — الإعداد الأولي وإنشاء الجداول.
 - `src/lib/dates.ts` — الأسبوع الحالي والتواريخ الهجرية والميلادية بتوقيت الرياض.
 - `src/app/app` المشارك · `src/app/admin` مدير المشروع · `src/app/mentor` المشرف المرافق · `src/app/program` الوثيقة.
 - `public/sw.js` و`public/manifest.webmanifest` و`public/icons` — تطبيق الويب.

@@ -1,5 +1,6 @@
-# أسرار المعاينة المحلية لـ wrangler dev (انسخه إلى .dev.vars)
-AUTH_SECRET="change-me-to-a-long-random-string"
-CRON_SECRET="change-me"
-VAPID_PUBLIC_KEY=""
-VAPID_PRIVATE_KEY=""
+# اختياري تماماً: الأسرار تُولَّد تلقائياً وتُحفظ في قاعدة البيانات.
+# انسخه إلى .dev.vars فقط إن أردت تثبيت قيم بعينها أثناء المعاينة المحلية.
+# AUTH_SECRET=""
+# CRON_SECRET=""
+# VAPID_PUBLIC_KEY=""
+# VAPID_PRIVATE_KEY=""

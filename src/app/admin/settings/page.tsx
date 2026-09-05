@@ -6,19 +6,24 @@ import PushToggle from "@/components/PushToggle";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
 import { pushEnabled, vapidPublicKey } from "@/lib/notify";
+import { getCronSecret } from "@/lib/secrets";
+import { headers } from "next/headers";
 
 export const metadata = { title: "الإعدادات" };
 
 export default async function AdminSettingsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const me = await requireRole("ADMIN");
   const { ok, err } = await searchParams;
-  const appUrl = process.env.APP_URL || "";
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? (h.get("host")?.startsWith("localhost") ? "http" : "https");
+  const appUrl = process.env.APP_URL || `${proto}://${h.get("host") ?? "localhost"}`;
+  const cronKey = await getCronSecret();
   return (
     <>
       <PageHeader title="الإعدادات" subtitle={`${me.name} · ${me.username}`} />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
-        <Card title="الإشعارات على جهازي"><PushToggle publicKey={vapidPublicKey()} /></Card>
+        <Card title="الإشعارات على جهازي"><PushToggle publicKey={await vapidPublicKey()} /></Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>
@@ -33,10 +38,14 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
         </Card>
         <Card title="حالة الخادم">
           <dl className="text-sm grid grid-cols-[160px_1fr] gap-y-1">
-            <dt className="text-muted">إشعارات الدفع</dt><dd>{pushEnabled() ? "مفعّلة" : "غير مضبوطة — أضف مفاتيح VAPID في ملف البيئة"}</dd>
-            <dt className="text-muted">التذكيرات المجدولة</dt><dd className="break-all" dir="ltr">GET {appUrl}/api/cron/reminders?key=…</dd>
+            <dt className="text-muted">إشعارات الدفع</dt><dd>{(await pushEnabled()) ? "مفعّلة (مفاتيح مولَّدة تلقائياً)" : "غير متاحة"}</dd>
+            <dt className="text-muted">الأسرار</dt><dd>مولَّدة تلقائياً ومحفوظة في قاعدة البيانات</dd>
+            <dt className="text-muted">التذكيرات المجدولة</dt><dd>تعمل يومياً 07:00 بتوقيت الرياض من مشغّل Cron</dd>
           </dl>
-          <p className="text-xs text-muted mt-2">اضبط مجدولاً خارجياً لاستدعاء نقطة التذكيرات مرة يومياً في الصباح (توقيت الرياض).</p>
+          <details className="mt-3 text-xs text-muted">
+            <summary className="cursor-pointer">تشغيل التذكيرات يدوياً</summary>
+            <code className="block mt-1 break-all" dir="ltr">{appUrl}/api/cron/reminders?key={cronKey}</code>
+          </details>
         </Card>
       </div>
     </>

@@ -14,7 +14,7 @@ export default async function MentorNotifications() {
   return (
     <>
       <PageHeader title="الإشعارات" actions={items.some((i) => !i.readAt) && <form action={markAdminRead}><button className="btn btn-secondary btn-sm">تعليم الكل كمقروء</button></form>} />
-      <div className="mb-4"><PushToggle compact publicKey={vapidPublicKey()} /></div>
+      <div className="mb-4"><PushToggle compact publicKey={await vapidPublicKey()} /></div>
       <NotificationsList items={items} />
     </>
   );

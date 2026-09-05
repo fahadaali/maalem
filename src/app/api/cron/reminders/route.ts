@@ -2,16 +2,19 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { notifyUsers } from "@/lib/notify";
 import { currentWeekNumber, getWeek, todayKey, weekdayIndex } from "@/lib/dates";
+import { getCronSecret } from "@/lib/secrets";
 
 /**
  * نقطة التذكيرات المجدولة. تُستدعى مرة يومياً (مثلاً 07:00 بتوقيت الرياض) من مجدول خارجي:
- *   GET /api/cron/reminders?key=CRON_SECRET
+ *   GET /api/cron/reminders?key=<المفتاح>
+ * المفتاح يُولَّد تلقائياً ويُحفظ في قاعدة البيانات، ويستخدمه مشغّل Cron داخلياً.
  * محمية بمفتاح، ومحصّنة ضد التكرار في اليوم نفسه.
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") ?? req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!process.env.CRON_SECRET || key !== process.env.CRON_SECRET) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const expected = await getCronSecret();
+  if (!key || key !== expected) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const now = new Date();
   const today = todayKey(now);

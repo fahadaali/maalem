@@ -1,30 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { jwtVerify } from "jose";
 
 const SESSION_COOKIE = "maalem_session";
 
-async function readSession(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
+type Claims = { u?: { id: string; role: string }; exp?: number };
+
+/**
+ * قراءة حمولة الرمز دون تحقق من التوقيع — للتوجيه فقط.
+ * التحقق الفعلي يجري في كل صفحة وإجراء عبر requireUser/requireRole،
+ * فالوسيط طبقة تنقّل لا طبقة صلاحيات.
+ */
+function decodeClaims(token: string): Claims["u"] | null {
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.AUTH_SECRET ?? ""));
-    return payload.u as { id: string; role: string } | undefined;
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const claims = JSON.parse(decodeURIComponent(escape(json))) as Claims;
+    if (claims.exp && claims.exp * 1000 < Date.now()) return null;
+    return claims.u ?? null;
   } catch {
     return null;
   }
 }
 
-export async function middleware(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const session = await readSession(req);
-
-  if (pathname === "/login") {
-    if (session) {
-      const home = session.role === "ADMIN" ? "/admin" : session.role === "MENTOR" ? "/mentor" : "/app";
-      return NextResponse.redirect(new URL(home, req.url));
-    }
-    return NextResponse.next();
-  }
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? decodeClaims(token) : null;
 
   if (!session) {
     const url = new URL("/login", req.url);
@@ -44,5 +45,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/admin/:path*", "/mentor/:path*", "/login"],
+  matcher: ["/app/:path*", "/admin/:path*", "/mentor/:path*"],
 };

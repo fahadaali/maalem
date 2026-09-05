@@ -5,7 +5,6 @@ import { runSetup } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { storageBackend } from "@/lib/storage";
-import { pushEnabled } from "@/lib/notify";
 
 export const metadata = { title: "الإعداد الأولي" };
 
@@ -13,13 +12,12 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const { err } = await searchParams;
   if (!(await needsSetup())) redirect("/login");
   const ready = await schemaReady();
-  const authOk = !!process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16;
   const checks = [
     { label: "قاعدة البيانات متصلة", ok: true },
     { label: ready ? "الجداول موجودة" : "الجداول غير موجودة — ستُنشأ الآن", ok: true },
-    { label: "السر AUTH_SECRET مضبوط", ok: authOk },
+    { label: "الأسرار تُولَّد تلقائياً وتُحفظ في قاعدة البيانات", ok: true },
     { label: `تخزين المرفقات: ${storageBackend() === "R2" ? "R2" : "محلي"}`, ok: true },
-    { label: `إشعارات الدفع: ${pushEnabled() ? "مفاتيح VAPID مضبوطة" : "المفاتيح غير مضبوطة (اختياري)"}`, ok: pushEnabled() },
+    { label: "مفاتيح إشعارات الدفع تُولَّد مع الإعداد", ok: true },
   ];
   return (
     <main className="min-h-dvh flex items-center justify-center p-6">

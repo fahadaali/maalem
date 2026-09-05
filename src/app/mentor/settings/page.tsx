@@ -17,7 +17,7 @@ export default async function MentorSettings({ searchParams }: { searchParams: P
       <PageHeader title="الإعدادات" subtitle={`${me.name} · ${me.username}`} />
       <FormMessage ok={ok} err={err} />
       <div className="space-y-4">
-        <Card title="الإشعارات"><PushToggle publicKey={vapidPublicKey()} /></Card>
+        <Card title="الإشعارات"><PushToggle publicKey={await vapidPublicKey()} /></Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>
