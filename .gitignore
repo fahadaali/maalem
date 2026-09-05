@@ -44,3 +44,9 @@ next-env.d.ts
 # database
 prisma/*.db
 prisma/*.db-journal
+
+# Cloudflare / OpenNext
+.open-next
+.wrangler
+.data
+.data-seed.sql

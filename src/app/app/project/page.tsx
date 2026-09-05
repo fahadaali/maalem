@@ -6,6 +6,8 @@ import FormMessage from "@/components/FormMessage";
 import { saveProject } from "../actions";
 import { PROJECT_DESCRIPTION, PROJECT_RUBRIC } from "@/lib/program";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/lib/attachments";
 
 export const metadata = { title: "مشروع التخرج" };
 
@@ -13,6 +15,7 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
   const user = await requireRole("PARTICIPANT", "ADMIN");
   const { ok, err } = await searchParams;
   const p = await db.graduationProject.findUnique({ where: { userId: user.id } });
+  const files = await listAttachments({ kind: "PROJECT", userId: user.id });
   const judged = p?.status === "JUDGED";
   const total = p ? (p.clarity ?? 0) + (p.grounding ?? 0) + (p.design ?? 0) + (p.integration ?? 0) + (p.presentation ?? 0) : 0;
   const scores: Record<string, number | null | undefined> = p ? { clarity: p.clarity, grounding: p.grounding, design: p.design, integration: p.integration, presentation: p.presentation } : {};
@@ -58,6 +61,12 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
                 <input name="finalLink" className="input" dir="ltr" placeholder="https://" defaultValue={p.finalLink ?? ""} disabled={judged} />
               </div>
             </>
+          )}
+          {p && p.status !== "PROPOSED" && (
+            <div className="field">
+              <label className="label">ملفات المشروع (الوثيقة والعرض)</label>
+              <Attachments kind="PROJECT" initial={files} readOnly={judged} />
+            </div>
           )}
           {p && p.status === "PROPOSED" && <p className="text-xs text-muted mb-3">بعد اعتماد الموضوع من مدير المشروع تظهر حقول رفع المسودة والنسخة النهائية.</p>}
           {p?.mentorName && <p className="text-sm mb-3">المرشد: <span className="font-medium">{p.mentorName}</span></p>}

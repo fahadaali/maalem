@@ -6,6 +6,7 @@ import FormMessage from "@/components/FormMessage";
 import { addFieldLog, deleteFieldLog } from "../actions";
 import { formatShort, todayKey } from "@/lib/dates";
 import { Trash2 } from "lucide-react";
+import Attachments from "@/components/Attachments";
 
 export const metadata = { title: "المعايشة الميدانية" };
 
@@ -16,6 +17,7 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
     db.fieldLog.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
     db.user.findUnique({ where: { id: user.id }, include: { mentor: { select: { name: true } } } }),
   ]);
+  const attRows = await db.attachment.findMany({ where: { kind: "FIELD", userId: user.id }, orderBy: { createdAt: "asc" } });
   const approved = logs.filter((l) => l.approvedAt).reduce((s, l) => s + l.hours, 0);
   const pending = logs.filter((l) => !l.approvedAt).reduce((s, l) => s + l.hours, 0);
   const last = logs[0];
@@ -69,6 +71,7 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
                   {l.approvedAt ? <Badge tone="ink">معتمد</Badge> : <Badge>بانتظار الاعتماد</Badge>}
                 </div>
                 <div className="text-sm mt-1">{l.note}</div>
+                <div className="mt-2"><Attachments kind="FIELD" refId={l.id} initial={attRows.filter((r) => r.refId === l.id).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly={!!l.approvedAt} /></div>
               </div>
               {!l.approvedAt && (
                 <form action={deleteFieldLog}>

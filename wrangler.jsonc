@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maalem",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": true },
+  // قاعدة البيانات D1 — أنشئها بـ: npx wrangler d1 create maalem-db ثم ضع database_id هنا
+  "d1_databases": [
+    { "binding": "DB", "database_name": "maalem-db", "database_id": "REPLACE_WITH_D1_DATABASE_ID", "migrations_dir": "migrations" }
+  ],
+  // تخزين المرفقات R2 — أنشئه بـ: npx wrangler r2 bucket create maalem-files
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "maalem-files" }],
+  // التذكيرات المجدولة: 07:00 بتوقيت الرياض = 04:00 UTC يومياً
+  "triggers": { "crons": ["0 4 * * *"] },
+  "vars": {
+    "NEXT_PUBLIC_APP_URL": "https://maalem.example.workers.dev",
+    "VAPID_SUBJECT": "mailto:admin@example.com"
+  }
+  // الأسرار تُضاف بـ: npx wrangler secret put AUTH_SECRET / CRON_SECRET / VAPID_PRIVATE_KEY / NEXT_PUBLIC_VAPID_PUBLIC_KEY
+}

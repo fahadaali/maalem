@@ -7,6 +7,8 @@ import FormMessage from "@/components/FormMessage";
 import { deleteAssignment, gradeSubmission, updateAssignment } from "../../actions";
 import { ACTIVE_WEEKS, formatDateTime } from "@/lib/dates";
 import { COMPETENCIES, RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/lib/attachments";
 
 export const metadata = { title: "تقييم مهمة" };
 
@@ -20,7 +22,11 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   const { ok, err } = await searchParams;
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { include: { user: true }, orderBy: { submittedAt: "asc" } } } });
   if (!a) notFound();
+  const files = await listAttachments({ kind: "SUBMISSION", refId: a.id });
   const participants = await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } });
+  const attRows = await db.attachment.findMany({ where: { kind: "SUBMISSION", refId: a.id } });
+  const filesByUser = new Map<string, typeof files>();
+  for (const r of attRows) filesByUser.set(r.userId, [...(filesByUser.get(r.userId) ?? []), ...files.filter((f) => f.id === r.id)]);
   const submittedIds = new Set(a.submissions.map((s) => s.userId));
   const missing = participants.filter((p) => !submittedIds.has(p.id));
 
@@ -42,6 +48,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
                 <div className="text-xs text-muted mb-1">سُلّم {formatDateTime(s.submittedAt)}</div>
                 <div className="text-sm whitespace-pre-wrap mb-2">{s.content}</div>
                 {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}
+                <div className="mt-2"><Attachments kind="SUBMISSION" refId={a.id} initial={filesByUser.get(s.userId) ?? []} readOnly /></div>
                 <form action={gradeSubmission} className="border-t border-line pt-3 mt-3">
                   <input type="hidden" name="id" value={s.id} />
                   <div className="table-wrap">

@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     const exists = await db.setting.findUnique({ where: { key: k } });
     if (exists) return;
     await fn();
-    await db.setting.create({ data: { key: k, value: new Date().toISOString() } });
+    await db.setting.create({ data: { key: k, value: `sent at ${Date.now()}` } });
     sent.push(kind);
   };
 

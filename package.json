@@ -12,9 +12,19 @@
     "db:studio": "prisma studio",
     "vapid": "node scripts/vapid.mjs",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "d1:migrate:local": "wrangler d1 migrations apply maalem-db --local",
+    "d1:migrate": "wrangler d1 migrations apply maalem-db --remote",
+    "d1:migration:new": "prisma migrate diff --from-local-d1 --to-schema-datamodel prisma/schema.prisma --script",
+    "d1:seed": "node scripts/d1-seed.mjs"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.6",
+    "@prisma/adapter-d1": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
@@ -27,6 +37,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260905.1",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
@@ -38,6 +49,7 @@
     "eslint-config-next": "15.5.25",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.129.0"
   }
 }

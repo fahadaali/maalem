@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -309,4 +310,18 @@ model ChecklistItem {
 model Setting {
   key   String @id
   value String
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  userId      String
+  kind        String // SUBMISSION | PROJECT | FIELD | REPORT | OTHER
+  refId       String?
+  key         String   @unique
+  name        String
+  size        Int
+  contentType String
+  createdAt   DateTime @default(now())
+
+  @@index([userId, kind, refId])
 }

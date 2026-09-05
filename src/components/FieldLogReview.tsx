@@ -2,8 +2,9 @@ import { Card, Empty, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import { approveFieldLog, rejectFieldLog } from "@/app/admin/actions";
 import { formatShort } from "@/lib/dates";
+import Attachments, { type AttachmentItem } from "@/components/Attachments";
 
-type Log = { id: string; date: Date; hours: number; mentorName: string; note: string; approvedAt: Date | null; user: { name: string } };
+type Log = { id: string; date: Date; hours: number; mentorName: string; note: string; approvedAt: Date | null; user: { name: string }; files?: AttachmentItem[] };
 
 export default function FieldLogReview({ pending, approved, back }: { pending: Log[]; approved: Log[]; back: string }) {
   return (
@@ -16,7 +17,8 @@ export default function FieldLogReview({ pending, approved, back }: { pending: L
               <div className="flex flex-wrap gap-2 text-xs text-muted mb-1">
                 <span className="font-medium text-ink text-sm">{l.user.name}</span><span>{formatShort(l.date)}</span><span>{l.hours} ساعة</span><span>مع {l.mentorName}</span>
               </div>
-              <div className="text-sm mb-3">{l.note}</div>
+              <div className="text-sm mb-2">{l.note}</div>
+              {l.files && l.files.length > 0 && <div className="mb-3"><Attachments kind="FIELD" initial={l.files} readOnly /></div>}
               <div className="flex flex-wrap gap-2 items-center">
                 <form action={approveFieldLog}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><SubmitButton className="btn-sm">اعتماد</SubmitButton></form>
                 <form action={rejectFieldLog} className="flex gap-2"><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><input name="reason" className="input" placeholder="سبب الرفض (اختياري)" /><SubmitButton secondary className="btn-sm">رفض</SubmitButton></form>

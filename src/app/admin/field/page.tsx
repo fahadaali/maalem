@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import FieldLogReview from "@/components/FieldLogReview";
+import { withFiles } from "@/lib/attachments";
 
 export const metadata = { title: "اعتماد المعايشة" };
 
@@ -17,7 +18,7 @@ export default async function AdminFieldPage({ searchParams }: { searchParams: P
     <>
       <PageHeader title="اعتماد سجلات المعايشة الميدانية" subtitle="يعتمد المشرف المرافق أو مدير المشروع كل سجل. المطلوب 12 ساعة موثقة لكل مشارك." />
       <FormMessage ok={ok} err={err} />
-      <FieldLogReview pending={pending} approved={approved} back="/admin/field" />
+      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/admin/field" />
     </>
   );
 }

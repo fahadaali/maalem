@@ -7,6 +7,8 @@ import FormMessage from "@/components/FormMessage";
 import { submitAssignment } from "../../actions";
 import { formatDateTime } from "@/lib/dates";
 import { TASK_RUBRIC } from "@/lib/program";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/lib/attachments";
 
 export const metadata = { title: "مهمة" };
 
@@ -17,6 +19,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { where: { userId: user.id } } } });
   if (!a) notFound();
   const s = a.submissions[0];
+  const files = await listAttachments({ kind: "SUBMISSION", refId: a.id, userId: user.id });
   const graded = !!s?.gradedAt;
   const scores = graded ? { completeness: s!.completeness, referencing: s!.referencing, application: s!.application, punctuality: s!.punctuality } : null;
   const total = scores ? Object.values(scores).reduce((x, y) => (x ?? 0) + (y ?? 0), 0) : null;
@@ -48,6 +51,10 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
           <div className="field">
             <label className="label">رابط الملف في المساحة المشتركة (اختياري)</label>
             <input name="link" className="input" dir="ltr" placeholder="https://" defaultValue={s?.link ?? ""} disabled={graded} />
+          </div>
+          <div className="field">
+            <label className="label">المرفقات (الشاهد)</label>
+            <Attachments kind="SUBMISSION" refId={a.id} initial={files} readOnly={graded} />
           </div>
           {!graded && <SubmitButton>{s ? "تحديث التسليم" : "تسليم"}</SubmitButton>}
           {s && <span className="text-xs text-muted ms-3">آخر تسليم: {formatDateTime(s.submittedAt)}</span>}

@@ -6,6 +6,8 @@ import FormMessage from "@/components/FormMessage";
 import { judgeProject, updateProjectAdmin } from "../actions";
 import { PROJECT_RUBRIC } from "@/lib/program";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
+import Attachments from "@/components/Attachments";
+import { db as _db } from "@/lib/db";
 
 export const metadata = { title: "مشاريع التخرج" };
 
@@ -16,6 +18,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
     db.graduationProject.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } }),
     db.user.findMany({ where: { role: "PARTICIPANT", active: true }, select: { id: true, name: true } }),
   ]);
+  const attRows = await _db.attachment.findMany({ where: { kind: "PROJECT" }, orderBy: { createdAt: "asc" } });
   const withProject = new Set(projects.map((p) => p.userId));
   const missing = participants.filter((p) => !withProject.has(p.id));
 
@@ -37,6 +40,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   {p.draftLink && <a href={p.draftLink} target="_blank" rel="noopener" className="underline">المسودة</a>}
                   {p.finalLink && <a href={p.finalLink} target="_blank" rel="noopener" className="underline">النسخة النهائية</a>}
                 </div>
+                <div className="mt-2"><Attachments kind="PROJECT" initial={attRows.filter((r) => r.userId === p.userId).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly /></div>
                 <div className="grid md:grid-cols-2 gap-4 mt-4 border-t border-line pt-4">
                   <form action={updateProjectAdmin}>
                     <input type="hidden" name="id" value={p.id} />

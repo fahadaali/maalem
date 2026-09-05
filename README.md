@@ -44,9 +44,50 @@ npm run dev                 # أو: npm run build && npm start
 - لبيانات تجريبية (مشرف مرافق وثلاثة مشاركين بكلمة المرور `123456`): `SEED_DEMO=1 npm run db:seed`.
 - التذكيرات المجدولة: اضبط مجدولاً خارجياً يستدعي يومياً في الصباح بتوقيت الرياض:
   `GET /api/cron/reminders?key=<CRON_SECRET>`
-- قاعدة البيانات الافتراضية
+- محلياً تعمل المنصة على
   SQLite
-  في `prisma/dev.db`؛ للنشر يمكن تبديل المزوّد في `prisma/schema.prisma`.
+  في `prisma/dev.db`، وعلى Cloudflare تتصل بقاعدة
+  D1
+  تلقائياً.
+
+## النشر على Cloudflare (الاستضافة وقاعدة البيانات والتخزين)
+
+المنصة مهيأة للعمل على
+Cloudflare Workers
+عبر
+OpenNext،
+مع قاعدة بيانات
+D1
+وتخزين المرفقات في
+R2
+والتذكيرات اليومية عبر
+Cron Triggers.
+
+```bash
+npx wrangler login
+npx wrangler d1 create maalem-db          # انسخ database_id إلى wrangler.jsonc
+npx wrangler r2 bucket create maalem-files
+npm run d1:migrate                        # تطبيق migrations/ على D1 البعيدة
+npx wrangler secret put AUTH_SECRET
+npx wrangler secret put CRON_SECRET
+npx wrangler secret put NEXT_PUBLIC_VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npm run cf:deploy                         # البناء والنشر
+node scripts/d1-seed.mjs --remote --password='كلمة-مرور-قوية'   # حساب المدير والمهام والاختبارات
+```
+
+- عدّل `NEXT_PUBLIC_APP_URL` و`VAPID_SUBJECT` في `wrangler.jsonc` قبل النشر.
+- المعاينة المحلية بالبيئة نفسها (D1 وR2 محليتان): `npm run d1:migrate:local` ثم `npm run d1:seed` ثم `npm run cf:preview`.
+- عند تعديل `prisma/schema.prisma` أنشئ ملف ترحيل جديداً في `migrations/` بالأمر `npm run d1:migration:new > migrations/000N_name.sql` ثم طبّقه.
+- التذكيرات تعمل تلقائياً كل يوم 04:00 بالتوقيت العالمي (07:00 بتوقيت الرياض) من `wrangler.jsonc`.
+- المرفقات (الشواهد وملفات المشاريع وسجلات المعايشة) تُرفع إلى
+  R2
+  عبر `/api/upload` وتُقدَّم بصلاحيات عبر `/api/files/…`؛ محلياً تُحفظ في `.data/uploads`.
+- إشعارات الدفع تعتمد على حزمة
+  web-push
+  تحت توافق
+  nodejs_compat؛
+  إن تعذّر إرسالها على العامل فالإشعارات داخل المنصة تبقى تعمل.
 
 ## البنية
 

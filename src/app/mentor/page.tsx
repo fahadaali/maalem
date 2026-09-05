@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Empty } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import FieldLogReview from "@/components/FieldLogReview";
+import { withFiles } from "@/lib/attachments";
 
 export const metadata = { title: "المشرف المرافق" };
 
@@ -32,7 +33,7 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
           })}
         </div>
       )}
-      <FieldLogReview pending={pending} approved={approved} back="/mentor" />
+      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/mentor" />
     </>
   );
 }
