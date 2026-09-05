@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Badge, Empty } from "@/components/ui";
 
 export const metadata = { title: "الاختبارات التكوينية" };
 
 export default async function QuizzesPage() {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const quizzes = await db.quiz.findMany({
     where: { published: true },
     orderBy: [{ week: "asc" }, { createdAt: "asc" }],

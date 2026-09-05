@@ -17,5 +17,5 @@ export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/program/schedule", label: "جدول البرنامج", icon: CalendarDays },
   { href: "/app/notifications", label: "الإشعارات", icon: Bell },
   { href: "/app/settings", label: "الإعدادات", icon: Settings },
-  { href: "/app/more", label: "المزيد", icon: Menu, tab: true },
+  { href: "/app/more", label: "المزيد", icon: Menu, tab: true, tabOnly: true },
 ];

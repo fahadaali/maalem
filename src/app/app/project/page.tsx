@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -12,7 +12,7 @@ import { listAttachments } from "@/lib/attachments";
 export const metadata = { title: "مشروع التخرج" };
 
 export default async function ProjectPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const p = await db.graduationProject.findUnique({ where: { userId: user.id } });
   const files = await listAttachments({ kind: "PROJECT", userId: user.id });

@@ -5,6 +5,8 @@ import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
+import { startPreview } from "../actions";
+import { Eye } from "lucide-react";
 import { pushEnabled, vapidPublicKey } from "@/lib/notify";
 import { getCronSecret } from "@/lib/secrets";
 import { headers } from "next/headers";
@@ -23,6 +25,15 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
       <PageHeader title="الإعدادات" subtitle={`${me.name} · ${me.username}`} />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
+        <Card title="معاينة تجربة المشارك">
+          <p className="text-sm text-muted mb-3">
+            تصفّح واجهة المشارك كما يراها — بحسابك أنت وللقراءة فقط. تظهر لك المهام والاختبارات ومحتوى أسبوع البرنامج،
+            ولا تظهر سجلات أي مشارك آخر، ولا يُحفظ أي تغيير. للخروج زر في أعلى الشاشة.
+          </p>
+          <form action={startPreview}>
+            <SubmitButton secondary pendingText="جارٍ الفتح…"><Eye size={16} /> فتح المعاينة</SubmitButton>
+          </form>
+        </Card>
         <Card title="الإشعارات على جهازي"><PushToggle publicKey={await vapidPublicKey()} /></Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">

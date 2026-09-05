@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Badge } from "@/components/ui";
 import { ACTIVE_WEEKS, currentWeekNumber, formatShort, reportDueDate } from "@/lib/dates";
@@ -7,7 +7,7 @@ import { ACTIVE_WEEKS, currentWeekNumber, formatShort, reportDueDate } from "@/l
 export const metadata = { title: "التقارير الأسبوعية" };
 
 export default async function ReportsPage() {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const reports = await db.weeklyReport.findMany({ where: { userId: user.id } });
   const byWeek = new Map(reports.map((r) => [r.week, r]));
   const cur = currentWeekNumber();

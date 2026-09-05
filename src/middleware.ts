@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccess, homeFor } from "@/lib/roles";
+import { canAccess, homeFor, PREVIEW_COOKIE } from "@/lib/roles";
 
 const SESSION_COOKIE = "maalem_session";
 
@@ -34,7 +34,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   // كل دور في منطقته: أي محاولة خروج تُعاد إلى لوحته
-  if (!canAccess(session.role, pathname)) {
+  const preview = req.cookies.get(PREVIEW_COOKIE)?.value === "1";
+  if (!canAccess(session.role, pathname, preview)) {
     return NextResponse.redirect(new URL(homeFor(session.role), req.url));
   }
   return NextResponse.next();

@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -12,7 +12,7 @@ import Link from "next/link";
 export const metadata = { title: "الإعدادات" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const me = await db.user.findUnique({ where: { id: user.id }, include: { mentor: { select: { name: true } } } });
   return (

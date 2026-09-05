@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -17,7 +17,7 @@ function lastDays(n: number) {
 }
 
 export default async function HabitsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const habits = await db.habit.findMany({ where: { userId: user.id }, include: { logs: true }, orderBy: { createdAt: "asc" } });
   const days = lastDays(14);

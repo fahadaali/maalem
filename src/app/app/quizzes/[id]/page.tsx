@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, BackLink, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const metadata = { title: "اختبار" };
 
 export default async function QuizPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { id } = await params;
   const { err } = await searchParams;
   const quiz = await db.quiz.findUnique({ where: { id }, include: { questions: { orderBy: { order: "asc" } }, attempts: { where: { userId: user.id } } } });

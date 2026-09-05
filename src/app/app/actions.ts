@@ -2,7 +2,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { homeFor } from "@/lib/roles";
+import { isPreview, requireRole, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { num, str } from "@/lib/utils";
@@ -14,8 +15,14 @@ function fail(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(msg)}`);
 }
 
+/** كل إجراءات المشارك تمرّ من هنا: وضع المعاينة للقراءة فقط فلا يكتب شيئاً */
 async function participant() {
-  return requireRole("PARTICIPANT");
+  const user = await requireUser();
+  if (user.role === "PARTICIPANT") return user;
+  if (user.role === "ADMIN" && (await isPreview())) {
+    redirect("/app?err=" + encodeURIComponent("وضع المعاينة للقراءة فقط — لم يُحفظ أي تغيير"));
+  }
+  redirect(homeFor(user.role));
 }
 
 // ——— بطاقة القراءة اليومية ———

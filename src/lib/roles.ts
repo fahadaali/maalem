@@ -27,10 +27,18 @@ export function areaOwner(pathname: string): Role | null {
   return null;
 }
 
-/** هل يملك هذا الدور حق الوصول إلى المسار؟ */
-export function canAccess(role: string, pathname: string): boolean {
+/** كعكة وضع المعاينة: تسمح لمدير المشروع بتصفّح منطقة المشارك للقراءة فقط */
+export const PREVIEW_COOKIE = "maalem_preview";
+
+/**
+ * هل يملك هذا الدور حق الوصول إلى المسار؟
+ * الاستثناء الوحيد: مدير المشروع في وضع المعاينة يدخل منطقة المشارك للقراءة فقط،
+ * وبحسابه هو، فلا يرى سجلات أي مشارك آخر.
+ */
+export function canAccess(role: string, pathname: string, preview = false): boolean {
   const owner = areaOwner(pathname);
-  return owner === null || owner === role;
+  if (owner === null || owner === role) return true;
+  return preview && role === "ADMIN" && owner === "PARTICIPANT";
 }
 
 /** وجهة آمنة بعد الدخول: تُحترم فقط إن كانت داخل منطقة الدور نفسه */

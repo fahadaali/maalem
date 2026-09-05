@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -10,7 +10,7 @@ import { PEER_CRITERIA } from "@/lib/program";
 export const metadata = { title: "الدور القيادي" };
 
 export default async function LeadershipPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const [mine, others] = await Promise.all([
     db.leadershipActivity.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, include: { evaluations: { include: { evaluator: { select: { name: true } } } } } }),

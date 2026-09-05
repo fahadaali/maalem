@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
@@ -9,7 +9,7 @@ import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 export const metadata = { title: "ملف الإنجاز" };
 
 export default async function PortfolioPage() {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const [g, plan, reflections, tadabbur, habits, feedback] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),

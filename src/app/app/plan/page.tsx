@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -10,7 +10,7 @@ import { Trash2 } from "lucide-react";
 export const metadata = { title: "خطة التعلم الشخصية" };
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const [plan, stops] = await Promise.all([
     db.learningPlan.findUnique({ where: { userId: user.id } }),

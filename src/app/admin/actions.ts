@@ -7,6 +7,8 @@ import { requireRole } from "@/lib/auth";
 import { notifyUsers, notifyRole } from "@/lib/notify";
 import { num, str } from "@/lib/utils";
 import { keyToDate } from "@/lib/dates";
+import { cookies } from "next/headers";
+import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
 
 function ok(path: string, msg: string): never {
@@ -302,4 +304,19 @@ export async function markAdminRead() {
   await db.notification.updateMany({ where: { userId: me.id, readAt: null }, data: { readAt: new Date() } });
   revalidatePath("/admin/notifications");
   revalidatePath("/mentor/notifications");
+}
+
+// ——— معاينة تجربة المشارك (قراءة فقط، بحساب المدير نفسه) ———
+export async function startPreview() {
+  await admin();
+  const jar = await cookies();
+  jar.set(PREVIEW_COOKIE, "1", { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/" });
+  redirect("/app");
+}
+
+export async function endPreview() {
+  await requireRole("ADMIN");
+  const jar = await cookies();
+  jar.delete(PREVIEW_COOKIE);
+  redirect("/admin");
 }

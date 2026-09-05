@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Progress } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -11,7 +11,7 @@ import { Trash2 } from "lucide-react";
 export const metadata = { title: "بطاقة القراءة اليومية" };
 
 export default async function ReadingPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const cards = await db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 60 });
   const total = await db.readingCard.count({ where: { userId: user.id } });

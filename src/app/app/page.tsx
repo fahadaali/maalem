@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat, Badge } from "@/components/ui";
+import FormMessage from "@/components/FormMessage";
 import { currentWeekNumber, dayName, formatHijri, formatGregorian, getWeek, reportDueDate, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
 import { computeGrades } from "@/lib/grades";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
 
 export const metadata = { title: "الرئيسية" };
 
-export default async function Dashboard() {
-  const user = await requireRole("PARTICIPANT");
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ err?: string; ok?: string }> }) {
+  const { err, ok: okMsg } = await searchParams;
+  const user = await requireParticipantView();
   const now = new Date();
   const weekNo = currentWeekNumber(now);
   const week = getWeek(weekNo);
@@ -43,6 +45,8 @@ export default async function Dashboard() {
               : `الأسبوع ${week?.label} — ${week?.competency}`
         }
       />
+
+      <FormMessage ok={okMsg} err={err} />
 
       {/* مهمة اليوم */}
       <Card className="mb-4 border-ink">

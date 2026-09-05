@@ -109,3 +109,20 @@ h1, h2, h3, .display {
 @media print {
   .no-print { display: none !important; }
 }
+
+/* وضع المعاينة: الواجهة تُعرض ولا تُعدَّل */
+.preview-readonly .input,
+.preview-readonly .textarea,
+.preview-readonly .select,
+.preview-readonly input,
+.preview-readonly textarea,
+.preview-readonly select {
+  pointer-events: none;
+  background: var(--paper-2);
+  color: var(--muted);
+}
+.preview-readonly form button[type="submit"],
+.preview-readonly form .btn {
+  pointer-events: none;
+  opacity: 0.45;
+}

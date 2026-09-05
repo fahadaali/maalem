@@ -8,11 +8,12 @@ import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { logout } from "@/app/(auth)/actions";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean };
+export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean };
 
 export default async function AppShell({ user, items, children, base }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string }) {
   const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
   const tabs = items.filter((i) => i.tab);
+  const sideItems = items.filter((i) => !i.tabOnly);
   const notificationsHref = `${base}/notifications`;
 
   return (
@@ -23,7 +24,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
           معالم التربية
         </Link>
         <nav className="flex flex-col gap-1 flex-1">
-          {items.map((i) => (
+          {sideItems.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact}>
               <i.icon size={18} strokeWidth={1.75} />
               <span>{i.label}</span>

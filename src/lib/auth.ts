@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "./db";
 import { getAuthSecret } from "./secrets";
-import { homeFor, type Role } from "./roles";
+import { homeFor, PREVIEW_COOKIE, type Role } from "./roles";
 
 export { homeFor };
 export type { Role };
@@ -78,6 +78,25 @@ export async function requireRole(...roles: Role[]): Promise<SessionUser> {
   const s = await requireUser();
   if (!roles.includes(s.role)) redirect(homeFor(s.role));
   return s;
+}
+
+/** هل الجلسة الحالية في وضع معاينة (مدير مشروع يتصفّح منطقة المشارك)؟ */
+export async function isPreview(): Promise<boolean> {
+  const jar = await cookies();
+  if (jar.get(PREVIEW_COOKIE)?.value !== "1") return false;
+  const s = await getSession();
+  return s?.role === "ADMIN";
+}
+
+/**
+ * بوابة صفحات المشارك: المشارك يدخلها كاملة،
+ * ومدير المشروع يدخلها في وضع المعاينة بحسابه هو وللقراءة فقط.
+ */
+export async function requireParticipantView(): Promise<SessionUser> {
+  const s = await requireUser();
+  if (s.role === "PARTICIPANT") return s;
+  if (s.role === "ADMIN" && (await isPreview())) return s;
+  redirect(homeFor(s.role));
 }
 
 

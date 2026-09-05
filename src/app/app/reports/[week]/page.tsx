@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -10,7 +10,7 @@ import { formatDateTime, getWeek, reportDueDate } from "@/lib/dates";
 export const metadata = { title: "التقرير الأسبوعي" };
 
 export default async function WeeklyReportPage({ params, searchParams }: { params: Promise<{ week: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { week: w } = await params;
   const { ok, err } = await searchParams;
   const week = Number(w);

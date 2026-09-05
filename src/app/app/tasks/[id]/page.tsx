@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/auth";
+import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -13,7 +13,7 @@ import { listAttachments } from "@/lib/attachments";
 export const metadata = { title: "مهمة" };
 
 export default async function TaskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT");
+  const user = await requireParticipantView();
   const { id } = await params;
   const { ok, err } = await searchParams;
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { where: { userId: user.id } } } });
