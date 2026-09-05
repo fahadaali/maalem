@@ -67,11 +67,17 @@ WebCrypto
 
 ### 1) النشر من المستودع (Workers Builds)
 
-| الإعداد | القيمة |
+| الحقل | القيمة |
 |---|---|
-| أمر البناء | `npm run cf:build` |
-| أمر النشر | `npx opennextjs-cloudflare deploy` |
+| Build command | `npm run cf:build` |
+| Deploy command | `npx opennextjs-cloudflare deploy` |
+| Version command | `npx opennextjs-cloudflare upload` |
+| Root directory | `/` |
 | إصدار Node | 22 (محدد في `.node-version`) |
+
+تنبيه: `npm run build` وحده لا يكفي — فهو يبني تطبيق
+Next
+فقط دون حزمة العامل، فيفشل النشر. وكذلك `npx wrangler deploy` وحده لا يبني الحزمة.
 
 الشرط الوحيد: أن يطابق حقل `name` في `wrangler.jsonc` اسم العامل المرتبط بالمستودع، وإلا أنشأ النشر عاملاً آخر.
 كل دفعة إلى الفرع المرتبط تبني وتنشر تلقائياً. النشر اليدوي: `npm run cf:deploy`.
