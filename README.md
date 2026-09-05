@@ -66,35 +66,21 @@ Cron Triggers.
 WebCrypto
 فيعمل على العامل مباشرة.
 
-### 1) الموارد المطلوبة (مرة واحدة)
-
-```bash
-npx wrangler login
-npx wrangler d1 create maalem-db            # انسخ database_id إلى wrangler.jsonc
-npx wrangler r2 bucket create maalem-files
-npm run vapid                                # مفاتيح إشعارات الدفع
-```
-
-في `wrangler.jsonc`: ضع `database_id`، واجعل `name` مطابقاً لاسم العامل الذي أنشأته في لوحة
-Cloudflare
-(وإلا رُفض النشر من
-Workers Builds)،
-وحدّث `APP_URL` برابط العامل الفعلي.
-
-### 2) الأسرار
+### 1) الأسرار (الخطوة اليدوية الوحيدة)
 
 من لوحة العامل (الإعدادات ← المتغيرات والأسرار) أو بسطر الأوامر:
 
 ```bash
+npm run vapid                              # يولّد مفتاحي إشعارات الدفع
 npx wrangler secret put AUTH_SECRET        # نص عشوائي طويل (32 حرفاً فأكثر)
 npx wrangler secret put CRON_SECRET        # مفتاح نقطة التذكيرات
-npx wrangler secret put VAPID_PUBLIC_KEY   # من npm run vapid
-npx wrangler secret put VAPID_PRIVATE_KEY  # من npm run vapid
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
 ```
 
-### 3) النشر من المستودع (Workers Builds)
+حدّث كذلك `APP_URL` في `wrangler.jsonc` برابط العامل الفعلي.
 
-عند ربط العامل بالمستودع استخدم:
+### 2) النشر من المستودع (Workers Builds)
 
 | الإعداد | القيمة |
 |---|---|
@@ -102,13 +88,22 @@ npx wrangler secret put VAPID_PRIVATE_KEY  # من npm run vapid
 | أمر النشر | `npx opennextjs-cloudflare deploy` |
 | إصدار Node | 22 (محدد في `.node-version`) |
 
+يجب أن يطابق حقل `name` في `wrangler.jsonc` اسم العامل المرتبط بالمستودع، وإلا أنشأ النشر عاملاً آخر.
+
 كل دفعة إلى الفرع المرتبط تبني وتنشر تلقائياً. النشر اليدوي: `npm run cf:deploy`.
+
+### 3) قاعدة D1 وحاوية R2 — تلقائية
+
+لا حاجة لإنشائهما يدوياً. الرابطان في `wrangler.jsonc` مذكوران بالاسم فقط دون معرّف، فينشئهما
+wrangler
+عند أول نشر (`maalem-db` و`maalem-files`)، ويعيد الربط بهما في كل نشر لاحق دون تكرار.
+إضافة `database_id` يدوياً يعطّل هذا السلوك.
 
 ### 4) الإعداد الأولي من المتصفح
 
 بعد أول نشر افتح `/setup`: ينشئ الجداول في
 D1
-مباشرة (لا حاجة لأوامر ترحيل)، وحساب مدير المشروع، والمهام والاختبارات الأساسية. يعمل مرة واحدة فقط ثم يُغلق.
+مباشرة، وحساب مدير المشروع، والمهام والاختبارات الأساسية. يعمل مرة واحدة فقط ثم يُغلق.
 بديل سطر الأوامر: `npm run d1:migrate` ثم `node scripts/d1-seed.mjs --remote --password='…'`.
 
 ### ملاحظات
