@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { canAccess, homeFor } from "@/lib/roles";
 
 const SESSION_COOKIE = "maalem_session";
 
@@ -6,10 +7,10 @@ type Claims = { u?: { id: string; role: string }; exp?: number };
 
 /**
  * قراءة حمولة الرمز دون تحقق من التوقيع — للتوجيه فقط.
- * التحقق الفعلي يجري في كل صفحة وإجراء عبر requireUser/requireRole،
+ * التحقق الفعلي من التوقيع والدور يجري في كل صفحة وإجراء عبر requireRole،
  * فالوسيط طبقة تنقّل لا طبقة صلاحيات.
  */
-function decodeClaims(token: string): Claims["u"] | null {
+function decodeClaims(token: string): NonNullable<Claims["u"]> | null {
   try {
     const part = token.split(".")[1];
     if (!part) return null;
@@ -32,14 +33,9 @@ export function middleware(req: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
-  if (pathname.startsWith("/admin") && session.role !== "ADMIN") {
-    return NextResponse.redirect(new URL(session.role === "MENTOR" ? "/mentor" : "/app", req.url));
-  }
-  if (pathname.startsWith("/mentor") && session.role !== "MENTOR" && session.role !== "ADMIN") {
-    return NextResponse.redirect(new URL("/app", req.url));
-  }
-  if (pathname.startsWith("/app") && session.role !== "PARTICIPANT" && session.role !== "ADMIN") {
-    return NextResponse.redirect(new URL("/mentor", req.url));
+  // كل دور في منطقته: أي محاولة خروج تُعاد إلى لوحته
+  if (!canAccess(session.role, pathname)) {
+    return NextResponse.redirect(new URL(homeFor(session.role), req.url));
   }
   return NextResponse.next();
 }

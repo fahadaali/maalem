@@ -17,7 +17,7 @@ function lastDays(n: number) {
 }
 
 export default async function HabitsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const habits = await db.habit.findMany({ where: { userId: user.id }, include: { logs: true }, orderBy: { createdAt: "asc" } });
   const days = lastDays(14);

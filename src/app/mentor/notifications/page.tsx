@@ -9,7 +9,7 @@ import { markAdminRead } from "@/app/admin/actions";
 export const metadata = { title: "الإشعارات" };
 
 export default async function MentorNotifications() {
-  const me = await requireRole("MENTOR", "ADMIN");
+  const me = await requireRole("MENTOR");
   const items = await db.notification.findMany({ where: { userId: me.id }, orderBy: { createdAt: "desc" }, take: 100 });
   return (
     <>

@@ -10,7 +10,7 @@ import { changePassword } from "@/app/(auth)/actions";
 export const metadata = { title: "الإعدادات" };
 
 export default async function MentorSettings({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const me = await requireRole("MENTOR", "ADMIN");
+  const me = await requireRole("MENTOR");
   const { ok, err } = await searchParams;
   return (
     <>

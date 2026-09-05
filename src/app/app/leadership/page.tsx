@@ -10,7 +10,7 @@ import { PEER_CRITERIA } from "@/lib/program";
 export const metadata = { title: "الدور القيادي" };
 
 export default async function LeadershipPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const [mine, others] = await Promise.all([
     db.leadershipActivity.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, include: { evaluations: { include: { evaluator: { select: { name: true } } } } } }),

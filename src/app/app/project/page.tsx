@@ -12,7 +12,7 @@ import { listAttachments } from "@/lib/attachments";
 export const metadata = { title: "مشروع التخرج" };
 
 export default async function ProjectPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const p = await db.graduationProject.findUnique({ where: { userId: user.id } });
   const files = await listAttachments({ kind: "PROJECT", userId: user.id });

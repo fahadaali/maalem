@@ -11,7 +11,7 @@ import Attachments from "@/components/Attachments";
 export const metadata = { title: "المعايشة الميدانية" };
 
 export default async function FieldPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const [logs, me] = await Promise.all([
     db.fieldLog.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),

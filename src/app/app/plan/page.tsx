@@ -10,7 +10,7 @@ import { Trash2 } from "lucide-react";
 export const metadata = { title: "خطة التعلم الشخصية" };
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const [plan, stops] = await Promise.all([
     db.learningPlan.findUnique({ where: { userId: user.id } }),

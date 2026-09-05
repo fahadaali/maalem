@@ -10,7 +10,7 @@ import { Trash2 } from "lucide-react";
 export const metadata = { title: "دفتر التأمل" };
 
 export default async function ReflectionPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { ok, err } = await searchParams;
   const items = await db.reflection.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } });
   return (

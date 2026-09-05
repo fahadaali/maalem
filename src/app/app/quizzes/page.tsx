@@ -6,7 +6,7 @@ import { PageHeader, Badge, Empty } from "@/components/ui";
 export const metadata = { title: "الاختبارات التكوينية" };
 
 export default async function QuizzesPage() {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const quizzes = await db.quiz.findMany({
     where: { published: true },
     orderBy: [{ week: "asc" }, { createdAt: "asc" }],

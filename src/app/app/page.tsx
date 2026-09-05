@@ -9,7 +9,7 @@ import { PARTICIPANT_ROUTINE } from "@/lib/program";
 export const metadata = { title: "الرئيسية" };
 
 export default async function Dashboard() {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const now = new Date();
   const weekNo = currentWeekNumber(now);
   const week = getWeek(weekNo);

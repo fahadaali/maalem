@@ -4,11 +4,13 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "./db";
 import { getAuthSecret } from "./secrets";
+import { homeFor, type Role } from "./roles";
+
+export { homeFor };
+export type { Role };
 
 export const SESSION_COOKIE = "maalem_session";
 const SESSION_DAYS = 30;
-
-export type Role = "ADMIN" | "PARTICIPANT" | "MENTOR";
 
 export type SessionUser = {
   id: string;
@@ -78,8 +80,4 @@ export async function requireRole(...roles: Role[]): Promise<SessionUser> {
   return s;
 }
 
-export function homeFor(role: Role) {
-  if (role === "ADMIN") return "/admin";
-  if (role === "MENTOR") return "/mentor";
-  return "/app";
-}
+

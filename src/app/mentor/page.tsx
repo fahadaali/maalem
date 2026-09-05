@@ -8,11 +8,11 @@ import { withFiles } from "@/lib/attachments";
 export const metadata = { title: "المشرف المرافق" };
 
 export default async function MentorHome({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const me = await requireRole("MENTOR", "ADMIN");
+  const me = await requireRole("MENTOR");
   const { ok, err } = await searchParams;
-  const where = me.role === "ADMIN" ? {} : { user: { mentorId: me.id } };
+  const where = { user: { mentorId: me.id } };
   const [mentees, pending, approved] = await Promise.all([
-    db.user.findMany({ where: me.role === "ADMIN" ? { role: "PARTICIPANT", active: true } : { mentorId: me.id, active: true }, include: { fieldLogs: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: { mentorId: me.id, active: true }, include: { fieldLogs: true }, orderBy: { name: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: null, ...where }, include: { user: true }, orderBy: { date: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: { not: null }, ...where }, include: { user: true }, orderBy: { approvedAt: "desc" }, take: 15 }),
   ]);

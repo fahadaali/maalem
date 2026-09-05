@@ -13,7 +13,7 @@ import { listAttachments } from "@/lib/attachments";
 export const metadata = { title: "مهمة" };
 
 export default async function TaskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { id } = await params;
   const { ok, err } = await searchParams;
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { where: { userId: user.id } } } });

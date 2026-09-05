@@ -2,7 +2,8 @@
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { createSession, destroySession, homeFor, requireUser, type Role } from "@/lib/auth";
+import { createSession, destroySession, requireUser, type Role } from "@/lib/auth";
+import { safeDestination } from "@/lib/roles";
 import { str } from "@/lib/utils";
 
 export async function login(formData: FormData) {
@@ -15,8 +16,7 @@ export async function login(formData: FormData) {
     redirect("/login?err=" + encodeURIComponent("بيانات الدخول غير صحيحة"));
   }
   await createSession({ id: user.id, username: user.username, name: user.name, role: user.role as Role });
-  const home = homeFor(user.role as Role);
-  redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : home);
+  redirect(safeDestination(user.role, next));
 }
 
 export async function logout() {

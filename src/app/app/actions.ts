@@ -15,7 +15,7 @@ function fail(path: string, msg: string): never {
 }
 
 async function participant() {
-  return requireRole("PARTICIPANT", "ADMIN");
+  return requireRole("PARTICIPANT");
 }
 
 // ——— بطاقة القراءة اليومية ———

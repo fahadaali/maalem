@@ -7,7 +7,7 @@ import { formatShort } from "@/lib/dates";
 export const metadata = { title: "المهام الأسبوعية" };
 
 export default async function TasksPage() {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const assignments = await db.assignment.findMany({ orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { where: { userId: user.id } } } });
   const now = new Date();
   return (

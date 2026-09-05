@@ -9,7 +9,7 @@ import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 export const metadata = { title: "ملف الإنجاز" };
 
 export default async function PortfolioPage() {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const [g, plan, reflections, tadabbur, habits, feedback] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),

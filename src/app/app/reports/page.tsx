@@ -7,7 +7,7 @@ import { ACTIVE_WEEKS, currentWeekNumber, formatShort, reportDueDate } from "@/l
 export const metadata = { title: "التقارير الأسبوعية" };
 
 export default async function ReportsPage() {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const reports = await db.weeklyReport.findMany({ where: { userId: user.id } });
   const byWeek = new Map(reports.map((r) => [r.week, r]));
   const cur = currentWeekNumber();

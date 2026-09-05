@@ -2,10 +2,13 @@ import Link from "next/link";
 import { BookOpen, CalendarDays, ClipboardList, Smartphone, Users, GraduationCap } from "lucide-react";
 import PublicNav from "@/components/PublicNav";
 import { COMPETENCIES, PROGRAM } from "@/lib/program";
+import { redirect } from "next/navigation";
 import { getSession, homeFor } from "@/lib/auth";
 
 export default async function Home() {
+  // نقطة الدخول الموحّدة للتطبيق: من كان داخلاً يُنقل إلى لوحته مباشرة
   const session = await getSession();
+  if (session) redirect(homeFor(session.role));
   const features = [
     { icon: BookOpen, title: "الورد القرائي", text: "بطاقة قراءة يومية من الأحد إلى الخميس، مع أربعة كتب موجّهة." },
     { icon: ClipboardList, title: "التقارير والمهام", text: "تقرير أسبوعي رقمي بقالب موحد، ومهام تطبيقية تُقيَّم بسلم تقدير." },
@@ -24,8 +27,8 @@ export default async function Home() {
           <p className="text-lg text-ink-2 max-w-2xl mx-auto">{PROGRAM.subtitle}</p>
           <p className="text-sm text-muted max-w-2xl mx-auto mt-2">{PROGRAM.period}</p>
           <div className="flex justify-center gap-3 mt-8 flex-wrap">
-            <Link href={session ? homeFor(session.role) : "/login"} className="btn">
-              {session ? "الانتقال إلى لوحتي" : "تسجيل الدخول"}
+            <Link href="/login" className="btn">
+              تسجيل الدخول
             </Link>
             <Link href="/program" className="btn btn-secondary">تعرّف على البرنامج</Link>
           </div>

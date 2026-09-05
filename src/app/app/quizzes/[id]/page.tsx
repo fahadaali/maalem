@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const metadata = { title: "اختبار" };
 
 export default async function QuizPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { id } = await params;
   const { err } = await searchParams;
   const quiz = await db.quiz.findUnique({ where: { id }, include: { questions: { orderBy: { order: "asc" } }, attempts: { where: { userId: user.id } } } });

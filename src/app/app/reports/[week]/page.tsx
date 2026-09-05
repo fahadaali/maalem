@@ -10,7 +10,7 @@ import { formatDateTime, getWeek, reportDueDate } from "@/lib/dates";
 export const metadata = { title: "التقرير الأسبوعي" };
 
 export default async function WeeklyReportPage({ params, searchParams }: { params: Promise<{ week: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const user = await requireRole("PARTICIPANT", "ADMIN");
+  const user = await requireRole("PARTICIPANT");
   const { week: w } = await params;
   const { ok, err } = await searchParams;
   const week = Number(w);

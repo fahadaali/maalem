@@ -10,7 +10,7 @@ const NAV = [
 ];
 
 export default async function MentorLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireRole("MENTOR", "ADMIN");
+  const user = await requireRole("MENTOR");
   return (
     <AppShell user={user} items={NAV} base="/mentor">
       {children}
