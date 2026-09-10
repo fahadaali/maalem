@@ -9,21 +9,22 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(cuid())
-  username          String    @unique
-  name              String
-  phone             String?
-  email             String?
-  passwordHash      String
-  role              String    @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
-  active            Boolean   @default(true)
-  charterAcceptedAt DateTime?
-  charterName       String?
-  surveyDoneAt      DateTime?
-  mentorId          String?
-  mentor            User?     @relation("Mentorship", fields: [mentorId], references: [id])
-  mentees           User[]    @relation("Mentorship")
-  createdAt         DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  username             String    @unique
+  name                 String
+  phone                String?
+  email                String?
+  passwordHash         String
+  role                 String    @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
+  active               Boolean   @default(true)
+  charterAcceptedAt    DateTime?
+  charterName          String?
+  surveyDoneAt         DateTime?
+  portfolioSubmittedAt DateTime?
+  mentorId             String?
+  mentor               User?     @relation("Mentorship", fields: [mentorId], references: [id])
+  mentees              User[]    @relation("Mentorship")
+  createdAt            DateTime  @default(now())
 
   pushSubscriptions PushSubscription[]
   notifications     Notification[]

@@ -11,6 +11,8 @@ import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
 import { deleteObject } from "@/lib/storage";
+import { computeGrades } from "@/lib/grades";
+import { levelFor } from "@/lib/grades";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -523,4 +525,32 @@ export async function saveProgramReport(formData: FormData) {
   await db.programReport.upsert({ where: { kind_period: { kind, period } }, create: { kind, period, ...data }, update: data });
   revalidatePath("/admin/program-reports");
   ok(`/admin/program-reports?kind=${kind}&period=${encodeURIComponent(period)}`, "تم حفظ التقرير");
+}
+
+// ——— وثائق الإتمام ———
+export async function issueCertificate(formData: FormData) {
+  await admin();
+  const userId = str(formData.get("userId"));
+  const user = await db.user.findUnique({ where: { id: userId }, select: { name: true, role: true } });
+  if (!user || user.role !== "PARTICIPANT") fail("/admin/certificates", "المشارك غير موجود");
+  const g = await computeGrades(userId);
+  const lvl = levelFor(g.total);
+  const year = new Date().getFullYear();
+  const count = (await db.certificate.count()) + 1;
+  const serial = `MAALEM-${year}-${String(count).padStart(3, "0")}`;
+  await db.certificate.upsert({
+    where: { userId },
+    create: { userId, serial, level: lvl.level, total: g.total, note: str(formData.get("note")) || null },
+    update: { level: lvl.level, total: g.total, note: str(formData.get("note")) || null, issuedAt: new Date() },
+  });
+  await notifyUsers([userId], { title: "صدرت وثيقة إتمامك", body: `${lvl.level} — ${g.total} من 100`, url: "/app/certificate" });
+  revalidatePath("/admin/certificates");
+  ok("/admin/certificates", `صدرت وثيقة ${user!.name}`);
+}
+
+export async function revokeCertificate(formData: FormData) {
+  await admin();
+  await db.certificate.deleteMany({ where: { userId: str(formData.get("userId")) } });
+  revalidatePath("/admin/certificates");
+  ok("/admin/certificates", "تم سحب الوثيقة");
 }

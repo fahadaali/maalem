@@ -7,7 +7,7 @@ import { isPreview, requireRole, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { num, str } from "@/lib/utils";
-import { COMPETENCIES, CHARTER } from "@/lib/program";
+import { COMPETENCIES, CHARTER, SURVEY_QUESTIONS } from "@/lib/program";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -321,4 +321,32 @@ export async function saveDiagnostic(formData: FormData) {
   await notifyAdmins({ title: stage === "PRE" ? "تقييم تشخيصي قبلي" : "تقييم تشخيصي بعدي", body: `${user.name} عبّأ التقييم`, url: "/admin/diagnostic" });
   revalidatePath("/app");
   ok("/app/diagnostic", "تم حفظ التقييم التشخيصي");
+}
+
+// ——— استبانة رضا المشاركين (مجهولة: لا تُربط الإجابات بصاحبها) ———
+export async function submitSurvey(formData: FormData) {
+  const user = await participant();
+  const me = await db.user.findUnique({ where: { id: user.id }, select: { surveyDoneAt: true } });
+  if (me?.surveyDoneAt) fail("/app/survey", "سبق أن عبّأت الاستبانة، شكراً لك");
+  const answers: Record<string, number> = {};
+  for (const q of SURVEY_QUESTIONS) {
+    const v = num(formData.get(q.key), 0);
+    if (v < 1 || v > 5) fail("/app/survey", "قيّم كل بند من 1 إلى 5");
+    answers[q.key] = v;
+  }
+  await db.surveyResponse.create({
+    data: { answers: JSON.stringify(answers), liked: str(formData.get("liked")) || null, improve: str(formData.get("improve")) || null },
+  });
+  await db.user.update({ where: { id: user.id }, data: { surveyDoneAt: new Date() } });
+  revalidatePath("/app");
+  ok("/app/survey", "شكراً لك، وصلت إجابتك مجهولة المصدر");
+}
+
+// ——— تسليم ملف الإنجاز النهائي ———
+export async function submitPortfolio() {
+  const user = await participant();
+  await db.user.update({ where: { id: user.id }, data: { portfolioSubmittedAt: new Date() } });
+  await notifyAdmins({ title: "تسليم ملف الإنجاز", body: `${user.name} سلّم ملف إنجازه النهائي`, url: "/admin/participants" });
+  revalidatePath("/app/portfolio");
+  ok("/app/portfolio", "تم تسليم ملف الإنجاز لمدير المشروع");
 }

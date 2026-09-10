@@ -5,18 +5,24 @@ import { PageHeader, Card, Progress, Stat } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
 import { CONTINUOUS_ASSESSMENT, PORTFOLIO_NOTE } from "@/lib/program";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
+import SubmitButton from "@/components/SubmitButton";
+import FormMessage from "@/components/FormMessage";
+import { submitPortfolio } from "../actions";
+import { formatShort } from "@/lib/dates";
 
 export const metadata = { title: "ملف الإنجاز" };
 
-export default async function PortfolioPage() {
+export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireParticipantView();
-  const [g, plan, reflections, tadabbur, habits, feedback] = await Promise.all([
+  const { ok, err } = await searchParams;
+  const [g, plan, reflections, tadabbur, habits, feedback, me] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),
     db.reflection.count({ where: { userId: user.id } }),
     db.tadabburStop.count({ where: { userId: user.id } }),
     db.habit.count({ where: { userId: user.id } }),
     db.feedbackSession.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
+    db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } }),
   ]);
   const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
 
@@ -36,7 +42,12 @@ export default async function PortfolioPage() {
 
   return (
     <>
-      <PageHeader title="ملف الإنجاز" subtitle={PORTFOLIO_NOTE} />
+      <PageHeader
+        title="ملف الإنجاز"
+        subtitle={PORTFOLIO_NOTE}
+        actions={<Link href="/app/portfolio/print" className="btn btn-secondary btn-sm">عرض وطباعة الملف كاملاً</Link>}
+      />
+      <FormMessage ok={ok} err={err} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Stat label="المجموع" value={g.total} hint="من 100" />
         <Stat label="التقييم المستمر" value={g.continuous} hint="من 70" />
@@ -61,6 +72,20 @@ export default async function PortfolioPage() {
           ))}
         </ul>
       </Card>
+      <Card title="التسليم النهائي" className="mb-4">
+        {me?.portfolioSubmittedAt ? (
+          <p className="text-sm">سلّمت ملف إنجازك في {formatShort(me.portfolioSubmittedAt)}. يستطيع مدير المشروع الاطلاع عليه كاملاً.</p>
+        ) : (
+          <form action={submitPortfolio}>
+            <p className="text-sm text-muted mb-3">
+              يُسلَّم ملف الإنجاز في الأسبوع الختامي. بتسليمه يطّلع مدير المشروع على الملف كاملاً بما فيه دفتر تأملك،
+              وقبل ذلك لا يظهر له إلا ما رصدته المنصة من تسليماتك.
+            </p>
+            <SubmitButton>تسليم ملف الإنجاز</SubmitButton>
+          </form>
+        )}
+      </Card>
+
       {feedback.length > 0 && (
         <Card title="جلسات التغذية الراجعة الفردية">
           <ul className="divide-y divide-line text-sm">
