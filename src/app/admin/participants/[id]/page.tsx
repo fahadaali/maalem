@@ -10,7 +10,7 @@ import { computeGrades } from "@/lib/grades";
 import CompetencyCard from "@/components/CompetencyCard";
 import MentorEvalForm from "@/components/MentorEvalForm";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
-import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
+import { getContinuous } from "@/lib/content";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
 import { formatShort, todayKey } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
@@ -56,7 +56,7 @@ export default async function ParticipantDetail({ params, searchParams }: { para
         <div className="grid md:grid-cols-2 gap-4 mb-4">
           <Card title="التقييم المستمر (70)">
             <div className="space-y-2">
-              {CONTINUOUS_ASSESSMENT.map((c) => <Progress key={c.key} label={`${c.component} (${c.points})`} value={parts[c.key]} max={c.points} />)}
+              {(await getContinuous()).map((c) => <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key]} max={c.points} />)}
             </div>
             <div className="text-xs text-muted mt-3">مشروع التخرج: {g.project}/30 · {g.stats.projectStatus ? PROJECT_STATUS_LABELS[g.stats.projectStatus] : "لم يُحدد"}</div>
           </Card>

@@ -4,7 +4,8 @@ import { PageHeader, Card, Empty, Progress } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addReadingCard, deleteReadingCard } from "../actions";
-import { BOOK_TITLES, READING_NOTE } from "@/lib/program";
+import { READING_NOTE } from "@/lib/program";
+import { getBookTitles } from "@/lib/content";
 import { dayName, formatShort, todayKey } from "@/lib/dates";
 import { currentWeek } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
@@ -12,6 +13,7 @@ import { Trash2 } from "lucide-react";
 export const metadata = { title: "بطاقة القراءة اليومية" };
 
 export default async function ReadingPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  const bookTitles = await getBookTitles();
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const cards = await db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 60 });
@@ -39,8 +41,8 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
               </div>
               <div className="field">
                 <label className="label">الكتاب</label>
-                <select name="book" className="select" defaultValue={last?.book && BOOK_TITLES.includes(last.book) ? last.book : BOOK_TITLES[0]}>
-                  {BOOK_TITLES.map((b) => <option key={b} value={b}>{b}</option>)}
+                <select name="book" className="select" defaultValue={last?.book && bookTitles.includes(last.book) ? last.book : bookTitles[0]}>
+                  {bookTitles.map((b) => <option key={b} value={b}>{b}</option>)}
                   <option value="__other">كتاب آخر…</option>
                 </select>
               </div>

@@ -1,0 +1,101 @@
+import { db } from "./db";
+import { cohortWhere } from "./cohort";
+import { BOOKS, CHARTER, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC, COMPLETION_LEVELS, COMPETENCIES, type Competency } from "./program";
+
+/**
+ * محتوى الوثيقة القابل للتحرير من اللوحة: الكتب، وبنود الميثاق، وأوزان التقويم،
+ * ومستويات الإتمام، ومصفوفة الكفاءات. يُقرأ من قاعدة البيانات لكل دفعة،
+ * فإن لم تُبذر بعد فمن نص الخطة الأصلي كما هو.
+ */
+
+export type Book = { order: number; title: string; author: string; pages: number; weeks: string; circle: string; availability: string };
+export type AssessmentRow = { key: string; label: string; points: number; tool: string | null; minimum: string | null; description: string | null };
+export type Level = { min: number; level: string; certificate: string };
+
+export async function getBooks(): Promise<Book[]> {
+  try {
+    const rows = await db.programBook.findMany({ where: await cohortWhere(), orderBy: { order: "asc" } });
+    if (rows.length) return rows.map((r) => ({ order: r.order, title: r.title, author: r.author, pages: r.pages, weeks: r.weeks, circle: r.circle, availability: r.availability }));
+  } catch {
+    // القاعدة غير مهيأة بعد
+  }
+  return BOOKS.map((b) => ({ ...b }));
+}
+
+export async function getBookTitles(): Promise<string[]> {
+  return (await getBooks()).filter((b) => b.pages > 0).map((b) => b.title);
+}
+
+export async function getCharter(): Promise<string[]> {
+  try {
+    const rows = await db.charterItem.findMany({ where: await cohortWhere(), orderBy: { order: "asc" } });
+    if (rows.length) return rows.map((r) => r.text);
+  } catch {
+    // القاعدة غير مهيأة بعد
+  }
+  return [...CHARTER];
+}
+
+async function assessment(kind: "CONTINUOUS" | "PROJECT"): Promise<AssessmentRow[]> {
+  try {
+    const rows = await db.assessmentItem.findMany({ where: { kind, ...(await cohortWhere()) }, orderBy: { order: "asc" } });
+    if (rows.length) return rows.map((r) => ({ key: r.key, label: r.label, points: r.points, tool: r.tool, minimum: r.minimum, description: r.description }));
+  } catch {
+    // القاعدة غير مهيأة بعد
+  }
+  return kind === "CONTINUOUS"
+    ? CONTINUOUS_ASSESSMENT.map((c) => ({ key: c.key, label: c.component, points: c.points, tool: c.tool, minimum: c.minimum, description: null }))
+    : PROJECT_RUBRIC.map((r) => ({ key: r.key, label: r.criterion, points: r.points, tool: null, minimum: null, description: r.description }));
+}
+
+export async function getContinuous(): Promise<AssessmentRow[]> {
+  return assessment("CONTINUOUS");
+}
+
+export async function getProjectRubric(): Promise<AssessmentRow[]> {
+  return assessment("PROJECT");
+}
+
+export async function getCompletionLevels(): Promise<Level[]> {
+  try {
+    const rows = await db.completionLevel.findMany({ where: await cohortWhere(), orderBy: { min: "desc" } });
+    if (rows.length) return rows.map((r) => ({ min: r.min, level: r.level, certificate: r.certificate }));
+  } catch {
+    // القاعدة غير مهيأة بعد
+  }
+  return COMPLETION_LEVELS.map((l) => ({ ...l }));
+}
+
+export async function getCompetencies(): Promise<Competency[]> {
+  try {
+    const rows = await db.competencyDef.findMany({ where: await cohortWhere(), orderBy: { order: "asc" }, include: { items: { orderBy: { order: "asc" } } } });
+    if (rows.length) {
+      return rows.map((c) => ({
+        slug: c.slug,
+        order: c.order,
+        name: c.name,
+        weight: c.weight,
+        intro: c.intro,
+        items: c.items.map((i) => ({
+          title: i.title, program: i.program, indicator: i.indicator, tasks: i.tasks,
+          schedule: i.schedule, cost: i.cost, evidence: i.evidence,
+          references: i.refs.split("\n").map((r) => r.trim()).filter(Boolean),
+        })),
+      }));
+    }
+  } catch {
+    // القاعدة غير مهيأة بعد
+  }
+  return COMPETENCIES;
+}
+
+/** مجموع نقاط التقييم المستمر ومشروع التخرج كما ضُبطت */
+export async function getTotals(): Promise<{ continuous: number; project: number }> {
+  const [c, p] = await Promise.all([getContinuous(), getProjectRubric()]);
+  return { continuous: c.reduce((s, x) => s + x.points, 0), project: p.reduce((s, x) => s + x.points, 0) };
+}
+
+export async function levelForTotal(total: number): Promise<Level> {
+  const levels = await getCompletionLevels();
+  return levels.find((l) => total >= l.min) ?? levels[levels.length - 1];
+}

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { COMPETENCIES } from "./program";
+import { getCompetencies } from "./content";
 
 /**
  * بطاقة الكفاءات: تحوّل شواهد المنصة إلى نسبة تحقّق لكل كفاءة من الكفاءات الثماني،
@@ -73,7 +73,8 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
     ],
   };
 
-  return COMPETENCIES.map((c) => {
+  const defs = await getCompetencies();
+  return defs.map((c) => {
     const signals = [...(extra[c.slug] ?? [])];
     const t = taskSignal(c.name);
     if (t) signals.push(t);

@@ -16,6 +16,7 @@ import { computeGrades } from "@/lib/grades";
 import { levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
 import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
+import { getCompletionLevels } from "@/lib/content";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -592,11 +593,13 @@ export async function issueCertificate(formData: FormData) {
   const final = await db.finalGrade.findUnique({ where: { userId } });
   const g = await computeGrades(userId);
   const total = final ? Math.max(0, Math.min(100, Math.round((final.computed + final.adjustment) * 10) / 10)) : g.total;
-  const lvl = levelFor(total);
+  const lvl = await levelFor(total);
   const year = new Date().getFullYear();
   const count = (await db.certificate.count()) + 1;
-  // من نال أقل من 60 يُمنح إفادة حضور لا وثيقة إتمام، كما في الخطة
-  const kind = total >= 60 ? "COMPLETION" : "ATTENDANCE";
+  // من نال أقل من أدنى مستويات الإتمام يُمنح إفادة حضور لا وثيقة إتمام
+  const levels = await getCompletionLevels();
+  const passing = levels.filter((l) => l.min > 0).map((l) => l.min);
+  const kind = total >= (passing.length ? Math.min(...passing) : 60) ? "COMPLETION" : "ATTENDANCE";
   const prefix = kind === "COMPLETION" ? "MAALEM" : "MAALEM-ATT";
   const serial = `${prefix}-${year}-${String(count).padStart(3, "0")}`;
   await db.certificate.upsert({
@@ -606,7 +609,7 @@ export async function issueCertificate(formData: FormData) {
   });
   await notifyUsers([userId], {
     title: kind === "COMPLETION" ? "صدرت وثيقة إتمامك" : "صدرت إفادة حضورك",
-    body: `${lvl.level} — ${total} من 100`,
+    body: `${lvl.level} — ${total} من ${g.maxes.continuous + g.maxes.project}`,
     url: "/app/certificate",
   });
   revalidatePath("/admin/certificates");
@@ -865,4 +868,150 @@ export async function importParticipants(formData: FormData) {
   if (!added.length) fail("/admin/participants", "لم يُضف أحد — تحقق من صيغة الصفوف وأسماء المستخدمين");
   const msg = `أُضيف ${added.length}: ${added.join(" · ")}` + (skipped.length ? ` — وتُخطي ${skipped.length}: ${skipped.join("، ")}` : "");
   ok("/admin/participants", msg.slice(0, 600));
+}
+
+// ——— تحرير محتوى الوثيقة ———
+
+export async function saveBook(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const title = str(formData.get("title"));
+  if (!title) fail("/admin/content", "اكتب عنوان الكتاب");
+  const data = {
+    title,
+    author: str(formData.get("author")) || "—",
+    pages: Math.max(0, num(formData.get("pages"), 0)),
+    weeks: str(formData.get("weeks")) || "—",
+    circle: str(formData.get("circle")) || "—",
+    availability: str(formData.get("availability")) || "—",
+    order: num(formData.get("order"), 0),
+  };
+  if (id) await db.programBook.update({ where: { id }, data });
+  else await db.programBook.create({ data: { ...data, cohortId: await activeCohortId() } });
+  revalidatePath("/admin/content");
+  ok("/admin/content", id ? "حُدّث الكتاب" : "أُضيف الكتاب");
+}
+
+export async function deleteBook(formData: FormData) {
+  await admin();
+  await db.programBook.delete({ where: { id: str(formData.get("id")) } }).catch(() => {});
+  revalidatePath("/admin/content");
+  ok("/admin/content", "حُذف الكتاب");
+}
+
+export async function saveCharter(formData: FormData) {
+  await admin();
+  const cohortId = await activeCohortId();
+  const items: string[] = [];
+  for (const [k, v] of formData.entries()) {
+    if (k.startsWith("item_") && typeof v === "string" && v.trim()) items.push(v.trim());
+  }
+  const added = str(formData.get("newItem")).trim();
+  if (added) items.push(added);
+  if (!items.length) fail("/admin/content", "الميثاق لا يصح بلا بنود");
+  await db.charterItem.deleteMany({ where: cohortId ? { cohortId } : {} });
+  let order = 0;
+  for (const text of items) await db.charterItem.create({ data: { cohortId, order: order++, text } });
+  revalidatePath("/admin/content");
+  ok("/admin/content", `حُفظ الميثاق (${items.length} بنداً)`);
+}
+
+export async function saveAssessment(formData: FormData) {
+  await admin();
+  const rows = await db.assessmentItem.findMany({ where: await cohortWhere() });
+  if (!rows.length) fail("/admin/content", "لم تُبذر مكوّنات التقويم بعد");
+  // يُتحقق من الجدول كله قبل الكتابة، فلا يُحفظ نصفه ويُرفض نصفه
+  const updates = rows.map((r) => {
+    const points = num(formData.get(`points_${r.id}`), r.points);
+    if (points < 0 || points > 100) fail("/admin/content", "الدرجة بين 0 و100");
+    return {
+      id: r.id,
+      data: {
+        points,
+        label: str(formData.get(`label_${r.id}`)) || r.label,
+        tool: r.kind === "CONTINUOUS" ? str(formData.get(`tool_${r.id}`)) || null : null,
+        minimum: r.kind === "CONTINUOUS" ? str(formData.get(`minimum_${r.id}`)) || null : null,
+        description: r.kind === "PROJECT" ? str(formData.get(`description_${r.id}`)) || null : null,
+      },
+    };
+  });
+  for (const u of updates) await db.assessmentItem.update({ where: { id: u.id }, data: u.data });
+  revalidatePath("/admin/content");
+  revalidatePath("/admin/grades");
+  ok("/admin/content", "حُفظت أوزان التقويم، وأُعيد احتساب الدرجات عليها");
+}
+
+export async function saveLevels(formData: FormData) {
+  await admin();
+  const rows = await db.completionLevel.findMany({ where: await cohortWhere(), orderBy: { min: "desc" } });
+  if (!rows.length) fail("/admin/content", "لم تُبذر مستويات الإتمام بعد");
+  // يُتحقق من الجدول كله قبل الكتابة، فلا تُخزَّن حدود متكررة
+  const updates = rows.map((r) => {
+    const min = num(formData.get(`min_${r.id}`), r.min);
+    if (min < 0 || min > 100) fail("/admin/content", "الحد الأدنى بين 0 و100");
+    return { id: r.id, data: { min, level: str(formData.get(`level_${r.id}`)) || r.level, certificate: str(formData.get(`certificate_${r.id}`)) || r.certificate } };
+  });
+  const mins = updates.map((u) => u.data.min);
+  if (new Set(mins).size !== mins.length) fail("/admin/content", "لا يصح تكرار الحد الأدنى بين مستويين");
+  for (const u of updates) await db.completionLevel.update({ where: { id: u.id }, data: u.data });
+  revalidatePath("/admin/content");
+  ok("/admin/content", "حُفظت مستويات الإتمام");
+}
+
+export async function saveCompetency(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const name = str(formData.get("name"));
+  const slug = str(formData.get("slug")).toLowerCase();
+  const weight = Number(str(formData.get("weight")) || "0");
+  if (!name) fail("/admin/competencies", "اكتب اسم الكفاءة");
+  if (!/^[a-z][a-z0-9_-]{1,30}$/.test(slug)) fail("/admin/competencies", "المعرّف: أحرف إنجليزية صغيرة وأرقام، يبدأ بحرف");
+  if (!(weight >= 0 && weight <= 100)) fail("/admin/competencies", "الوزن بين 0 و100");
+  const data = { name, slug, weight, order: num(formData.get("order"), 0), intro: str(formData.get("intro")) };
+  if (id) await db.competencyDef.update({ where: { id }, data });
+  else await db.competencyDef.create({ data: { ...data, cohortId: await activeCohortId() } });
+  revalidatePath("/admin/competencies");
+  ok("/admin/competencies", id ? "حُدّثت الكفاءة" : "أُضيفت الكفاءة");
+}
+
+export async function deleteCompetency(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const count = await db.competencyDef.count({ where: await cohortWhere() });
+  if (count <= 1) fail("/admin/competencies", "لا يصح حذف آخر كفاءة");
+  await db.competencyDef.delete({ where: { id } }).catch(() => {});
+  revalidatePath("/admin/competencies");
+  ok("/admin/competencies", "حُذفت الكفاءة ومفرداتها");
+}
+
+export async function saveCompetencyItem(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const competencyId = str(formData.get("competencyId"));
+  const title = str(formData.get("title"));
+  const back = `/admin/competencies?c=${competencyId}`;
+  if (!title) fail(back, "اكتب عنوان المفردة");
+  const data = {
+    title,
+    program: str(formData.get("program")),
+    indicator: str(formData.get("indicator")),
+    tasks: str(formData.get("tasks")),
+    schedule: str(formData.get("schedule")),
+    cost: str(formData.get("cost")),
+    evidence: str(formData.get("evidence")),
+    refs: str(formData.get("refs")),
+    order: num(formData.get("order"), 0),
+  };
+  if (id) await db.competencyItemRow.update({ where: { id }, data });
+  else await db.competencyItemRow.create({ data: { ...data, competencyId } });
+  revalidatePath("/admin/competencies");
+  ok(back, id ? "حُدّثت المفردة" : "أُضيفت المفردة");
+}
+
+export async function deleteCompetencyItem(formData: FormData) {
+  await admin();
+  const competencyId = str(formData.get("competencyId"));
+  await db.competencyItemRow.delete({ where: { id: str(formData.get("id")) } }).catch(() => {});
+  revalidatePath("/admin/competencies");
+  ok(`/admin/competencies?c=${competencyId}`, "حُذفت المفردة");
 }

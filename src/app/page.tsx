@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BookOpen, CalendarDays, ClipboardList, Smartphone, Users, GraduationCap } from "lucide-react";
 import PublicNav from "@/components/PublicNav";
-import { COMPETENCIES, PROGRAM } from "@/lib/program";
+import { PROGRAM } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 import { redirect } from "next/navigation";
 import { getSession, homeFor } from "@/lib/auth";
 
@@ -47,7 +48,7 @@ export default async function Home() {
         <section className="pb-16">
           <h2 className="text-2xl mb-4">الكفاءات الثماني</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {COMPETENCIES.map((c) => (
+            {(await getCompetencies()).map((c) => (
               <Link key={c.slug} href={`/program/competencies#${c.slug}`} className="card card-muted hover:bg-paper-3">
                 <div className="text-3xl display font-bold">{c.weight}%</div>
                 <div className="text-sm mt-1">{c.name}</div>

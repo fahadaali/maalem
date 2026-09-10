@@ -3,7 +3,8 @@ import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
-import { CONTINUOUS_ASSESSMENT, PORTFOLIO_NOTE } from "@/lib/program";
+import { PORTFOLIO_NOTE } from "@/lib/program";
+import { getContinuous } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
@@ -58,8 +59,8 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       </div>
       <Card title="تفصيل التقييم المستمر" className="mb-4">
         <div className="space-y-3">
-          {CONTINUOUS_ASSESSMENT.map((c) => (
-            <Progress key={c.key} label={`${c.component} (${c.points})`} value={parts[c.key]} max={c.points} />
+          {(await getContinuous()).map((c) => (
+            <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key]} max={c.points} />
           ))}
         </div>
         <p className="text-xs text-muted mt-3">الدرجات تقديرية وتُحدَّث آلياً مع كل تسليم واعتماد؛ الدرجة النهائية تُعتمد من مدير المشروع في الأسبوع 13.</p>

@@ -4,7 +4,8 @@ import { PageHeader, Card, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { acceptCharter } from "../actions";
-import { CHARTER, PROGRAM } from "@/lib/program";
+import { PROGRAM } from "@/lib/program";
+import { getCharter } from "@/lib/content";
 import { formatDateTime } from "@/lib/dates";
 
 export const metadata = { title: "ميثاق المشاركة" };
@@ -30,7 +31,7 @@ export default async function CharterPage({ searchParams }: { searchParams: Prom
         </p>
         <form action={acceptCharter}>
           <ol className="space-y-3 mb-5">
-            {CHARTER.map((item, i) => (
+            {(await getCharter()).map((item, i) => (
               <li key={item} className="flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"

@@ -4,7 +4,8 @@ import { PageHeader, Card, Badge, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveProject } from "../actions";
-import { PROJECT_DESCRIPTION, PROJECT_RUBRIC } from "@/lib/program";
+import { PROJECT_DESCRIPTION } from "@/lib/program";
+import { getProjectRubric } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
@@ -12,6 +13,7 @@ import { listAttachments } from "@/lib/attachments";
 export const metadata = { title: "مشروع التخرج" };
 
 export default async function ProjectPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  const rubric = await getProjectRubric();
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const p = await db.graduationProject.findUnique({ where: { userId: user.id } });
@@ -35,7 +37,7 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
         <Alert tone="success">
           <div className="font-medium mb-2">نتيجة التحكيم: {total} من 30</div>
           <ul className="text-sm space-y-0.5">
-            {PROJECT_RUBRIC.map((r) => <li key={r.key}>{r.criterion}: {scores[r.key] ?? 0} / {r.points}</li>)}
+            {rubric.map((r) => <li key={r.key}>{r.label}: {scores[r.key] ?? 0} / {r.points}</li>)}
           </ul>
           {p.judgeNote && <div className="mt-2 whitespace-pre-wrap">{p.judgeNote}</div>}
         </Alert>
@@ -75,7 +77,7 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
       </Card>
       <Card title="معايير التحكيم" className="mt-4">
         <ul className="text-sm space-y-1">
-          {PROJECT_RUBRIC.map((r) => <li key={r.key}><span className="font-medium">{r.criterion}</span> ({r.points}) — {r.description}</li>)}
+          {rubric.map((r) => <li key={r.key}><span className="font-medium">{r.label}</span> ({r.points}) — {r.description}</li>)}
         </ul>
       </Card>
     </>

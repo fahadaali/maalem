@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { COMPLETION_LEVELS } from "./program";
 import { cohortWhere } from "./cohort";
+import { getContinuous, getProjectRubric, levelForTotal, type Level } from "./content";
 
 export type GradeBreakdown = {
   attendance: number; // /10
@@ -14,6 +14,8 @@ export type GradeBreakdown = {
   total: number; // /100
   level: string;
   certificate: string;
+  /** سقف كل شطر كما ضُبط في اللوحة */
+  maxes: { continuous: number; project: number };
   stats: {
     attendancePct: number;
     participationAvg: number;
@@ -45,11 +47,15 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
-export function levelFor(total: number) {
-  return COMPLETION_LEVELS.find((l) => total >= l.min) ?? COMPLETION_LEVELS[COMPLETION_LEVELS.length - 1];
+export async function levelFor(total: number): Promise<Level> {
+  return levelForTotal(total);
 }
 
 export async function computeGrades(userId: string): Promise<GradeBreakdown> {
+  const [weights, projectRubric] = await Promise.all([getContinuous(), getProjectRubric()]);
+  /** وزن مكوّن التقييم كما ضُبط في اللوحة، وإلا فوزن الخطة */
+  const w = (key: string, fallback: number) => weights.find((x) => x.key === key)?.points ?? fallback;
+
   const [attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals] = await Promise.all([
     db.attendance.findMany({ where: { userId } }),
     db.readingCard.count({ where: { userId } }),
@@ -76,23 +82,23 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   // الحضور والمشاركة الفاعلة: الحضور 60% وبطاقة رصد المشاركة 40% متى رُصدت
   const participationRatio = rate(counted.map((a) => a.participation).filter((v): v is number => typeof v === "number"));
   const participationAvg = participationRatio ?? 0;
-  const attendanceScore = round1((participationRatio === null ? attendancePct : attendancePct * 0.6 + participationRatio * 0.4) * 10);
+  const attendanceScore = round1((participationRatio === null ? attendancePct : attendancePct * 0.6 + participationRatio * 0.4) * w("attendance", 10));
 
   // الورد القرائي: البطاقات 70% وتقييم المشاركة في الحلقة 30% متى رُصد
   const readingRatio = Math.min(cards / EXPECTED_CARDS, 1);
   const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
   const circleAvg = circleRatio ?? 0;
-  const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * 15);
+  const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * w("reading", 15));
 
   const quizAvg = attempts.length ? attempts.reduce((s, a) => s + (a.total ? a.score / a.total : 0), 0) / attempts.length : 0;
-  const quizScore = round1(quizAvg * 10);
+  const quizScore = round1(quizAvg * w("quizzes", 10));
 
   const graded = submissions.filter((s) => s.gradedAt);
   const rubricSum = graded.reduce(
     (s, g) => s + ((g.completeness ?? 0) + (g.referencing ?? 0) + (g.application ?? 0) + (g.punctuality ?? 0)) / 16,
     0,
   );
-  const tasksScore = assignments ? round1((rubricSum / assignments) * 20) : 0;
+  const tasksScore = assignments ? round1((rubricSum / assignments) * w("tasks", 20)) : 0;
 
   const approved = fieldLogs.filter((f) => f.approvedAt);
   const fieldHours = approved.reduce((s, f) => s + f.hours, 0);
@@ -101,18 +107,19 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   const hoursRatio = Math.min(fieldHours / EXPECTED_FIELD_HOURS, 1);
   const mentorRatio = rate(mentorEvals.map((e) => (e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5));
   const mentorAvg = mentorRatio ?? 0;
-  const fieldScore = round1((mentorRatio === null ? hoursRatio : hoursRatio * 0.7 + mentorRatio * 0.3) * 10);
+  const fieldScore = round1((mentorRatio === null ? hoursRatio : hoursRatio * 0.7 + mentorRatio * 0.3) * w("field", 10));
 
   const evals = activities.flatMap((a) => a.evaluations);
   const peerAvg = evals.length ? evals.reduce((s, e) => s + (e.c1 + e.c2 + e.c3 + e.c4 + e.c5) / 5, 0) / evals.length : 0;
-  const leadershipScore = activities.length ? round1((peerAvg / 5) * 5) : 0;
+  const leadershipScore = activities.length ? round1((peerAvg / 5) * w("leadership", 5)) : 0;
 
   const continuous = round1(attendanceScore + readingScore + quizScore + tasksScore + fieldScore + leadershipScore);
+  const projectMax = projectRubric.reduce((s, r) => s + r.points, 0);
   const projectScore = project
     ? (project.clarity ?? 0) + (project.grounding ?? 0) + (project.design ?? 0) + (project.integration ?? 0) + (project.presentation ?? 0)
     : 0;
   const total = round1(continuous + projectScore);
-  const lvl = levelFor(total);
+  const lvl = await levelFor(total);
 
   return {
     attendance: attendanceScore,
@@ -126,6 +133,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
     total,
     level: lvl.level,
     certificate: lvl.certificate,
+    maxes: { continuous: weights.reduce((s, x) => s + x.points, 0), project: projectMax },
     stats: {
       attendancePct: Math.round(attendancePct * 100),
       participationAvg: round1(participationAvg * 5),

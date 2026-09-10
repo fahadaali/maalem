@@ -1,13 +1,14 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Progress, Badge } from "@/components/ui";
-import { COMPETENCIES } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 import { parseJSON } from "@/lib/utils";
 import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "التقييم التشخيصي" };
 
 export default async function AdminDiagnosticPage() {
+  const competencies = await getCompetencies();
   await requireRole("ADMIN");
   const [participants, rows] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -38,7 +39,7 @@ export default async function AdminDiagnosticPage() {
           )}
           <Card title="متوسط المجموعة" className="mb-4">
             <div className="space-y-3">
-              {COMPETENCIES.map((c) => {
+              {competencies.map((c) => {
                 const pre = avg("PRE", c.slug);
                 const post = avg("POST", c.slug);
                 return (
@@ -59,7 +60,7 @@ export default async function AdminDiagnosticPage() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>المشارك</th>{COMPETENCIES.map((c) => <th key={c.slug} className="text-center">{c.name.replace("الكفاءة ", "").replace("كفاءة ", "")}</th>)}<th>الحالة</th></tr>
+                <tr><th>المشارك</th>{competencies.map((c) => <th key={c.slug} className="text-center">{c.name.replace("الكفاءة ", "").replace("كفاءة ", "")}</th>)}<th>الحالة</th></tr>
               </thead>
               <tbody>
                 {participants.map((p) => {
@@ -68,7 +69,7 @@ export default async function AdminDiagnosticPage() {
                   return (
                     <tr key={p.id}>
                       <td className="font-medium whitespace-nowrap">{p.name}</td>
-                      {COMPETENCIES.map((c) => (
+                      {competencies.map((c) => (
                         <td key={c.slug} className="text-center whitespace-nowrap">
                           {pre?.[c.slug] ?? "—"}{post ? ` → ${post[c.slug]}` : ""}
                         </td>

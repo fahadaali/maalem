@@ -7,7 +7,8 @@ import { isPreview, requireRole, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { num, str } from "@/lib/utils";
-import { COMPETENCIES, CHARTER, SURVEY_QUESTIONS } from "@/lib/program";
+import { SURVEY_QUESTIONS } from "@/lib/program";
+import { getCharter, getCompetencies } from "@/lib/content";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -296,7 +297,7 @@ export async function markAllRead(formData: FormData) {
 export async function acceptCharter(formData: FormData) {
   const user = await participant();
   const name = str(formData.get("name"));
-  const agreed = CHARTER.every((_, i) => formData.get(`item_${i}`) === "on");
+  const agreed = (await getCharter()).every((_, i) => formData.get(`item_${i}`) === "on");
   if (!agreed) fail("/app/charter", "أقرّ ببنود الميثاق كلها قبل التوقيع");
   if (name.length < 4) fail("/app/charter", "اكتب اسمك الثلاثي كما هو في السجل");
   await db.user.update({ where: { id: user.id }, data: { charterAcceptedAt: new Date(), charterName: name } });
@@ -310,7 +311,7 @@ export async function saveDiagnostic(formData: FormData) {
   const user = await participant();
   const stage = str(formData.get("stage")) === "POST" ? "POST" : "PRE";
   const scores: Record<string, number> = {};
-  for (const c of COMPETENCIES) {
+  for (const c of await getCompetencies()) {
     const v = num(formData.get(c.slug), 0);
     if (v < 1 || v > 5) fail("/app/diagnostic", "قيّم كل كفاءة من 1 إلى 5");
     scores[c.slug] = v;

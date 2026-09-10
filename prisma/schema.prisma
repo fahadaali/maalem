@@ -62,16 +62,21 @@ model Cohort {
   closedAt  DateTime?
   createdAt DateTime  @default(now())
 
-  users       User[]
-  weeks       ProgramWeek[]
-  assignments Assignment[]
-  quizzes     Quiz[]
-  budget      BudgetEntry[]
-  guests      Guest[]
-  minutes     SessionMinutes[]
-  reports     ProgramReport[]
-  survey      SurveyResponse[]
-  reminders   Reminder[]
+  users        User[]
+  weeks        ProgramWeek[]
+  assignments  Assignment[]
+  quizzes      Quiz[]
+  budget       BudgetEntry[]
+  guests       Guest[]
+  minutes      SessionMinutes[]
+  reports      ProgramReport[]
+  survey       SurveyResponse[]
+  reminders    Reminder[]
+  books        ProgramBook[]
+  charter      CharterItem[]
+  assessment   AssessmentItem[]
+  levels       CompletionLevel[]
+  competencies CompetencyDef[]
 }
 
 /// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
@@ -562,4 +567,93 @@ model Reminder {
   createdAt DateTime  @default(now())
 
   @@index([sentAt, sendAt])
+}
+
+/// كتب الورد القرائي — تُحرَّر من لوحة مدير المشروع
+model ProgramBook {
+  id           String  @id @default(cuid())
+  cohortId     String?
+  cohort       Cohort? @relation(fields: [cohortId], references: [id])
+  order        Int
+  title        String
+  author       String
+  pages        Int     @default(0)
+  weeks        String
+  circle       String
+  availability String
+
+  @@index([cohortId, order])
+}
+
+/// بنود ميثاق الالتزام
+model CharterItem {
+  id       String  @id @default(cuid())
+  cohortId String?
+  cohort   Cohort? @relation(fields: [cohortId], references: [id])
+  order    Int
+  text     String
+
+  @@index([cohortId, order])
+}
+
+/// مكوّنات التقويم وأوزانها: المستمر (70) ومشروع التخرج (30)
+model AssessmentItem {
+  id          String  @id @default(cuid())
+  cohortId    String?
+  cohort      Cohort? @relation(fields: [cohortId], references: [id])
+  kind        String // CONTINUOUS | PROJECT
+  key         String
+  label       String
+  points      Int
+  tool        String?
+  minimum     String?
+  description String?
+  order       Int
+
+  @@index([cohortId, kind, order])
+}
+
+/// مستويات الإتمام وحدودها الدنيا
+model CompletionLevel {
+  id          String  @id @default(cuid())
+  cohortId    String?
+  cohort      Cohort? @relation(fields: [cohortId], references: [id])
+  min         Int
+  level       String
+  certificate String
+
+  @@index([cohortId, min])
+}
+
+/// كفاءة رئيسة من مصفوفة الكفاءات
+model CompetencyDef {
+  id       String              @id @default(cuid())
+  cohortId String?
+  cohort   Cohort?             @relation(fields: [cohortId], references: [id])
+  slug     String
+  order    Int
+  name     String
+  weight   Float
+  intro    String
+  items    CompetencyItemRow[]
+
+  @@index([cohortId, order])
+}
+
+/// كفاءة ثانوية داخل الكفاءة الرئيسة
+model CompetencyItemRow {
+  id           String        @id @default(cuid())
+  competencyId String
+  competency   CompetencyDef @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  order        Int
+  title        String
+  program      String
+  indicator    String
+  tasks        String
+  schedule     String
+  cost         String
+  evidence     String
+  refs         String // مراجع مفصولة بأسطر
+
+  @@index([competencyId, order])
 }

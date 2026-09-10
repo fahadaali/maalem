@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import CertificateSheet from "@/components/CertificateSheet";
 import PrintButton from "@/components/PrintButton";
-import { COMPLETION_LEVELS } from "@/lib/program";
+import { getCompletionLevels } from "@/lib/content";
 
 export const metadata = { title: "وثيقة الإتمام" };
 
@@ -19,7 +19,7 @@ export default async function CertificatePage() {
         <>
           <Empty>لم تصدر وثيقتك بعد. تصدر في الحفل الختامي بعد اعتماد الدرجات النهائية.</Empty>
           <ul className="text-sm text-muted mt-4 space-y-1">
-            {COMPLETION_LEVELS.map((l) => (
+            {(await getCompletionLevels()).map((l) => (
               <li key={l.level}><span className="font-medium text-ink">{l.level}</span> ({l.min === 0 ? "أقل من 60" : `${l.min} فأكثر`}): {l.certificate}</li>
             ))}
           </ul>

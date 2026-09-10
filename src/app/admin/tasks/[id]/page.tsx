@@ -7,7 +7,8 @@ import FormMessage from "@/components/FormMessage";
 import { deleteAssignment, gradeSubmission, updateAssignment } from "../../actions";
 import { formatDateTime } from "@/lib/dates";
 import { getActiveWeeks } from "@/lib/weeks";
-import { COMPETENCIES, RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
+import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
 import { participantsWhere } from "@/lib/cohort";
@@ -102,7 +103,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
               <label className="label">الكفاءة</label>
               <select name="competency" className="select" defaultValue={a.competency ?? ""}>
                 <option value="">—</option>
-                {COMPETENCIES.map((c) => <option key={c.slug} value={c.name}>{c.name}</option>)}
+                {(await getCompetencies()).map((c) => <option key={c.slug} value={c.name}>{c.name}</option>)}
               </select>
             </div>
           </div>

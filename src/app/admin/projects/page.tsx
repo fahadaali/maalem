@@ -4,7 +4,7 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { judgeProject, updateProjectAdmin } from "../actions";
-import { PROJECT_RUBRIC } from "@/lib/program";
+import { getProjectRubric } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
 import { db as _db } from "@/lib/db";
@@ -13,6 +13,7 @@ import { participantsWhere } from "@/lib/cohort";
 export const metadata = { title: "مشاريع التخرج" };
 
 export default async function AdminProjectsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  const rubric = await getProjectRubric();
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [projects, participants] = await Promise.all([
@@ -60,9 +61,9 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   <form action={judgeProject}>
                     <input type="hidden" name="id" value={p.id} />
                     <div className="text-sm font-medium mb-2">التحكيم (30)</div>
-                    {PROJECT_RUBRIC.map((r) => (
+                    {rubric.map((r) => (
                       <div key={r.key} className="flex items-center gap-2 mb-2 text-sm">
-                        <label className="flex-1">{r.criterion} <span className="text-muted">/{r.points}</span></label>
+                        <label className="flex-1">{r.label} <span className="text-muted">/{r.points}</span></label>
                         <input type="number" name={r.key} min={0} max={r.points} step={0.5} className="input w-20" defaultValue={scores[r.key] ?? ""} required inputMode="decimal" />
                       </div>
                     ))}

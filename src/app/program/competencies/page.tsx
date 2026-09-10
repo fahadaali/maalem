@@ -1,9 +1,10 @@
 import { PageHeader, Card, Badge } from "@/components/ui";
-import { COMPETENCIES } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 
 export const metadata = { title: "مصفوفة الكفاءات" };
 
-export default function CompetenciesPage() {
+export default async function CompetenciesPage() {
+  const competencies = await getCompetencies();
   return (
     <>
       <PageHeader
@@ -12,14 +13,14 @@ export default function CompetenciesPage() {
         subtitle="لكل كفاءة جدول مستقل يبين المفردات، والبرنامج المنفذ، ومؤشر التحقق، والمهام الرئيسية، والموعد، والتكلفة، والشواهد، والمراجع. الشاهد هو الدليل المادي الذي يُودع في ملف إنجاز المشارك ويتحقق منه مدير المشروع."
       />
       <div className="flex flex-wrap gap-2 mb-6">
-        {COMPETENCIES.map((c) => (
+        {competencies.map((c) => (
           <a key={c.slug} href={`#${c.slug}`} className="badge hover:bg-paper-2">
             {c.order}. {c.name} <span className="text-muted">{c.weight}%</span>
           </a>
         ))}
       </div>
       <div className="space-y-8">
-        {COMPETENCIES.map((c) => (
+        {competencies.map((c) => (
           <section key={c.slug} id={c.slug} className="scroll-mt-20">
             <div className="flex items-center gap-3 mb-2">
               <h2 className="text-xl">{c.order}. {c.name}</h2>

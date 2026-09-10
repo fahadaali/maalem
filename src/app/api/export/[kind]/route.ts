@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { computeGrades } from "@/lib/grades";
-import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
+import { getContinuous } from "@/lib/content";
 import { ATTENDANCE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -30,14 +30,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
 
   if (kind === "grades") {
     const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+    const continuous = await getContinuous();
+    const contMax = continuous.reduce((s, c) => s + c.points, 0);
+    const projMax = grades[0]?.maxes.project ?? 30;
     const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } });
-    rows = [["المشارك", "اسم المستخدم", ...CONTINUOUS_ASSESSMENT.map((c) => `${c.component} (${c.points})`), "التقييم المستمر (70)", "مشروع التخرج (30)", "المحتسَب", "التعديل", "مسوّغ التعديل", "النهائي المعتمد", "المستوى", "الحالة"]];
+    rows = [["المشارك", "اسم المستخدم", ...continuous.map((c) => `${c.label} (${c.points})`), `التقييم المستمر (${contMax})`, `مشروع التخرج (${projMax})`, "المحتسَب", "التعديل", "مسوّغ التعديل", "النهائي المعتمد", "المستوى", "الحالة"]];
     participants.forEach((p, i) => {
       const g = grades[i];
       const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
       const f = finals.find((x) => x.userId === p.id);
       const finalTotal = f ? Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10)) : "";
-      rows.push([p.name, p.username, ...CONTINUOUS_ASSESSMENT.map((c) => parts[c.key]), g.continuous, g.project, g.total, f?.adjustment ?? "", f?.reason ?? "", finalTotal, g.level, p.active ? "نشط" : "موقوف"]);
+      rows.push([p.name, p.username, ...continuous.map((c) => parts[c.key]), g.continuous, g.project, g.total, f?.adjustment ?? "", f?.reason ?? "", finalTotal, g.level, p.active ? "نشط" : "موقوف"]);
     });
   } else if (kind === "attendance") {
     const att = await db.attendance.findMany({ orderBy: [{ week: "asc" }] });

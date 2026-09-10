@@ -4,7 +4,7 @@ import { PageHeader, Card, Alert, Progress } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveDiagnostic } from "../actions";
-import { COMPETENCIES } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 import { currentWeekNumber } from "@/lib/weeks";
 import { parseJSON } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ export const metadata = { title: "التقييم التشخيصي" };
 const LEVELS = ["1 مبتدئ", "2 أساسي", "3 متوسط", "4 جيد", "5 متمكّن"];
 
 export default async function DiagnosticPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  const competencies = await getCompetencies();
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const [rows, weekNo] = await Promise.all([
@@ -38,7 +39,7 @@ export default async function DiagnosticPage({ searchParams }: { searchParams: P
       {(preScores || postScores) && (
         <Card title="نتيجتك" className="mb-4">
           <div className="space-y-3">
-            {COMPETENCIES.map((c) => (
+            {competencies.map((c) => (
               <div key={c.slug}>
                 <div className="flex justify-between text-xs text-muted mb-1">
                   <span>{c.name}</span>
@@ -65,7 +66,7 @@ export default async function DiagnosticPage({ searchParams }: { searchParams: P
                   <tr><th>الكفاءة</th>{LEVELS.map((l) => <th key={l} className="text-center whitespace-nowrap">{l}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {COMPETENCIES.map((c) => (
+                  {competencies.map((c) => (
                     <tr key={c.slug}>
                       <td className="whitespace-nowrap">{c.name} <span className="text-muted text-xs">{c.weight}%</span></td>
                       {[1, 2, 3, 4, 5].map((n) => (

@@ -7,7 +7,7 @@ import FormMessage from "@/components/FormMessage";
 import { createAssignment } from "../actions";
 import { formatShort, reportDueDate } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
-import { COMPETENCIES } from "@/lib/program";
+import { getCompetencies } from "@/lib/content";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "المهام والتقييم" };
@@ -68,7 +68,7 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
               <label className="label">الكفاءة</label>
               <select name="competency" className="select" defaultValue="">
                 <option value="">—</option>
-                {COMPETENCIES.map((c) => <option key={c.slug} value={c.name}>{c.name}</option>)}
+                {(await getCompetencies()).map((c) => <option key={c.slug} value={c.name}>{c.name}</option>)}
               </select>
             </div>
             <div className="field"><label className="label">الوصف والمتطلبات</label><textarea name="description" className="textarea" /></div>

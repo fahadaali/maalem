@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { computeGrades } from "@/lib/grades";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
-import { PROGRAM, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC } from "@/lib/program";
+import { PROGRAM } from "@/lib/program";
+import { getContinuous, getProjectRubric } from "@/lib/content";
 import { formatGregorian, formatHijri, formatShort } from "@/lib/dates";
 import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
 
@@ -11,6 +12,7 @@ import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
  * إلا بعد أن يسلّم المشارك ملفه بنفسه.
  */
 export default async function PortfolioSheet({ userId, includePrivate }: { userId: string; includePrivate: boolean }) {
+  const [continuous, rubric] = await Promise.all([getContinuous(), getProjectRubric()]);
   const [u, grades, comps] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
@@ -59,13 +61,13 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
 
       <S title="النتيجة">
         <div className="table-wrap"><table className="table"><tbody>
-          {CONTINUOUS_ASSESSMENT.map((c) => {
+          {continuous.map((c) => {
             const parts: Record<string, number> = { attendance: grades.attendance, reading: grades.reading, quizzes: grades.quizzes, tasks: grades.tasks, field: grades.field, leadership: grades.leadership };
-            return <tr key={c.key}><td>{c.component}</td><td>{parts[c.key]} / {c.points}</td></tr>;
+            return <tr key={c.key}><td>{c.label}</td><td>{parts[c.key]} / {c.points}</td></tr>;
           })}
-          <tr><td className="font-medium">التقييم المستمر</td><td className="font-medium">{grades.continuous} / 70</td></tr>
-          <tr><td className="font-medium">مشروع التخرج</td><td className="font-medium">{grades.project} / 30</td></tr>
-          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{u.finalGrade ? Math.max(0, Math.min(100, Math.round((u.finalGrade.computed + u.finalGrade.adjustment) * 10) / 10)) : grades.total} / 100 — {grades.level}{u.finalGrade ? " (معتمدة)" : " (تقديري)"}</td></tr>
+          <tr><td className="font-medium">التقييم المستمر</td><td className="font-medium">{grades.continuous} / {grades.maxes.continuous}</td></tr>
+          <tr><td className="font-medium">مشروع التخرج</td><td className="font-medium">{grades.project} / {grades.maxes.project}</td></tr>
+          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{u.finalGrade ? Math.max(0, Math.min(100, Math.round((u.finalGrade.computed + u.finalGrade.adjustment) * 10) / 10)) : grades.total} / {grades.maxes.continuous + grades.maxes.project} — {grades.level}{u.finalGrade ? " (معتمدة)" : " (تقديري)"}</td></tr>
         </tbody></table></div>
         {u.certificate && <p className="text-sm mt-2">{u.certificate.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"} رقم <span dir="ltr">{u.certificate.serial}</span> صادرة بتاريخ {formatShort(u.certificate.issuedAt)}.</p>}
         {u.finalGrade?.reason && <p className="text-xs text-muted mt-1">تعديل مبرَّر {u.finalGrade.adjustment > 0 ? "+" : ""}{u.finalGrade.adjustment}: {u.finalGrade.reason}</p>}
@@ -149,9 +151,9 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
             {u.project.problem && <p className="whitespace-pre-wrap mt-1">{u.project.problem}</p>}
             {u.project.status === "JUDGED" && (
               <ul className="list-disc ps-5 mt-2">
-                {PROJECT_RUBRIC.map((r) => {
+                {rubric.map((r) => {
                   const scores: Record<string, number | null> = { clarity: u.project!.clarity, grounding: u.project!.grounding, design: u.project!.design, integration: u.project!.integration, presentation: u.project!.presentation };
-                  return <li key={r.key}>{r.criterion}: {scores[r.key] ?? 0} / {r.points}</li>;
+                  return <li key={r.key}>{r.label}: {scores[r.key] ?? 0} / {r.points}</li>;
                 })}
               </ul>
             )}

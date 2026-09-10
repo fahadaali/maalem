@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { MIGRATIONS } from "./schema-sql";
-import { BUDGET, PROGRAM, WEEKS } from "./program";
+import { BUDGET, PROGRAM, WEEKS, BOOKS, CHARTER, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC, COMPLETION_LEVELS, COMPETENCIES } from "./program";
 
 /** هل جدول المستخدمين موجود؟ */
 export async function schemaReady(): Promise<boolean> {
@@ -85,6 +85,42 @@ export async function ensureProgramData(cohortId: string): Promise<void> {
           competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
         },
       });
+    }
+  }
+  if ((await db.programBook.count({ where: { cohortId } })) === 0) {
+    for (const b of BOOKS) {
+      await db.programBook.create({ data: { cohortId, order: b.order, title: b.title, author: b.author, pages: b.pages, weeks: b.weeks, circle: b.circle, availability: b.availability } });
+    }
+  }
+  if ((await db.charterItem.count({ where: { cohortId } })) === 0) {
+    let order = 0;
+    for (const text of CHARTER) await db.charterItem.create({ data: { cohortId, order: order++, text } });
+  }
+  if ((await db.assessmentItem.count({ where: { cohortId } })) === 0) {
+    let order = 0;
+    for (const c of CONTINUOUS_ASSESSMENT) {
+      await db.assessmentItem.create({ data: { cohortId, kind: "CONTINUOUS", key: c.key, label: c.component, points: c.points, tool: c.tool, minimum: c.minimum, order: order++ } });
+    }
+    order = 0;
+    for (const r of PROJECT_RUBRIC) {
+      await db.assessmentItem.create({ data: { cohortId, kind: "PROJECT", key: r.key, label: r.criterion, points: r.points, description: r.description, order: order++ } });
+    }
+  }
+  if ((await db.completionLevel.count({ where: { cohortId } })) === 0) {
+    for (const l of COMPLETION_LEVELS) await db.completionLevel.create({ data: { cohortId, min: l.min, level: l.level, certificate: l.certificate } });
+  }
+  if ((await db.competencyDef.count({ where: { cohortId } })) === 0) {
+    for (const c of COMPETENCIES) {
+      const def = await db.competencyDef.create({ data: { cohortId, slug: c.slug, order: c.order, name: c.name, weight: c.weight, intro: c.intro ?? "" } });
+      let order = 0;
+      for (const i of c.items) {
+        await db.competencyItemRow.create({
+          data: {
+            competencyId: def.id, order: order++, title: i.title, program: i.program, indicator: i.indicator,
+            tasks: i.tasks, schedule: i.schedule, cost: i.cost, evidence: i.evidence, refs: i.references.join("\n"),
+          },
+        });
+      }
     }
   }
   if ((await db.budgetEntry.count({ where: { cohortId } })) === 0) {

@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import Attachments from "@/components/Attachments";
 import { deleteMaterial, saveMaterial } from "../actions";
-import { BOOKS, COMPETENCIES } from "@/lib/program";
+import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
 
 export const metadata = { title: "مكتبة المواد" };
@@ -18,6 +18,7 @@ export const MATERIAL_KIND_LABELS: Record<string, string> = {
 };
 
 export default async function AdminMaterialsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  const [books, competencies] = await Promise.all([getBooks(), getCompetencies()]);
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [materials, files, weeks] = await Promise.all([
@@ -67,7 +68,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
                   <summary className="cursor-pointer text-muted">تعديل</summary>
                   <form action={saveMaterial} className="mt-2">
                     <input type="hidden" name="id" value={m.id} />
-                    <MaterialFields material={m} weeks={weeks} />
+                    <MaterialFields competencies={competencies} material={m} weeks={weeks} />
                     <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
                   </form>
                   <form action={deleteMaterial} className="mt-2">
@@ -81,13 +82,13 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
         </div>
         <Card title="إضافة مادة">
           <form action={saveMaterial}>
-            <MaterialFields weeks={weeks} />
+            <MaterialFields competencies={competencies} weeks={weeks} />
             <SubmitButton>إضافة وإشعار المشاركين</SubmitButton>
           </form>
           <div className="border-t border-line mt-4 pt-3 text-xs text-muted">
             <div className="font-medium text-ink-2 mb-1">كتب البرنامج المقررة</div>
             <ul className="list-disc ps-4 space-y-0.5">
-              {BOOKS.filter((b) => b.pages > 0).map((b) => (
+              {books.filter((b) => b.pages > 0).map((b) => (
                 <li key={b.order}>{b.title} — {b.author} ({b.availability})</li>
               ))}
             </ul>
@@ -100,7 +101,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
 
 type M = { title: string; kind: string; author: string | null; description: string | null; url: string | null; competency: string | null; week: number | null; order: number };
 
-function MaterialFields({ material, weeks }: { material?: M; weeks: { number: number; label: string }[] }) {
+function MaterialFields({ material, weeks, competencies }: { material?: M; weeks: { number: number; label: string }[]; competencies: { slug: string; name: string }[] }) {
   return (
     <>
       <div className="field">
@@ -126,7 +127,7 @@ function MaterialFields({ material, weeks }: { material?: M; weeks: { number: nu
           <label className="label">الكفاءة</label>
           <select name="competency" className="select" defaultValue={material?.competency ?? ""}>
             <option value="">—</option>
-            {COMPETENCIES.map((c) => (
+            {competencies.map((c) => (
               <option key={c.slug} value={c.name}>{c.name}</option>
             ))}
           </select>
