@@ -16,6 +16,10 @@ export type GradeBreakdown = {
   certificate: string;
   stats: {
     attendancePct: number;
+    participationAvg: number;
+    circleAvg: number;
+    mentorAvg: number;
+    mentorEvaluations: number;
     inPersonPct: number;
     remotePct: number;
     cards: number;
@@ -46,7 +50,7 @@ export function levelFor(total: number) {
 }
 
 export async function computeGrades(userId: string): Promise<GradeBreakdown> {
-  const [attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project] = await Promise.all([
+  const [attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals] = await Promise.all([
     db.attendance.findMany({ where: { userId } }),
     db.readingCard.count({ where: { userId } }),
     db.quizAttempt.findMany({ where: { userId } }),
@@ -56,7 +60,11 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
     db.fieldLog.findMany({ where: { userId } }),
     db.leadershipActivity.findMany({ where: { userId }, include: { evaluations: true } }),
     db.graduationProject.findUnique({ where: { userId } }),
+    db.mentorEvaluation.findMany({ where: { userId } }),
   ]);
+
+  /** متوسط تقدير من 1..5 محوَّلاً إلى نسبة 0..1 */
+  const rate = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length / 5 : null);
 
   // الحضور: حاضر = 1، متأخر = 0.5، معذور = لا يُحتسب، غائب = 0
   const score = (s: string) => (s === "PRESENT" ? 1 : s === "LATE" ? 0.5 : 0);
@@ -65,10 +73,16 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   const remote = counted.filter((a) => a.type === "REMOTE");
   const pct = (arr: typeof counted) => (arr.length ? arr.reduce((s, a) => s + score(a.status), 0) / arr.length : 0);
   const attendancePct = pct(counted);
-  const attendanceScore = round1(attendancePct * 10);
+  // الحضور والمشاركة الفاعلة: الحضور 60% وبطاقة رصد المشاركة 40% متى رُصدت
+  const participationRatio = rate(counted.map((a) => a.participation).filter((v): v is number => typeof v === "number"));
+  const participationAvg = participationRatio ?? 0;
+  const attendanceScore = round1((participationRatio === null ? attendancePct : attendancePct * 0.6 + participationRatio * 0.4) * 10);
 
+  // الورد القرائي: البطاقات 70% وتقييم المشاركة في الحلقة 30% متى رُصد
   const readingRatio = Math.min(cards / EXPECTED_CARDS, 1);
-  const readingScore = round1(readingRatio * 15);
+  const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
+  const circleAvg = circleRatio ?? 0;
+  const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * 15);
 
   const quizAvg = attempts.length ? attempts.reduce((s, a) => s + (a.total ? a.score / a.total : 0), 0) / attempts.length : 0;
   const quizScore = round1(quizAvg * 10);
@@ -83,7 +97,11 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   const approved = fieldLogs.filter((f) => f.approvedAt);
   const fieldHours = approved.reduce((s, f) => s + f.hours, 0);
   const pendingFieldHours = fieldLogs.filter((f) => !f.approvedAt).reduce((s, f) => s + f.hours, 0);
-  const fieldScore = round1(Math.min(fieldHours / EXPECTED_FIELD_HOURS, 1) * 10);
+  // المعايشة: الساعات المعتمدة 70% وتقييم المشرف المرافق 30% متى وُجد
+  const hoursRatio = Math.min(fieldHours / EXPECTED_FIELD_HOURS, 1);
+  const mentorRatio = rate(mentorEvals.map((e) => (e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5));
+  const mentorAvg = mentorRatio ?? 0;
+  const fieldScore = round1((mentorRatio === null ? hoursRatio : hoursRatio * 0.7 + mentorRatio * 0.3) * 10);
 
   const evals = activities.flatMap((a) => a.evaluations);
   const peerAvg = evals.length ? evals.reduce((s, e) => s + (e.c1 + e.c2 + e.c3 + e.c4 + e.c5) / 5, 0) / evals.length : 0;
@@ -110,6 +128,10 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
     certificate: lvl.certificate,
     stats: {
       attendancePct: Math.round(attendancePct * 100),
+      participationAvg: round1(participationAvg * 5),
+      circleAvg: round1(circleAvg * 5),
+      mentorAvg: round1(mentorAvg * 5),
+      mentorEvaluations: mentorEvals.length,
       inPersonPct: Math.round(pct(inPerson) * 100),
       remotePct: Math.round(pct(remote) * 100),
       cards,

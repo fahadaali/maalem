@@ -8,6 +8,7 @@ import FormMessage from "@/components/FormMessage";
 import { addFeedbackSession, updateUser } from "../../actions";
 import { computeGrades } from "@/lib/grades";
 import CompetencyCard from "@/components/CompetencyCard";
+import MentorEvalForm from "@/components/MentorEvalForm";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
@@ -33,6 +34,7 @@ export default async function ParticipantDetail({ params, searchParams }: { para
       project: true,
       learningPlan: true,
       feedbackSessions: { orderBy: { date: "desc" } },
+      mentorEvaluations: { orderBy: { period: "asc" } },
       tadabbur: true,
       _count: { select: { readingCards: true, reflections: true } },
     },
@@ -106,6 +108,12 @@ export default async function ParticipantDetail({ params, searchParams }: { para
               </ul>
             )}
           </Card>
+        </div>
+      )}
+
+      {isParticipant && (
+        <div className="mb-4">
+          <MentorEvalForm userId={u.id} name={u.name} existing={u.mentorEvaluations} />
         </div>
       )}
 

@@ -631,3 +631,21 @@ export const SURVEY_QUESTIONS = [
 ] as const;
 
 export const SURVEY_SCALE = ["1 ضعيف", "2 مقبول", "3 جيد", "4 جيد جداً", "5 ممتاز"];
+
+/** معايير تقييم المشرف المرافق للمشارك في المعايشة الميدانية */
+export const MENTOR_EVAL_CRITERIA = [
+  { key: "regularity", label: "الانتظام والالتزام بالمواعيد" },
+  { key: "engagement", label: "التفاعل والملاحظة والسؤال" },
+  { key: "application", label: "التطبيق العملي في الميدان" },
+  { key: "conduct", label: "أدب التعامل مع المتربين" },
+  { key: "growth", label: "التطور خلال المدة" },
+] as const;
+
+/** سلّم رصد المشاركة الفاعلة في اللقاءات والحلقات */
+export const PARTICIPATION_SCALE = [
+  { value: 1, label: "1 لم يشارك" },
+  { value: 2, label: "2 مشاركة محدودة" },
+  { value: 3, label: "3 مشاركة مقبولة" },
+  { value: 4, label: "4 مشاركة فاعلة" },
+  { value: 5, label: "5 مشاركة متميزة ومؤثرة" },
+];

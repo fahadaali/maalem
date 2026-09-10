@@ -80,10 +80,17 @@ export async function saveAttendance(formData: FormData) {
   await admin();
   const week = num(formData.get("week"), -1);
   if (week < 0 || week > 14) fail("/admin/attendance", "أسبوع غير صحيح");
-  const entries: { userId: string; type: string; status: string }[] = [];
+  const entries: { userId: string; type: string; status: string; participation: number | null; circleScore: number | null }[] = [];
   for (const [k, v] of formData.entries()) {
     const m = k.match(/^att_([^_]+)_(INPERSON|REMOTE)$/);
-    if (m && typeof v === "string") entries.push({ userId: m[1], type: m[2], status: v });
+    if (m && typeof v === "string") {
+      const rating = (name: string) => {
+        const raw = str(formData.get(`${name}_${m[1]}_${m[2]}`));
+        const n = Number(raw);
+        return raw === "" || !Number.isInteger(n) || n < 1 || n > 5 ? null : n;
+      };
+      entries.push({ userId: m[1], type: m[2], status: v, participation: rating("part"), circleScore: m[2] === "REMOTE" ? rating("circle") : null });
+    }
   }
   await db.$transaction(
     entries.map((e) =>
@@ -91,8 +98,8 @@ export async function saveAttendance(formData: FormData) {
         ? db.attendance.deleteMany({ where: { userId: e.userId, week, type: e.type } })
         : db.attendance.upsert({
             where: { userId_week_type: { userId: e.userId, week, type: e.type } },
-            create: { userId: e.userId, week, type: e.type, status: e.status },
-            update: { status: e.status },
+            create: { userId: e.userId, week, type: e.type, status: e.status, participation: e.participation, circleScore: e.circleScore },
+            update: { status: e.status, participation: e.participation, circleScore: e.circleScore },
           }),
     ),
   );
@@ -602,4 +609,36 @@ export async function closeCohort(formData: FormData) {
   if (!c) fail("/admin/cohorts", "الدفعة غير موجودة");
   await db.cohort.update({ where: { id }, data: { closedAt: c.closedAt ? null : new Date() } });
   ok("/admin/cohorts", c.closedAt ? "أُعيد فتح الدفعة" : "أُغلقت الدفعة");
+}
+
+// ——— تقييم المشرف المرافق للمشارك ———
+const EVAL_PERIODS = ["منتصف البرنامج", "ختامي"];
+
+export async function saveMentorEvaluation(formData: FormData) {
+  const me = await requireRole("MENTOR", "ADMIN");
+  const userId = str(formData.get("userId"));
+  const period = str(formData.get("period"));
+  const back = me.role === "MENTOR" ? "/mentor" : `/admin/participants/${userId}`;
+  if (!EVAL_PERIODS.includes(period)) fail(back, "فترة تقييم غير صحيحة");
+  const participant = await db.user.findUnique({ where: { id: userId }, select: { mentorId: true, role: true, name: true } });
+  if (!participant || participant.role !== "PARTICIPANT") fail(back, "المشارك غير موجود");
+  if (me.role === "MENTOR" && participant.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
+  const keys = ["regularity", "engagement", "application", "conduct", "growth"] as const;
+  const scores: Record<string, number> = {};
+  for (const k of keys) {
+    const v = num(formData.get(k), 0);
+    if (v < 1 || v > 5) fail(back, "قيّم كل معيار من 1 إلى 5");
+    scores[k] = v;
+  }
+  const data = { ...scores, notes: str(formData.get("notes")) || null, mentorId: me.id } as {
+    regularity: number; engagement: number; application: number; conduct: number; growth: number; notes: string | null; mentorId: string;
+  };
+  await db.mentorEvaluation.upsert({
+    where: { userId_period: { userId, period } },
+    create: { userId, period, ...data },
+    update: data,
+  });
+  await notifyUsers([userId], { title: "تقييم المشرف المرافق", body: `سُجّل تقييم ${period} لمعايشتك الميدانية`, url: "/app/field" });
+  revalidatePath(back);
+  ok(back, `تم حفظ تقييم ${participant.name}`);
 }

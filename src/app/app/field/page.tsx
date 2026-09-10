@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addFieldLog, deleteFieldLog } from "../actions";
 import { formatShort, todayKey } from "@/lib/dates";
+import { MENTOR_EVAL_CRITERIA } from "@/lib/program";
 import { Trash2 } from "lucide-react";
 import Attachments from "@/components/Attachments";
 
@@ -13,9 +14,10 @@ export const metadata = { title: "المعايشة الميدانية" };
 export default async function FieldPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
-  const [logs, me] = await Promise.all([
+  const [logs, me, evals] = await Promise.all([
     db.fieldLog.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
     db.user.findUnique({ where: { id: user.id }, include: { mentor: { select: { name: true } } } }),
+    db.mentorEvaluation.findMany({ where: { userId: user.id }, orderBy: { period: "asc" } }),
   ]);
   const attRows = await db.attachment.findMany({ where: { kind: "FIELD", userId: user.id }, orderBy: { createdAt: "asc" } });
   const approved = logs.filter((l) => l.approvedAt).reduce((s, l) => s + l.hours, 0);
@@ -55,6 +57,23 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
           <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من 12{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
         </Card>
       </div>
+
+      {evals.length > 0 && (
+        <Card title="تقييم المشرف المرافق" className="mt-4">
+          {evals.map((e) => (
+            <div key={e.id} className="border-b border-line last:border-0 py-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="font-medium">{e.period}</span>
+                <Badge tone="ink">{((e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5).toFixed(1)} / 5</Badge>
+              </div>
+              <ul className="text-xs text-muted mt-1 flex flex-wrap gap-x-4">
+                {MENTOR_EVAL_CRITERIA.map((c) => <li key={c.key}>{c.label}: {e[c.key]}</li>)}
+              </ul>
+              {e.notes && <p className="text-sm mt-1">{e.notes}</p>}
+            </div>
+          ))}
+        </Card>
+      )}
 
       <h2 className="text-xl mt-8 mb-3">السجلات</h2>
       {logs.length === 0 ? (

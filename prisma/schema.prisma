@@ -46,6 +46,8 @@ model User {
   feedbackSessions  FeedbackSession[]
   diagnostics       Diagnostic[]
   certificate       Certificate?
+  mentorEvaluations MentorEvaluation[]   @relation("MentorEvalOf")
+  evaluationsGiven  MentorEvaluation[]   @relation("MentorEvalBy")
 }
 
 /// دفعة من دفعات البرنامج: تفصل بيانات كل دفعة عن غيرها
@@ -197,6 +199,26 @@ model ProgramReport {
   @@unique([cohortId, kind, period])
 }
 
+/// تقييم المشرف المرافق للمشارك في المعايشة الميدانية
+model MentorEvaluation {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("MentorEvalOf", fields: [userId], references: [id], onDelete: Cascade)
+  mentorId    String
+  mentor      User     @relation("MentorEvalBy", fields: [mentorId], references: [id], onDelete: Cascade)
+  period      String // منتصف البرنامج | ختامي
+  regularity  Int // الانتظام والالتزام بالمواعيد
+  engagement  Int // التفاعل والملاحظة والسؤال
+  application Int // التطبيق العملي في الميدان
+  conduct     Int // أدب التعامل مع المتربين
+  growth      Int // التطور خلال المدة
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, period])
+}
+
 /// وثيقة الإتمام
 model Certificate {
   id       String   @id @default(cuid())
@@ -241,6 +263,11 @@ model Attendance {
   type   String // INPERSON | REMOTE
   status String // PRESENT | LATE | EXCUSED | ABSENT
   note   String?
+
+  /// بطاقة رصد المشاركة الفاعلة 1..5
+  participation Int?
+  /// تقييم المشاركة في حلقة النقاش 1..5 (عن بُعد)
+  circleScore   Int?
 
   @@unique([userId, week, type])
 }

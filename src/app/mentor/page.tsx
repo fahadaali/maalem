@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Empty } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import FieldLogReview from "@/components/FieldLogReview";
+import MentorEvalForm from "@/components/MentorEvalForm";
 import { withFiles } from "@/lib/attachments";
 
 export const metadata = { title: "المشرف المرافق" };
@@ -12,7 +13,7 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
   const { ok, err } = await searchParams;
   const where = { user: { mentorId: me.id } };
   const [mentees, pending, approved] = await Promise.all([
-    db.user.findMany({ where: { mentorId: me.id, active: true }, include: { fieldLogs: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: { mentorId: me.id, active: true }, include: { fieldLogs: true, mentorEvaluations: true }, orderBy: { name: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: null, ...where }, include: { user: true }, orderBy: { date: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: { not: null }, ...where }, include: { user: true }, orderBy: { approvedAt: "desc" }, take: 15 }),
   ]);
@@ -33,6 +34,16 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
           })}
         </div>
       )}
+      {mentees.length > 0 && (
+        <div className="space-y-4 mb-8">
+          <h2 className="text-xl">تقييم المعايشة الميدانية</h2>
+          {mentees.map((m) => (
+            <MentorEvalForm key={m.id} userId={m.id} name={m.name} existing={m.mentorEvaluations} />
+          ))}
+        </div>
+      )}
+
+      <h2 className="text-xl mb-2">سجلات المعايشة</h2>
       <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/mentor" />
     </>
   );
