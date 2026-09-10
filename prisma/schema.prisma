@@ -48,6 +48,7 @@ model User {
   certificate       Certificate?
   mentorEvaluations MentorEvaluation[]   @relation("MentorEvalOf")
   evaluationsGiven  MentorEvaluation[]   @relation("MentorEvalBy")
+  finalGrade        FinalGrade?
 }
 
 /// دفعة من دفعات البرنامج: تفصل بيانات كل دفعة عن غيرها
@@ -199,6 +200,20 @@ model ProgramReport {
   @@unique([cohortId, kind, period])
 }
 
+/// اعتماد الدرجة النهائية: تُجمَّد لحظة الاعتماد ويُسجَّل أي تعديل مبرَّر
+model FinalGrade {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  computed   Float // المحتسَب آلياً لحظة الاعتماد
+  adjustment Float    @default(0) // تعديل مبرَّر بالزيادة أو النقصان
+  reason     String? // مسوّغ التعديل
+  breakdown  String // JSON بتفصيل المكوّنات لحظة الاعتماد
+  approvedBy String
+  approvedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 /// تقييم المشرف المرافق للمشارك في المعايشة الميدانية
 model MentorEvaluation {
   id          String   @id @default(cuid())
@@ -222,6 +237,8 @@ model MentorEvaluation {
 /// وثيقة الإتمام
 model Certificate {
   id       String   @id @default(cuid())
+  /// COMPLETION وثيقة إتمام | ATTENDANCE إفادة حضور
+  kind     String   @default("COMPLETION")
   userId   String   @unique
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   serial   String   @unique

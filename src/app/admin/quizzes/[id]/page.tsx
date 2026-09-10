@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, BackLink, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { addQuestion, deleteQuestion, deleteQuiz, publishQuiz } from "../../actions";
+import { addQuestion, deleteQuestion, deleteQuiz, publishQuiz, resetQuizAttempt } from "../../actions";
 import { parseJSON } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 
@@ -53,11 +53,24 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
             <Card title="النتائج">
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>المشارك</th><th>الدرجة</th><th>النسبة</th><th>الحالة</th></tr></thead>
+                  <thead><tr><th>المشارك</th><th>الدرجة</th><th>النسبة</th><th>الحالة</th><th>إعادة الفتح</th></tr></thead>
                   <tbody>
                     {q.attempts.map((a) => {
                       const pct = Math.round((a.score / a.total) * 100);
-                      return <tr key={a.id}><td>{a.user.name}</td><td>{a.score}/{a.total}</td><td>{pct}%</td><td>{pct >= q.passMark ? <Badge tone="ink">ناجح</Badge> : <Badge>دون الحد</Badge>}</td></tr>;
+                      return (
+                        <tr key={a.id}>
+                          <td>{a.user.name}</td><td>{a.score}/{a.total}</td><td>{pct}%</td>
+                          <td>{pct >= q.passMark ? <Badge tone="ink">ناجح</Badge> : <Badge>دون الحد</Badge>}</td>
+                          <td>
+                            <form action={resetQuizAttempt} className="flex gap-1 items-center">
+                              <input type="hidden" name="quizId" value={q.id} />
+                              <input type="hidden" name="userId" value={a.userId} />
+                              <input name="reason" className="input" placeholder="السبب" />
+                              <SubmitButton secondary className="btn-sm" pendingText="…">إعادة</SubmitButton>
+                            </form>
+                          </td>
+                        </tr>
+                      );
                     })}
                   </tbody>
                 </table>

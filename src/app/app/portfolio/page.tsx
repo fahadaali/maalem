@@ -15,7 +15,7 @@ export const metadata = { title: "ملف الإنجاز" };
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
-  const [g, plan, reflections, tadabbur, habits, feedback, me] = await Promise.all([
+  const [g, plan, reflections, tadabbur, habits, feedback, me, fg] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),
     db.reflection.count({ where: { userId: user.id } }),
@@ -23,7 +23,9 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     db.habit.count({ where: { userId: user.id } }),
     db.feedbackSession.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
     db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } }),
+    db.finalGrade.findUnique({ where: { userId: user.id } }),
   ]);
+  const finalTotal = fg ? Math.max(0, Math.min(100, Math.round((fg.computed + fg.adjustment) * 10) / 10)) : null;
   const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
 
   const items = [
@@ -49,7 +51,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       />
       <FormMessage ok={ok} err={err} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label="المجموع" value={g.total} hint="من 100" />
+        <Stat label={finalTotal != null ? "المجموع المعتمد" : "المجموع"} value={finalTotal ?? g.total} hint={finalTotal != null ? "درجة نهائية معتمدة" : "من 100 · تقديري"} />
         <Stat label="التقييم المستمر" value={g.continuous} hint="من 70" />
         <Stat label="مشروع التخرج" value={g.project} hint="من 30" />
         <Stat label="المستوى الحالي" value={g.level} hint={g.certificate} />

@@ -30,11 +30,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
 
   if (kind === "grades") {
     const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
-    rows = [["المشارك", "اسم المستخدم", ...CONTINUOUS_ASSESSMENT.map((c) => `${c.component} (${c.points})`), "التقييم المستمر (70)", "مشروع التخرج (30)", "المجموع", "المستوى", "الحالة"]];
+    const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } });
+    rows = [["المشارك", "اسم المستخدم", ...CONTINUOUS_ASSESSMENT.map((c) => `${c.component} (${c.points})`), "التقييم المستمر (70)", "مشروع التخرج (30)", "المحتسَب", "التعديل", "مسوّغ التعديل", "النهائي المعتمد", "المستوى", "الحالة"]];
     participants.forEach((p, i) => {
       const g = grades[i];
       const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
-      rows.push([p.name, p.username, ...CONTINUOUS_ASSESSMENT.map((c) => parts[c.key]), g.continuous, g.project, g.total, g.level, p.active ? "نشط" : "موقوف"]);
+      const f = finals.find((x) => x.userId === p.id);
+      const finalTotal = f ? Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10)) : "";
+      rows.push([p.name, p.username, ...CONTINUOUS_ASSESSMENT.map((c) => parts[c.key]), g.continuous, g.project, g.total, f?.adjustment ?? "", f?.reason ?? "", finalTotal, g.level, p.active ? "نشط" : "موقوف"]);
     });
   } else if (kind === "attendance") {
     const att = await db.attendance.findMany({ orderBy: [{ week: "asc" }] });

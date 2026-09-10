@@ -17,6 +17,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, include: { certificate: true } });
   const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+  const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((x) => x.id) } } });
 
   if (sp.print) {
     const issued = participants.filter((p) => p.certificate);
@@ -25,7 +26,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
         <div className="no-print mb-4 flex gap-2"><PrintButton label="طباعة الوثائق" /></div>
         {issued.length === 0 ? <Empty>لا وثائق صادرة.</Empty> : issued.map((p, i) => (
           <div key={p.id} className={i > 0 ? "mt-10 break-before-page" : ""}>
-            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} />
+            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} kind={p.certificate!.kind} />
           </div>
         ))}
       </div>
@@ -36,7 +37,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
     <>
       <PageHeader
         title="وثائق الإتمام"
-        subtitle="تُصدر في الحفل الختامي. المستوى والدرجة يُحتسبان آلياً من كشف الدرجات، ولكل وثيقة رقم متسلسل."
+        subtitle="تُصدر في الحفل الختامي من الدرجة المعتمدة إن وُجدت. من نال 60 فأكثر يُمنح وثيقة إتمام، ومن دونها يُمنح إفادة حضور تلقائياً."
         actions={<a href="/admin/certificates?print=1" className="btn btn-secondary btn-sm">طباعة الصادر</a>}
       />
       <FormMessage ok={sp.ok} err={sp.err} />
@@ -45,18 +46,20 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
       ) : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>المشارك</th><th>المجموع</th><th>المستوى</th><th>الوثيقة</th><th>ملاحظة على الوثيقة</th><th></th></tr></thead>
+            <thead><tr><th>المشارك</th><th>المجموع</th><th>الاعتماد</th><th>المستوى</th><th>الوثيقة</th><th>ملاحظة على الوثيقة</th><th></th></tr></thead>
             <tbody>
               {participants.map((p, i) => {
                 const g = grades[i];
                 const c = p.certificate;
+                const f = finals.find((x) => x.userId === p.id);
                 return (
                   <tr key={p.id}>
                     <td className="font-medium whitespace-nowrap">{p.name}</td>
-                    <td>{g.total}</td>
+                    <td>{f ? Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10)) : g.total}</td>
+                    <td>{f ? <Badge tone="ink">معتمدة</Badge> : <Badge tone="soft">غير معتمدة</Badge>}</td>
                     <td>{g.level}</td>
                     <td className="whitespace-nowrap">
-                      {c ? <><Badge tone="ink">{c.serial}</Badge><div className="text-xs text-muted mt-1">{formatShort(c.issuedAt)}</div></> : <Badge tone="soft">لم تصدر</Badge>}
+                      {c ? <><Badge tone="ink">{c.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"}</Badge><div className="text-xs text-muted mt-1" dir="ltr">{c.serial}</div><div className="text-xs text-muted">{formatShort(c.issuedAt)}</div></> : <Badge tone="soft">لم تصدر</Badge>}
                     </td>
                     <td>
                       <form action={issueCertificate} className="flex gap-1 items-center">

@@ -29,6 +29,7 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         habits: { include: { logs: true } },
         attendance: { orderBy: { week: "asc" } },
         certificate: true,
+        finalGrade: true,
       },
     }),
     computeGrades(userId),
@@ -64,9 +65,10 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
           })}
           <tr><td className="font-medium">التقييم المستمر</td><td className="font-medium">{grades.continuous} / 70</td></tr>
           <tr><td className="font-medium">مشروع التخرج</td><td className="font-medium">{grades.project} / 30</td></tr>
-          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{grades.total} / 100 — {grades.level}</td></tr>
+          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{u.finalGrade ? Math.max(0, Math.min(100, Math.round((u.finalGrade.computed + u.finalGrade.adjustment) * 10) / 10)) : grades.total} / 100 — {grades.level}{u.finalGrade ? " (معتمدة)" : " (تقديري)"}</td></tr>
         </tbody></table></div>
-        {u.certificate && <p className="text-sm mt-2">وثيقة الإتمام رقم <span dir="ltr">{u.certificate.serial}</span> صادرة بتاريخ {formatShort(u.certificate.issuedAt)}.</p>}
+        {u.certificate && <p className="text-sm mt-2">{u.certificate.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"} رقم <span dir="ltr">{u.certificate.serial}</span> صادرة بتاريخ {formatShort(u.certificate.issuedAt)}.</p>}
+        {u.finalGrade?.reason && <p className="text-xs text-muted mt-1">تعديل مبرَّر {u.finalGrade.adjustment > 0 ? "+" : ""}{u.finalGrade.adjustment}: {u.finalGrade.reason}</p>}
       </S>
 
       <S title={`بطاقة الكفاءات (التحقّق الكلي ${overallAttainment(comps)}%)`}>

@@ -12,9 +12,9 @@ export default async function CertificatePage() {
   const cert = await db.certificate.findUnique({ where: { userId: user.id } });
   return (
     <>
-      <PageHeader title="وثيقة الإتمام" actions={cert ? <PrintButton label="طباعة الوثيقة" /> : undefined} />
+      <PageHeader title={cert?.kind === "ATTENDANCE" ? "إفادة الحضور" : "وثيقة الإتمام"} actions={cert ? <PrintButton label="طباعة الوثيقة" /> : undefined} />
       {cert ? (
-        <CertificateSheet name={user.name} level={cert.level} total={cert.total} serial={cert.serial} issuedAt={cert.issuedAt} note={cert.note} />
+        <CertificateSheet name={user.name} level={cert.level} total={cert.total} serial={cert.serial} issuedAt={cert.issuedAt} note={cert.note} kind={cert.kind} />
       ) : (
         <>
           <Empty>لم تصدر وثيقتك بعد. تصدر في الحفل الختامي بعد اعتماد الدرجات النهائية.</Empty>

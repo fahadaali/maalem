@@ -538,23 +538,75 @@ export async function saveProgramReport(formData: FormData) {
   ok(`/admin/program-reports?kind=${kind}&period=${encodeURIComponent(period)}`, "تم حفظ التقرير");
 }
 
-// ——— وثائق الإتمام ———
+// ——— اعتماد الدرجات النهائية ———
+export async function approveFinalGrade(formData: FormData) {
+  const me = await admin();
+  const userId = str(formData.get("userId"));
+  const adjustment = Number(str(formData.get("adjustment")) || "0");
+  const reason = str(formData.get("reason"));
+  if (!Number.isFinite(adjustment) || Math.abs(adjustment) > 20) fail("/admin/grades", "التعديل بين -20 و20 درجة");
+  if (adjustment !== 0 && !reason) fail("/admin/grades", "اكتب مسوّغ التعديل");
+  const g = await computeGrades(userId);
+  const total = Math.max(0, Math.min(100, Math.round((g.total + adjustment) * 10) / 10));
+  const breakdown = JSON.stringify({
+    attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks,
+    field: g.field, leadership: g.leadership, continuous: g.continuous, project: g.project, total,
+  });
+  await db.finalGrade.upsert({
+    where: { userId },
+    create: { userId, computed: g.total, adjustment, reason: reason || null, breakdown, approvedBy: me.id },
+    update: { computed: g.total, adjustment, reason: reason || null, breakdown, approvedBy: me.id, approvedAt: new Date() },
+  });
+  await notifyUsers([userId], { title: "اعتماد الدرجة النهائية", body: `درجتك النهائية ${total} من 100`, url: "/app/portfolio" });
+  revalidatePath("/admin/grades");
+  ok("/admin/grades", "تم اعتماد الدرجة النهائية");
+}
+
+export async function reopenFinalGrade(formData: FormData) {
+  await admin();
+  await db.finalGrade.deleteMany({ where: { userId: str(formData.get("userId")) } });
+  revalidatePath("/admin/grades");
+  ok("/admin/grades", "أُلغي الاعتماد وعادت الدرجة للاحتساب الآلي");
+}
+
+// ——— إعادة فتح اختبار لمشارك ———
+export async function resetQuizAttempt(formData: FormData) {
+  await admin();
+  const quizId = str(formData.get("quizId"));
+  const userId = str(formData.get("userId"));
+  const reason = str(formData.get("reason"));
+  if (!reason) fail(`/admin/quizzes/${quizId}`, "اكتب سبب إعادة الفتح");
+  await db.quizAttempt.deleteMany({ where: { quizId, userId } });
+  await notifyUsers([userId], { title: "أُعيد فتح اختبار لك", body: reason, url: `/app/quizzes/${quizId}` });
+  ok(`/admin/quizzes/${quizId}`, "أُعيد فتح الاختبار وأُشعر المشارك");
+}
+
+// ——— وثائق الإتمام وإفادات الحضور ———
 export async function issueCertificate(formData: FormData) {
   await admin();
   const userId = str(formData.get("userId"));
   const user = await db.user.findUnique({ where: { id: userId }, select: { name: true, role: true } });
   if (!user || user.role !== "PARTICIPANT") fail("/admin/certificates", "المشارك غير موجود");
+  const final = await db.finalGrade.findUnique({ where: { userId } });
   const g = await computeGrades(userId);
-  const lvl = levelFor(g.total);
+  const total = final ? Math.max(0, Math.min(100, Math.round((final.computed + final.adjustment) * 10) / 10)) : g.total;
+  const lvl = levelFor(total);
   const year = new Date().getFullYear();
   const count = (await db.certificate.count()) + 1;
-  const serial = `MAALEM-${year}-${String(count).padStart(3, "0")}`;
+  // من نال أقل من 60 يُمنح إفادة حضور لا وثيقة إتمام، كما في الخطة
+  const kind = total >= 60 ? "COMPLETION" : "ATTENDANCE";
+  const prefix = kind === "COMPLETION" ? "MAALEM" : "MAALEM-ATT";
+  const serial = `${prefix}-${year}-${String(count).padStart(3, "0")}`;
   await db.certificate.upsert({
     where: { userId },
-    create: { userId, serial, level: lvl.level, total: g.total, note: str(formData.get("note")) || null },
-    update: { level: lvl.level, total: g.total, note: str(formData.get("note")) || null, issuedAt: new Date() },
+    create: { userId, kind, serial, level: lvl.level, total, note: str(formData.get("note")) || null },
+    update: { kind, level: lvl.level, total, note: str(formData.get("note")) || null, issuedAt: new Date() },
   });
-  await notifyUsers([userId], { title: "صدرت وثيقة إتمامك", body: `${lvl.level} — ${g.total} من 100`, url: "/app/certificate" });
+  await notifyUsers([userId], {
+    title: kind === "COMPLETION" ? "صدرت وثيقة إتمامك" : "صدرت إفادة حضورك",
+    body: `${lvl.level} — ${total} من 100`,
+    url: "/app/certificate",
+  });
   revalidatePath("/admin/certificates");
   ok("/admin/certificates", `صدرت وثيقة ${user!.name}`);
 }
