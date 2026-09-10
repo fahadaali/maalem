@@ -148,7 +148,8 @@ export async function addLeadershipActivity(formData: FormData) {
   const report = str(formData.get("report"));
   if (!title) fail("/app/leadership", "اكتب عنوان النشاط");
   await db.leadershipActivity.create({ data: { userId: user.id, title, date: keyToDate(dateKey), report: report || null } });
-  const peers = await db.user.findMany({ where: { role: "PARTICIPANT", active: true, id: { not: user.id } }, select: { id: true } });
+  const { participantsWhere } = await import("@/lib/cohort");
+  const peers = await db.user.findMany({ where: { ...(await participantsWhere()), id: { not: user.id } }, select: { id: true } });
   await notifyUsers(peers.map((p) => p.id), { title: "تقييم أقران مطلوب", body: `${user.name} قاد نشاطاً: ${title}. شارك بتقييمك.`, url: "/app/leadership" });
   revalidatePath("/app");
   ok("/app/leadership", "تم تسجيل النشاط القيادي وإشعار الأقران لتقييمه");
@@ -334,8 +335,9 @@ export async function submitSurvey(formData: FormData) {
     if (v < 1 || v > 5) fail("/app/survey", "قيّم كل بند من 1 إلى 5");
     answers[q.key] = v;
   }
+  const { activeCohortId } = await import("@/lib/cohort");
   await db.surveyResponse.create({
-    data: { answers: JSON.stringify(answers), liked: str(formData.get("liked")) || null, improve: str(formData.get("improve")) || null },
+    data: { cohortId: await activeCohortId(), answers: JSON.stringify(answers), liked: str(formData.get("liked")) || null, improve: str(formData.get("improve")) || null },
   });
   await db.user.update({ where: { id: user.id }, data: { surveyDoneAt: new Date() } });
   revalidatePath("/app");

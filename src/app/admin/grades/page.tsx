@@ -4,12 +4,13 @@ import { PageHeader, Card } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
 import { COMPLETION_LEVELS, CONTINUOUS_ASSESSMENT } from "@/lib/program";
 import PrintButton from "@/components/PrintButton";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "كشف الدرجات" };
 
 export default async function GradesPage() {
   await requireRole("ADMIN");
-  const participants = await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } });
+  const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
   const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
   return (
     <>

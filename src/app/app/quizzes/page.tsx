@@ -2,13 +2,14 @@ import Link from "next/link";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Badge, Empty } from "@/components/ui";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الاختبارات التكوينية" };
 
 export default async function QuizzesPage() {
   const user = await requireParticipantView();
   const quizzes = await db.quiz.findMany({
-    where: { published: true },
+    where: { published: true, ...(await cohortWhere()) },
     orderBy: [{ week: "asc" }, { createdAt: "asc" }],
     include: { _count: { select: { questions: true } }, attempts: { where: { userId: user.id } } },
   });

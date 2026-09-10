@@ -12,6 +12,7 @@ import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
 import { formatShort, todayKey } from "@/lib/dates";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "ملف مشارك" };
 
@@ -37,7 +38,7 @@ export default async function ParticipantDetail({ params, searchParams }: { para
     },
   });
   if (!u) notFound();
-  const mentors = await db.user.findMany({ where: { role: "MENTOR", active: true }, select: { id: true, name: true } });
+  const mentors = await db.user.findMany({ where: { role: "MENTOR", active: true, ...(await cohortWhere()) }, select: { id: true, name: true } });
   const isParticipant = u.role === "PARTICIPANT";
   const g = isParticipant ? await computeGrades(u.id) : null;
   const comps = isParticipant ? await computeCompetencies(u.id) : null;

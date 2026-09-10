@@ -4,6 +4,7 @@ import { notifyUsers } from "@/lib/notify";
 import { todayKey, weekdayIndex } from "@/lib/dates";
 import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { getCronSecret } from "@/lib/secrets";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 /**
  * نقطة التذكيرات المجدولة. تُستدعى مرة يومياً (مثلاً 07:00 بتوقيت الرياض) من مجدول خارجي:
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
     sent.push(kind);
   };
 
-  const participants = (await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, select: { id: true } })).map((u) => u.id);
+  const participants = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
   const admins = (await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } })).map((u) => u.id);
 
   if (week && weekNo >= 0 && weekNo <= 13) {
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
 
   // مهام يحين موعدها خلال 24 ساعة
   await once("due-soon", async () => {
-    const soon = await db.assignment.findMany({ where: { dueAt: { gte: now, lte: new Date(now.getTime() + 24 * 3600 * 1000) } }, include: { submissions: { select: { userId: true } } } });
+    const soon = await db.assignment.findMany({ where: { dueAt: { gte: now, lte: new Date(now.getTime() + 24 * 3600 * 1000) }, ...(await cohortWhere()) }, include: { submissions: { select: { userId: true } } } });
     for (const a of soon) {
       const done = new Set(a.submissions.map((s) => s.userId));
       await notifyUsers(participants.filter((p) => !done.has(p)), { title: "مهمة يحين موعدها غداً", body: a.title, url: `/app/tasks/${a.id}` });

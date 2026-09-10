@@ -8,13 +8,14 @@ import PrintButton from "@/components/PrintButton";
 import { issueCertificate, revokeCertificate } from "../actions";
 import { computeGrades } from "@/lib/grades";
 import { formatShort } from "@/lib/dates";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "وثائق الإتمام" };
 
 export default async function CertificatesPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string; print?: string }> }) {
   await requireRole("ADMIN");
   const sp = await searchParams;
-  const participants = await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" }, include: { certificate: true } });
+  const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, include: { certificate: true } });
   const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
 
   if (sp.print) {

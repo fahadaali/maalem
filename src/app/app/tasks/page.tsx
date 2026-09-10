@@ -3,12 +3,13 @@ import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Badge, Empty } from "@/components/ui";
 import { formatShort } from "@/lib/dates";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "المهام الأسبوعية" };
 
 export default async function TasksPage() {
   const user = await requireParticipantView();
-  const assignments = await db.assignment.findMany({ orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { where: { userId: user.id } } } });
+  const assignments = await db.assignment.findMany({ where: await cohortWhere(), orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { where: { userId: user.id } } } });
   const now = new Date();
   return (
     <>

@@ -17,6 +17,8 @@ model User {
   passwordHash         String
   role                 String    @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
   active               Boolean   @default(true)
+  cohortId             String?
+  cohort               Cohort?   @relation(fields: [cohortId], references: [id])
   charterAcceptedAt    DateTime?
   charterName          String?
   surveyDoneAt         DateTime?
@@ -46,10 +48,32 @@ model User {
   certificate       Certificate?
 }
 
+/// دفعة من دفعات البرنامج: تفصل بيانات كل دفعة عن غيرها
+model Cohort {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  startDate String // YYYY-MM-DD (سبت اللقاء الافتتاحي)
+  active    Boolean   @default(false)
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  users       User[]
+  weeks       ProgramWeek[]
+  assignments Assignment[]
+  quizzes     Quiz[]
+  budget      BudgetEntry[]
+  guests      Guest[]
+  minutes     SessionMinutes[]
+  reports     ProgramReport[]
+  survey      SurveyResponse[]
+}
+
 /// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
 model ProgramWeek {
   id           String   @id @default(cuid())
-  number       Int      @unique
+  cohortId     String?
+  cohort       Cohort?  @relation(fields: [cohortId], references: [id])
+  number       Int
   label        String
   hijri        String
   gregorian    String // YYYY-MM-DD (السبت)
@@ -62,6 +86,8 @@ model ProgramWeek {
   remoteUrl    String?
   note         String?
   updatedAt    DateTime @updatedAt
+
+  @@unique([cohortId, number])
 }
 
 /// التقييم التشخيصي: قياس ذاتي للكفاءات الثماني قبل البرنامج وبعده
@@ -94,6 +120,8 @@ model Material {
 /// محضر لقاء حضوري أو حلقة نقاش
 model SessionMinutes {
   id        String   @id @default(cuid())
+  cohortId  String?
+  cohort    Cohort?  @relation(fields: [cohortId], references: [id])
   week      Int
   type      String // INPERSON | REMOTE | MONTHLY
   date      DateTime
@@ -105,19 +133,21 @@ model SessionMinutes {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([week, type])
+  @@unique([cohortId, week, type])
 }
 
 /// الخبراء وضيوف اللقاءات الشهرية، ومعهم قائمة البدائل
 model Guest {
-  id      String  @id @default(cuid())
-  name    String
-  topic   String
-  week    Int?
-  contact String?
-  status  String  @default("CANDIDATE") // CANDIDATE | CONFIRMED | DONE | DECLINED
-  backup  Boolean @default(false)
-  notes   String?
+  id       String  @id @default(cuid())
+  cohortId String?
+  cohort   Cohort? @relation(fields: [cohortId], references: [id])
+  name     String
+  topic    String
+  week     Int?
+  contact  String?
+  status   String  @default("CANDIDATE") // CANDIDATE | CONFIRMED | DONE | DECLINED
+  backup   Boolean @default(false)
+  notes    String?
 
   createdAt DateTime @default(now())
 }
@@ -125,6 +155,8 @@ model Guest {
 /// بنود الميزانية: المقدّر من الخطة مقابل المصروف الفعلي
 model BudgetEntry {
   id       String    @id @default(cuid())
+  cohortId String?
+  cohort   Cohort?   @relation(fields: [cohortId], references: [id])
   item     String
   basis    String?
   planned  Float     @default(0)
@@ -138,6 +170,8 @@ model BudgetEntry {
 /// استبانة رضا المشاركين — مجهولة: لا تُربط الإجابات بصاحبها
 model SurveyResponse {
   id        String   @id @default(cuid())
+  cohortId  String?
+  cohort    Cohort?  @relation(fields: [cohortId], references: [id])
   answers   String // JSON: { "<key>": 1..5 }
   liked     String?
   improve   String?
@@ -147,6 +181,8 @@ model SurveyResponse {
 /// التقرير الشهري للجهة والتقرير الختامي
 model ProgramReport {
   id              String   @id @default(cuid())
+  cohortId        String?
+  cohort          Cohort?  @relation(fields: [cohortId], references: [id])
   kind            String // MONTHLY | FINAL
   period          String // مثال: "الشهر الأول" أو "ختامي"
   summary         String
@@ -158,7 +194,7 @@ model ProgramReport {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  @@unique([kind, period])
+  @@unique([cohortId, kind, period])
 }
 
 /// وثيقة الإتمام
@@ -245,6 +281,8 @@ model WeeklyReport {
 
 model Quiz {
   id        String        @id @default(cuid())
+  cohortId  String?
+  cohort    Cohort?       @relation(fields: [cohortId], references: [id])
   title     String
   kind      String        @default("FIQH") // FIQH | QURAN | OTHER
   week      Int?
@@ -281,6 +319,8 @@ model QuizAttempt {
 
 model Assignment {
   id          String       @id @default(cuid())
+  cohortId    String?
+  cohort      Cohort?      @relation(fields: [cohortId], references: [id])
   week        Int
   title       String
   description String?

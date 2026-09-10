@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { COMPLETION_LEVELS } from "./program";
+import { cohortWhere } from "./cohort";
 
 export type GradeBreakdown = {
   attendance: number; // /10
@@ -49,7 +50,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
     db.attendance.findMany({ where: { userId } }),
     db.readingCard.count({ where: { userId } }),
     db.quizAttempt.findMany({ where: { userId } }),
-    db.assignment.count(),
+    db.assignment.count({ where: await cohortWhere() }),
     db.submission.findMany({ where: { userId } }),
     db.weeklyReport.count({ where: { userId } }),
     db.fieldLog.findMany({ where: { userId } }),

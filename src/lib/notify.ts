@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { PushError, sendPush } from "./webpush";
 import { getVapid } from "./secrets";
+import { cohortWhere } from "./cohort";
 
 export type NotifyPayload = { title: string; body: string; url?: string };
 
@@ -34,7 +35,9 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload) {
 }
 
 export async function notifyRole(role: "ADMIN" | "PARTICIPANT" | "MENTOR", payload: NotifyPayload) {
-  const users = await db.user.findMany({ where: { role, active: true }, select: { id: true } });
+  // مديرو المشروع عامّون، وأما المشاركون والمشرفون فبحسب الدفعة النشطة
+  const scope = role === "ADMIN" ? {} : await cohortWhere();
+  const users = await db.user.findMany({ where: { role, active: true, ...scope }, select: { id: true } });
   return notifyUsers(users.map((u) => u.id), payload);
 }
 

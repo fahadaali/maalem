@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { WEEKS, type Week } from "./program";
 import { todayKey } from "./dates";
+import { cohortWhere } from "./cohort";
 
 /** أسبوع البرنامج بعد إتاحة تعديله من لوحة مدير المشروع */
 export type LiveWeek = Week & { meetingPlace?: string | null; remoteUrl?: string | null; note?: string | null };
@@ -8,7 +9,7 @@ export type LiveWeek = Week & { meetingPlace?: string | null; remoteUrl?: string
 /** أسابيع البرنامج من قاعدة البيانات، وإن لم تُبذر بعد فمن الخطة الأصلية */
 export async function getWeeks(): Promise<LiveWeek[]> {
   try {
-    const rows = await db.programWeek.findMany({ orderBy: { number: "asc" } });
+    const rows = await db.programWeek.findMany({ where: await cohortWhere(), orderBy: { number: "asc" } });
     if (rows.length) {
       return rows.map((r) => ({
         number: r.number, label: r.label, hijri: r.hijri, gregorian: r.gregorian,

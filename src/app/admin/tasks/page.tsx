@@ -8,6 +8,7 @@ import { createAssignment } from "../actions";
 import { formatShort, reportDueDate } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { COMPETENCIES } from "@/lib/program";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "المهام والتقييم" };
 
@@ -19,8 +20,8 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [assignments, participantsCount] = await Promise.all([
-    db.assignment.findMany({ orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { select: { gradedAt: true } } } }),
-    db.user.count({ where: { role: "PARTICIPANT", active: true } }),
+    db.assignment.findMany({ where: await cohortWhere(), orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { select: { gradedAt: true } } } }),
+    db.user.count({ where: await participantsWhere() }),
   ]);
   const nextWeek = Math.max(0, Math.min(12, (await currentWeekNumber()) + 1));
   const activeWeeks = await getActiveWeeks();

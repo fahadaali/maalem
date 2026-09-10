@@ -7,13 +7,14 @@ import FormMessage from "@/components/FormMessage";
 import { createUser } from "../actions";
 import { computeGrades } from "@/lib/grades";
 import { ROLE_LABELS } from "@/lib/utils";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "المشاركون" };
 
 export default async function ParticipantsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
-  const users = await db.user.findMany({ orderBy: [{ role: "asc" }, { name: "asc" }], include: { mentor: { select: { name: true } } } });
+  const users = await db.user.findMany({ where: { OR: [await cohortWhere(), { role: "ADMIN" }] }, orderBy: [{ role: "asc" }, { name: "asc" }], include: { mentor: { select: { name: true } } } });
   const participants = users.filter((u) => u.role === "PARTICIPANT");
   const mentors = users.filter((u) => u.role === "MENTOR");
   const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));

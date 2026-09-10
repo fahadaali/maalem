@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { MIGRATIONS } from "./schema-sql";
-import { BUDGET, WEEKS } from "./program";
+import { BUDGET, PROGRAM, WEEKS } from "./program";
 
 /** هل جدول المستخدمين موجود؟ */
 export async function schemaReady(): Promise<boolean> {
@@ -27,7 +27,14 @@ export async function applyMigrations(): Promise<string[]> {
       .split(/;\s*\n/)
       .map((s) => s.replace(/^\s*--.*$/gm, "").trim())
       .filter(Boolean);
-    for (const st of statements) await db.$executeRawUnsafe(st);
+    for (const st of statements) {
+      // بعض تعليمات PRAGMA لا تقبلها D1 من داخل التطبيق، وهي إرشادية هنا
+      if (/^PRAGMA\s/i.test(st)) {
+        await db.$executeRawUnsafe(st).catch(() => {});
+        continue;
+      }
+      await db.$executeRawUnsafe(st);
+    }
     await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);
     done.push(m.name);
   }
@@ -39,22 +46,51 @@ export async function needsSetup(): Promise<boolean> {
   return (await db.user.count()) === 0;
 }
 
+/**
+ * تهيئة الدفعة: تُنشأ الدفعة الأولى من الخطة، ويُنسب إليها كل ما لا دفعة له.
+ * بهذا تنتقل قاعدة قائمة إلى نظام الدفعات دون فقد شيء.
+ */
+export async function ensureCohort(): Promise<string> {
+  const active = await db.cohort.findFirst({ where: { active: true } });
+  if (active) return active.id;
+  const any = await db.cohort.findFirst({ orderBy: { createdAt: "asc" } });
+  if (any) {
+    await db.cohort.update({ where: { id: any.id }, data: { active: true } });
+    return any.id;
+  }
+  const created = await db.cohort.create({ data: { name: PROGRAM.cohort, startDate: PROGRAM.startDate, active: true } });
+  // نسبة البيانات القائمة إلى الدفعة الأولى
+  await Promise.all([
+    db.user.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.programWeek.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.assignment.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.quiz.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.budgetEntry.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.guest.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.sessionMinutes.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.programReport.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+    db.surveyResponse.updateMany({ where: { cohortId: null }, data: { cohortId: created.id } }),
+  ]);
+  return created.id;
+}
+
 /** يبذر بيانات الخطة القابلة للتعديل (الأسابيع والميزانية) إن لم تكن موجودة */
-export async function ensureProgramData(): Promise<void> {
-  if ((await db.programWeek.count()) === 0) {
+export async function ensureProgramData(cohortId: string): Promise<void> {
+  if ((await db.programWeek.count({ where: { cohortId } })) === 0) {
     for (const w of WEEKS) {
       await db.programWeek.create({
         data: {
+          cohortId,
           number: w.number, label: w.label, hijri: w.hijri, gregorian: w.gregorian,
           competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
         },
       });
     }
   }
-  if ((await db.budgetEntry.count()) === 0) {
+  if ((await db.budgetEntry.count({ where: { cohortId } })) === 0) {
     let order = 0;
     for (const i of BUDGET.items) {
-      await db.budgetEntry.create({ data: { item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
+      await db.budgetEntry.create({ data: { cohortId, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
     }
   }
 }
@@ -70,7 +106,8 @@ export function ensureSchema(): Promise<void> {
     try {
       const applied = await applyMigrations();
       if (applied.length) console.log("applied migrations:", applied.join(", "));
-      await ensureProgramData();
+      const cohortId = await ensureCohort();
+      await ensureProgramData(cohortId);
     } catch (e) {
       bootPromise = null;
       console.error("schema boot failed:", (e as Error).message);

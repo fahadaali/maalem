@@ -8,6 +8,7 @@ import { dayName, formatHijri, formatGregorian, reportDueDate, daysUntil, todayK
 import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { computeGrades } from "@/lib/grades";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الرئيسية" };
 
@@ -25,9 +26,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.readingCard.findFirst({ where: { userId: user.id, date: { gte: new Date(`${today}T00:00:00+03:00`), lt: new Date(`${today}T23:59:59+03:00`) } } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week: weekNo } } }) : null,
     db.notification.count({ where: { userId: user.id, readAt: null } }),
-    db.quiz.findMany({ where: { published: true, attempts: { none: { userId: user.id } } }, select: { id: true, title: true }, take: 3 }),
-    db.assignment.findMany({ where: { dueAt: { gte: now }, submissions: { none: { userId: user.id } } }, orderBy: { dueAt: "asc" }, take: 3 }),
-    db.assignment.count({ where: { dueAt: { gte: now } } }),
+    db.quiz.findMany({ where: { published: true, attempts: { none: { userId: user.id } }, ...(await cohortWhere()) }, select: { id: true, title: true }, take: 3 }),
+    db.assignment.findMany({ where: { dueAt: { gte: now }, submissions: { none: { userId: user.id } }, ...(await cohortWhere()) }, orderBy: { dueAt: "asc" }, take: 3 }),
+    db.assignment.count({ where: { dueAt: { gte: now }, ...(await cohortWhere()) } }),
     db.user.findUnique({ where: { id: user.id }, select: { charterAcceptedAt: true } }),
     db.diagnostic.findMany({ where: { userId: user.id }, select: { stage: true } }),
   ]);

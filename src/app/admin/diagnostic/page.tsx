@@ -3,13 +3,14 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Progress, Badge } from "@/components/ui";
 import { COMPETENCIES } from "@/lib/program";
 import { parseJSON } from "@/lib/utils";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "التقييم التشخيصي" };
 
 export default async function AdminDiagnosticPage() {
   await requireRole("ADMIN");
   const [participants, rows] = await Promise.all([
-    db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.diagnostic.findMany(),
   ]);
   const scoresOf = (userId: string, stage: string) => {

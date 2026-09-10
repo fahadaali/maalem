@@ -8,6 +8,7 @@ import { PROJECT_RUBRIC } from "@/lib/program";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
 import { db as _db } from "@/lib/db";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "مشاريع التخرج" };
 
@@ -16,7 +17,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
   const { ok, err } = await searchParams;
   const [projects, participants] = await Promise.all([
     db.graduationProject.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } }),
-    db.user.findMany({ where: { role: "PARTICIPANT", active: true }, select: { id: true, name: true } }),
+    db.user.findMany({ where: await participantsWhere(), select: { id: true, name: true } }),
   ]);
   const attRows = await _db.attachment.findMany({ where: { kind: "PROJECT" }, orderBy: { createdAt: "asc" } });
   const withProject = new Set(projects.map((p) => p.userId));

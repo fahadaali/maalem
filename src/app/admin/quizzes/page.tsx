@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createQuiz } from "../actions";
 import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الاختبارات التكوينية" };
 
@@ -14,7 +15,8 @@ export default async function AdminQuizzesPage({ searchParams }: { searchParams:
   const { ok, err } = await searchParams;
   const activeWeeks = await getActiveWeeks();
   const curWeek = Math.max(1, Math.min(12, await currentWeekNumber()));
-  const quizzes = await db.quiz.findMany({ orderBy: [{ week: "asc" }, { createdAt: "asc" }], include: { _count: { select: { questions: true, attempts: true } }, attempts: true } });
+  const quizzes = await db.quiz.findMany({
+    where: await cohortWhere(), orderBy: [{ week: "asc" }, { createdAt: "asc" }], include: { _count: { select: { questions: true, attempts: true } }, attempts: true } });
   return (
     <>
       <PageHeader title="الاختبارات التكوينية" subtitle="10 اختبارات قصيرة (فقهية وقرآنية) خلال البرنامج، 10 أسئلة لكل اختبار، حد النجاح 70%." />

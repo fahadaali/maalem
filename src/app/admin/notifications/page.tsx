@@ -7,6 +7,7 @@ import NotificationsList from "@/components/NotificationsList";
 import { markAdminRead, sendNotification } from "../actions";
 import { currentWeek } from "@/lib/weeks";
 import { pushEnabled } from "@/lib/notify";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الإشعارات" };
 
@@ -14,7 +15,7 @@ export default async function AdminNotificationsPage({ searchParams }: { searchP
   const me = await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [users, inbox, subs] = await Promise.all([
-    db.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, role: true } }),
+    db.user.findMany({ where: { active: true, OR: [await cohortWhere(), { role: "ADMIN" }] }, orderBy: { name: "asc" }, select: { id: true, name: true, role: true } }),
     db.notification.findMany({ where: { userId: me.id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.pushSubscription.count(),
   ]);

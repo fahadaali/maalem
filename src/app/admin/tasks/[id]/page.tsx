@@ -10,6 +10,7 @@ import { getActiveWeeks } from "@/lib/weeks";
 import { COMPETENCIES, RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "تقييم مهمة" };
 
@@ -25,7 +26,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   if (!a) notFound();
   const activeWeeks = await getActiveWeeks();
   const files = await listAttachments({ kind: "SUBMISSION", refId: a.id });
-  const participants = await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } });
+  const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
   const attRows = await db.attachment.findMany({ where: { kind: "SUBMISSION", refId: a.id } });
   const filesByUser = new Map<string, typeof files>();
   for (const r of attRows) filesByUser.set(r.userId, [...(filesByUser.get(r.userId) ?? []), ...files.filter((f) => f.id === r.id)]);

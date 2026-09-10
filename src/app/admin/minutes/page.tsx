@@ -7,6 +7,7 @@ import FormMessage from "@/components/FormMessage";
 import { deleteMinutes, saveMinutes } from "../actions";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "محاضر اللقاءات" };
 
@@ -25,8 +26,8 @@ export default async function MinutesPage({ searchParams }: { searchParams: Prom
   const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, cur);
   const info = weeks.find((w) => w.number === week) ?? weeks[0];
   const [rows, guests] = await Promise.all([
-    db.sessionMinutes.findMany({ where: { week } }),
-    db.guest.findMany({ where: { status: { in: ["CONFIRMED", "DONE"] } }, select: { name: true } }),
+    db.sessionMinutes.findMany({ where: { week, ...(await cohortWhere()) } }),
+    db.guest.findMany({ where: { status: { in: ["CONFIRMED", "DONE"] }, ...(await cohortWhere()) }, select: { name: true } }),
   ]);
   const of = (type: string) => rows.find((r) => r.type === type);
 

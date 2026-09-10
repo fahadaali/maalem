@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveProgramReport } from "../actions";
 import { buildSnapshot, SNAPSHOT_LABELS, type Snapshot } from "@/lib/snapshot";
+import { cohortWhere } from "@/lib/cohort";
 import { formatShort } from "@/lib/dates";
 import { parseJSON } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -20,8 +21,8 @@ export default async function ProgramReportsPage({ searchParams }: { searchParam
   const kind = sp.kind === "FINAL" ? "FINAL" : "MONTHLY";
   const period = sp.period ?? (kind === "FINAL" ? "ختامي" : MONTHS[0]);
   const [existing, all, snapshot] = await Promise.all([
-    db.programReport.findUnique({ where: { kind_period: { kind, period } } }),
-    db.programReport.findMany({ orderBy: { updatedAt: "desc" } }),
+    db.programReport.findFirst({ where: { kind, period, ...(await cohortWhere()) } }),
+    db.programReport.findMany({ where: await cohortWhere(), orderBy: { updatedAt: "desc" } }),
     buildSnapshot(),
   ]);
   const saved = existing?.snapshot ? parseJSON<Snapshot>(existing.snapshot, snapshot) : null;

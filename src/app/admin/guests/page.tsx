@@ -6,6 +6,7 @@ import FormMessage from "@/components/FormMessage";
 import { deleteGuest, saveGuest } from "../actions";
 import { getWeeks } from "@/lib/weeks";
 import { RISKS } from "@/lib/program";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الخبراء والضيوف" };
 
@@ -20,7 +21,7 @@ export default async function GuestsPage({ searchParams }: { searchParams: Promi
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [guests, weeks] = await Promise.all([
-    db.guest.findMany({ orderBy: [{ week: "asc" }, { backup: "asc" }, { createdAt: "asc" }] }),
+    db.guest.findMany({ where: await cohortWhere(), orderBy: [{ week: "asc" }, { backup: "asc" }, { createdAt: "asc" }] }),
     getWeeks(),
   ]);
   const risk = RISKS.find((r) => r.risk.includes("الخبير"));

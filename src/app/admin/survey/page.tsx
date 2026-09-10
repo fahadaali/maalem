@@ -3,15 +3,16 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Empty, Stat } from "@/components/ui";
 import { SURVEY_QUESTIONS } from "@/lib/program";
 import { parseJSON } from "@/lib/utils";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "نتائج الاستبانة" };
 
 export default async function AdminSurveyPage() {
   await requireRole("ADMIN");
   const [responses, participants, done] = await Promise.all([
-    db.surveyResponse.findMany({ orderBy: { createdAt: "asc" } }),
-    db.user.count({ where: { role: "PARTICIPANT", active: true } }),
-    db.user.count({ where: { role: "PARTICIPANT", active: true, surveyDoneAt: { not: null } } }),
+    db.surveyResponse.findMany({ where: await cohortWhere(), orderBy: { createdAt: "asc" } }),
+    db.user.count({ where: await participantsWhere() }),
+    db.user.count({ where: await participantsWhere({ surveyDoneAt: { not: null } }) }),
   ]);
   const answers = responses.map((r) => parseJSON<Record<string, number>>(r.answers, {}));
   const avgOf = (key: string) => {

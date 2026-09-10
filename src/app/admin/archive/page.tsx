@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import { Download } from "lucide-react";
 import { formatShort } from "@/lib/dates";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الأرشفة والتصدير" };
 
@@ -19,7 +20,7 @@ const EXPORTS = [
 export default async function ArchivePage() {
   await requireRole("ADMIN");
   const participants = await db.user.findMany({
-    where: { role: "PARTICIPANT" },
+    where: { role: "PARTICIPANT", ...(await cohortWhere()) },
     orderBy: { name: "asc" },
     select: { id: true, name: true, portfolioSubmittedAt: true, certificate: { select: { serial: true } } },
   });

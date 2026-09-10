@@ -3,12 +3,13 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Badge } from "@/components/ui";
 import { MINUTES_LABELS } from "@/app/admin/minutes/page";
 import { formatShort } from "@/lib/dates";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "محاضر اللقاءات" };
 
 export default async function ParticipantMinutesPage() {
   await requireParticipantView();
-  const rows = await db.sessionMinutes.findMany({ orderBy: [{ week: "asc" }, { type: "asc" }] });
+  const rows = await db.sessionMinutes.findMany({ where: await cohortWhere(), orderBy: [{ week: "asc" }, { type: "asc" }] });
   return (
     <>
       <PageHeader title="محاضر اللقاءات" subtitle="ما دار في اللقاءات الحضورية وحلقات النقاش، وقراراتها وتكاليفها." />

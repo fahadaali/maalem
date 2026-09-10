@@ -8,6 +8,7 @@ import { reviewReport } from "../actions";
 import { formatDateTime, reportDueDate } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "التقارير الأسبوعية" };
 
@@ -18,7 +19,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(12, await currentWeekNumber()));
   const activeWeeks = await getActiveWeeks();
   const [participants, reports] = await Promise.all([
-    db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } }),
     db.weeklyReport.findMany({ where: { week }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
   ]);
   const byUser = new Map(reports.map((r) => [r.userId, r]));

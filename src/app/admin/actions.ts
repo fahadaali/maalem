@@ -10,6 +10,7 @@ import { keyToDate } from "@/lib/dates";
 import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
+import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
 import { deleteObject } from "@/lib/storage";
 import { computeGrades } from "@/lib/grades";
 import { levelFor } from "@/lib/grades";
@@ -35,7 +36,7 @@ export async function createUser(formData: FormData) {
   if (!/^[a-z0-9_.-]{3,30}$/.test(username)) fail("/admin/participants", "اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (3–30)");
   if (!["ADMIN", "PARTICIPANT", "MENTOR"].includes(role)) fail("/admin/participants", "دور غير صحيح");
   if (await db.user.findUnique({ where: { username } })) fail("/admin/participants", "اسم المستخدم مستخدم من قبل");
-  await db.user.create({ data: { name, username, phone: phone || null, role, mentorId, passwordHash: await bcrypt.hash(password, 10) } });
+  await db.user.create({ data: { cohortId: await activeCohortId(), name, username, phone: phone || null, role, mentorId, passwordHash: await bcrypt.hash(password, 10) } });
   revalidatePath("/admin/participants");
   ok("/admin/participants", `تمت إضافة ${name}`);
 }
@@ -118,7 +119,7 @@ export async function createAssignment(formData: FormData) {
   const competency = str(formData.get("competency"));
   const dueAt = str(formData.get("dueAt"));
   if (!title || week < 0 || !dueAt) fail("/admin/tasks", "العنوان والأسبوع وموعد التسليم حقول إلزامية");
-  const a = await db.assignment.create({ data: { title, week, description: description || null, competency: competency || null, dueAt: new Date(dueAt + "+03:00") } });
+  const a = await db.assignment.create({ data: { cohortId: await activeCohortId(), title, week, description: description || null, competency: competency || null, dueAt: new Date(dueAt + "+03:00") } });
   await notifyRole("PARTICIPANT", { title: "مهمة جديدة", body: title, url: `/app/tasks/${a.id}` });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تمت إضافة المهمة وإشعار المشاركين");
@@ -166,7 +167,7 @@ export async function createQuiz(formData: FormData) {
   const week = str(formData.get("week")) === "" ? null : num(formData.get("week"));
   const passMark = num(formData.get("passMark"), 70);
   if (!title) fail("/admin/quizzes", "اكتب عنوان الاختبار");
-  const q = await db.quiz.create({ data: { title, kind, week, passMark } });
+  const q = await db.quiz.create({ data: { cohortId: await activeCohortId(), title, kind, week, passMark } });
   redirect(`/admin/quizzes/${q.id}`);
 }
 
@@ -281,9 +282,9 @@ export async function sendNotification(formData: FormData) {
   const target = str(formData.get("target")); // all | participants | mentors | user:<id>
   if (!title || !body) fail("/admin/notifications", "العنوان والنص إلزاميان");
   let ids: string[] = [];
-  if (target === "all") ids = (await db.user.findMany({ where: { active: true }, select: { id: true } })).map((u) => u.id);
-  else if (target === "participants") ids = (await db.user.findMany({ where: { active: true, role: "PARTICIPANT" }, select: { id: true } })).map((u) => u.id);
-  else if (target === "mentors") ids = (await db.user.findMany({ where: { active: true, role: "MENTOR" }, select: { id: true } })).map((u) => u.id);
+  if (target === "all") ids = (await db.user.findMany({ where: { active: true, OR: [await cohortWhere(), { role: "ADMIN" }] }, select: { id: true } })).map((u) => u.id);
+  else if (target === "participants") ids = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
+  else if (target === "mentors") ids = (await db.user.findMany({ where: { active: true, role: "MENTOR", ...(await cohortWhere()) }, select: { id: true } })).map((u) => u.id);
   else if (target.startsWith("user:")) ids = [target.slice(5)];
   const r = await notifyUsers(ids, { title, body, url: url || undefined });
   ok("/admin/notifications", `أُرسل الإشعار إلى ${r.inApp} مستخدم (${r.pushed} إشعار دفع)`);
@@ -377,8 +378,9 @@ export async function saveWeek(formData: FormData) {
   if (number === -99) fail("/admin/schedule", "أسبوع غير صحيح");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gregorian)) fail("/admin/schedule", "تاريخ غير صحيح");
   if (remoteUrl && !/^https?:\/\//i.test(remoteUrl)) fail("/admin/schedule", "رابط الحلقة يجب أن يبدأ بـ http أو https");
+  const cohortId = await requireCohortId();
   await db.programWeek.update({
-    where: { number },
+    where: { cohortId_number: { cohortId, number } },
     data: {
       gregorian,
       hijri: str(formData.get("hijri")),
@@ -400,7 +402,7 @@ export async function saveWeek(formData: FormData) {
 export async function notifyWeekChange(formData: FormData) {
   await admin();
   const number = num(formData.get("number"), -99);
-  const w = await db.programWeek.findUnique({ where: { number } });
+  const w = await db.programWeek.findFirst({ where: { number, ...(await cohortWhere()) } });
   if (!w) fail("/admin/schedule", "أسبوع غير موجود");
   await notifyRole("PARTICIPANT", {
     title: `تحديث جدول الأسبوع ${w.label}`,
@@ -429,7 +431,8 @@ export async function saveMinutes(formData: FormData) {
     minutes,
     decisions: str(formData.get("decisions")) || null,
   };
-  await db.sessionMinutes.upsert({ where: { week_type: { week, type } }, create: { week, type, ...data }, update: data });
+  const cohortId = await requireCohortId();
+  await db.sessionMinutes.upsert({ where: { cohortId_week_type: { cohortId, week, type } }, create: { cohortId, week, type, ...data }, update: data });
   if (str(formData.get("notify")) === "on") {
     await notifyRole("PARTICIPANT", { title: `محضر ${type === "REMOTE" ? "حلقة النقاش" : "اللقاء"} — الأسبوع ${week}`, body: minutes.slice(0, 120), url: "/app/minutes" });
   }
@@ -441,7 +444,7 @@ export async function deleteMinutes(formData: FormData) {
   await admin();
   const week = num(formData.get("week"), -99);
   const type = str(formData.get("type"));
-  await db.sessionMinutes.deleteMany({ where: { week, type } });
+  await db.sessionMinutes.deleteMany({ where: { week, type, ...(await cohortWhere()) } });
   revalidatePath("/admin/minutes");
   ok(`/admin/minutes?week=${week}`, "تم حذف المحضر");
 }
@@ -463,7 +466,7 @@ export async function saveGuest(formData: FormData) {
     notes: str(formData.get("notes")) || null,
   };
   if (id) await db.guest.update({ where: { id }, data });
-  else await db.guest.create({ data });
+  else await db.guest.create({ data: { ...data, cohortId: await activeCohortId() } });
   revalidatePath("/admin/guests");
   ok("/admin/guests", id ? "تم تحديث بيانات الضيف" : "تمت إضافة الضيف");
 }
@@ -494,7 +497,7 @@ export async function saveBudgetEntry(formData: FormData) {
   };
   if (data.planned < 0 || (data.actual ?? 0) < 0) fail("/admin/budget", "المبالغ لا تكون سالبة");
   if (id) await db.budgetEntry.update({ where: { id }, data });
-  else await db.budgetEntry.create({ data });
+  else await db.budgetEntry.create({ data: { ...data, cohortId: await activeCohortId() } });
   revalidatePath("/admin/budget");
   ok("/admin/budget", id ? "تم تحديث البند" : "تمت إضافة البند");
 }
@@ -522,7 +525,8 @@ export async function saveProgramReport(formData: FormData) {
     recommendations: str(formData.get("recommendations")) || null,
     snapshot: str(formData.get("snapshot")) || null,
   };
-  await db.programReport.upsert({ where: { kind_period: { kind, period } }, create: { kind, period, ...data }, update: data });
+  const cohortId = await requireCohortId();
+  await db.programReport.upsert({ where: { cohortId_kind_period: { cohortId, kind, period } }, create: { cohortId, kind, period, ...data }, update: data });
   revalidatePath("/admin/program-reports");
   ok(`/admin/program-reports?kind=${kind}&period=${encodeURIComponent(period)}`, "تم حفظ التقرير");
 }
@@ -553,4 +557,49 @@ export async function revokeCertificate(formData: FormData) {
   await db.certificate.deleteMany({ where: { userId: str(formData.get("userId")) } });
   revalidatePath("/admin/certificates");
   ok("/admin/certificates", "تم سحب الوثيقة");
+}
+
+// ——— الدفعات ———
+export async function createCohort(formData: FormData) {
+  await admin();
+  const name = str(formData.get("name"));
+  const startDate = str(formData.get("startDate"));
+  if (!name) fail("/admin/cohorts", "اكتب اسم الدفعة");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) fail("/admin/cohorts", "حدد تاريخ اللقاء الافتتاحي");
+  if (await db.cohort.findUnique({ where: { name } })) fail("/admin/cohorts", "اسم الدفعة مستخدم من قبل");
+  const cohort = await db.cohort.create({ data: { name, startDate } });
+  // أسابيع الدفعة الجديدة من الخطة، بمواعيد تبدأ من تاريخ لقائها الافتتاحي
+  const start = new Date(`${startDate}T00:00:00+03:00`).getTime();
+  const { WEEKS, BUDGET } = await import("@/lib/program");
+  for (const w of WEEKS) {
+    const d = new Date(start + w.number * 7 * 86400000).toISOString().slice(0, 10);
+    await db.programWeek.create({
+      data: { cohortId: cohort.id, number: w.number, label: w.label, hijri: w.hijri, gregorian: d, competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task },
+    });
+  }
+  let order = 0;
+  for (const i of BUDGET.items) {
+    await db.budgetEntry.create({ data: { cohortId: cohort.id, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
+  }
+  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها وميزانيتها. فعّلها للعمل عليها.`);
+}
+
+export async function activateCohort(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const target = await db.cohort.findUnique({ where: { id } });
+  if (!target) fail("/admin/cohorts", "الدفعة غير موجودة");
+  await db.cohort.updateMany({ where: { active: true }, data: { active: false } });
+  await db.cohort.update({ where: { id }, data: { active: true } });
+  revalidatePath("/admin");
+  ok("/admin/cohorts", `الدفعة النشطة الآن: ${target.name}`);
+}
+
+export async function closeCohort(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const c = await db.cohort.findUnique({ where: { id } });
+  if (!c) fail("/admin/cohorts", "الدفعة غير موجودة");
+  await db.cohort.update({ where: { id }, data: { closedAt: c.closedAt ? null : new Date() } });
+  ok("/admin/cohorts", c.closedAt ? "أُعيد فتح الدفعة" : "أُغلقت الدفعة");
 }

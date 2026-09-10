@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { deleteBudgetEntry, saveBudgetEntry } from "../actions";
 import { BUDGET } from "@/lib/program";
+import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الميزانية" };
 
@@ -13,7 +14,7 @@ const money = (n: number) => n.toLocaleString("en") + " ريال";
 export default async function BudgetPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
-  const rows = await db.budgetEntry.findMany({ orderBy: [{ order: "asc" }, { item: "asc" }] });
+  const rows = await db.budgetEntry.findMany({ where: await cohortWhere(), orderBy: [{ order: "asc" }, { item: "asc" }] });
   const base = rows.filter((r) => !r.optional);
   const opt = rows.filter((r) => r.optional);
   const sum = (xs: typeof rows, k: "planned" | "actual") => xs.reduce((s, r) => s + (r[k] ?? 0), 0);

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { computeGrades } from "@/lib/grades";
 import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
 import { ATTENDANCE_LABELS } from "@/lib/utils";
+import { cohortWhere } from "@/lib/cohort";
 
 /** تصدير بيانات المنصة إلى ملفات CSV تفتحها برامج الجداول مباشرة */
 const KINDS = ["grades", "attendance", "tasks", "field", "reading", "reports"] as const;
@@ -23,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
   const { kind } = await params;
   if (!KINDS.includes(kind as Kind)) return new Response("نوع غير معروف", { status: 404 });
 
-  const participants = await db.user.findMany({ where: { role: "PARTICIPANT" }, orderBy: { name: "asc" }, select: { id: true, name: true, username: true, active: true } });
+  const participants = await db.user.findMany({ where: { role: "PARTICIPANT", ...(await cohortWhere()) }, orderBy: { name: "asc" }, select: { id: true, name: true, username: true, active: true } });
   const nameOf = new Map(participants.map((p) => [p.id, p.name]));
   let rows: (string | number)[][] = [];
 

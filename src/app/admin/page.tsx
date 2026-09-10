@@ -6,6 +6,8 @@ import { dayName, formatHijri, formatGregorian, weekdayIndex, reportDueDate, for
 import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
 import FormMessage from "@/components/FormMessage";
+import { activeCohort } from "@/lib/cohort";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "لوحة مدير المشروع" };
 
@@ -19,18 +21,19 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   const routine = MANAGER_ROUTINE.filter((r) => r.weekday === wd);
 
   const [participants, reportsThisWeek, pendingField, pendingProjects, ungraded, unpublishedQuizzes, checklist, recent] = await Promise.all([
-    db.user.findMany({ where: { role: "PARTICIPANT", active: true }, select: { id: true, name: true } }),
+    db.user.findMany({ where: await participantsWhere(), select: { id: true, name: true } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findMany({ where: { week: weekNo }, select: { userId: true, reviewedAt: true } }) : [],
     db.fieldLog.count({ where: { approvedAt: null } }),
-    db.graduationProject.count({ where: { status: "PROPOSED" } }),
-    db.submission.count({ where: { gradedAt: null } }),
-    db.quiz.count({ where: { published: false } }),
+    db.graduationProject.count({ where: { status: "PROPOSED", user: await participantsWhere() } }),
+    db.submission.count({ where: { gradedAt: null, user: await participantsWhere() } }),
+    db.quiz.count({ where: { published: false, ...(await cohortWhere()) } }),
     db.checklistItem.findMany({ where: { done: true } }),
     db.notification.findMany({ where: { user: { role: "ADMIN" } }, orderBy: { createdAt: "desc" }, take: 5, distinct: ["title", "body"] }),
   ]);
+  const cohort = await activeCohort();
   const [unsignedCharter, missingDiagnostic, materialsCount] = await Promise.all([
-    db.user.count({ where: { role: "PARTICIPANT", active: true, charterAcceptedAt: null } }),
-    db.user.count({ where: { role: "PARTICIPANT", active: true, diagnostics: { none: { stage: "PRE" } } } }),
+    db.user.count({ where: await participantsWhere({ charterAcceptedAt: null }) }),
+    db.user.count({ where: await participantsWhere({ diagnostics: { none: { stage: "PRE" } } }) }),
     db.material.count(),
   ]);
   const prepPhase = PHASES[0];
@@ -41,7 +44,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   return (
     <>
       <PageHeader
-        eyebrow={`${dayName(now)} · ${formatHijri(now)} · ${formatGregorian(now)}`}
+        eyebrow={`${dayName(now)} · ${formatHijri(now)} · ${formatGregorian(now)}${cohort ? " · " + cohort.name : ""}`}
         title="لوحة مدير المشروع"
         subtitle={weekNo < 0 ? "مرحلة التهيئة — قبل اللقاء الافتتاحي" : weekNo > 14 ? "ما بعد البرنامج — التقويم والإغلاق" : `الأسبوع ${week?.label} — ${week?.competency}`}
       />

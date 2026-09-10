@@ -8,6 +8,7 @@ import { saveAttendance } from "../actions";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 
 import { ATTENDANCE_LABELS, cn } from "@/lib/utils";
+import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الحضور" };
 
@@ -19,7 +20,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(13, resolveCurrentWeek(weeks)));
   const info = weeks.find((w) => w.number === week) ?? weeks[0];
   const [participants, rows] = await Promise.all([
-    db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } }),
     db.attendance.findMany({ where: { week } }),
   ]);
   const get = (userId: string, type: string) => rows.find((r) => r.userId === userId && r.type === type)?.status ?? "";
