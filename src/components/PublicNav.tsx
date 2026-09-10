@@ -11,6 +11,7 @@ export default async function PublicNav() {
           <Link href="/program" className="px-2 py-1 rounded hover:bg-paper-2 whitespace-nowrap">البرنامج</Link>
           <Link href="/program/schedule" className="px-2 py-1 rounded hover:bg-paper-2 whitespace-nowrap">الجدول</Link>
           <Link href="/install" className="px-2 py-1 rounded hover:bg-paper-2 whitespace-nowrap">التطبيق</Link>
+          <Link href="/help" className="px-2 py-1 rounded hover:bg-paper-2 whitespace-nowrap">المساعدة</Link>
           {session ? (
             <Link href={homeFor(session.role)} className="btn btn-sm">لوحتي</Link>
           ) : (

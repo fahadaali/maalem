@@ -5,6 +5,7 @@ import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
 import { vapidPublicKey } from "@/lib/notify";
 import InstallButton from "@/components/InstallButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { changePassword } from "@/app/(auth)/actions";
 import ContactCards from "@/components/ContactCards";
 
@@ -20,6 +21,10 @@ export default async function MentorSettings({ searchParams }: { searchParams: P
       <div className="space-y-4">
         <Card title="الإشعارات"><PushToggle publicKey={await vapidPublicKey()} /></Card>
         <ContactCards userId={me.id} back="/mentor/settings" />
+        <Card title="مظهر الواجهة">
+          <p className="text-sm text-muted mb-3">الوضع الليلي يريح العين في القراءة المسائية. «حسب الجهاز» يتبع إعداد جوالك تلقائياً.</p>
+          <ThemeToggle />
+        </Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>

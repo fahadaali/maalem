@@ -12,6 +12,33 @@
   color-scheme: light;
 }
 
+/* الوضع الليلي: القيم نفسها معكوسة، فتبقى الواجهة أحادية كما هي */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #f2f2f2;
+    --ink-2: #cbcbcb;
+    --muted: #8f8f8f;
+    --line: #2a2a2a;
+    --line-2: #3d3d3d;
+    --paper: #0f0f0f;
+    --paper-2: #171717;
+    --paper-3: #232323;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ink: #f2f2f2;
+  --ink-2: #cbcbcb;
+  --muted: #8f8f8f;
+  --line: #2a2a2a;
+  --line-2: #3d3d3d;
+  --paper: #0f0f0f;
+  --paper-2: #171717;
+  --paper-3: #232323;
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
@@ -95,6 +122,10 @@ h1, h2, h3, .display {
 .progress { height: 6px; background: var(--paper-3); border-radius: 999px; overflow: hidden; }
 .progress > span { display: block; height: 100%; background: var(--ink); border-radius: 999px; }
 
+/* عناصر النماذج الأصلية تتبع لون الواجهة */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
+.accent-black { accent-color: var(--ink); }
+
 .prose-ar p { margin-bottom: 0.75rem; }
 
 .nav-link { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; border-radius: 10px; color: var(--ink-2); font-size: 0.95rem; }
@@ -108,6 +139,13 @@ h1, h2, h3, .display {
 
 @media print {
   .no-print { display: none !important; }
+  /* الطباعة على ورق أبيض دائماً، ولو كانت الشاشة ليلية */
+  :root {
+    --ink: #111111; --ink-2: #3d3d3d; --muted: #737373;
+    --line: #e4e4e4; --line-2: #cfcfcf;
+    --paper: #ffffff; --paper-2: #f6f6f6; --paper-3: #ececec;
+    color-scheme: light;
+  }
 }
 
 /* وضع المعاينة: الواجهة تُعرض ولا تُعدَّل */

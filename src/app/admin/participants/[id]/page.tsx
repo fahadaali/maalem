@@ -9,6 +9,8 @@ import { addFeedbackSession, updateUser } from "../../actions";
 import { computeGrades } from "@/lib/grades";
 import CompetencyCard from "@/components/CompetencyCard";
 import MentorEvalForm from "@/components/MentorEvalForm";
+import Timeline from "@/components/Timeline";
+import { buildTimeline } from "@/lib/timeline";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { getContinuous } from "@/lib/content";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
@@ -115,6 +117,13 @@ export default async function ParticipantDetail({ params, searchParams }: { para
         <div className="mb-4">
           <MentorEvalForm userId={u.id} name={u.name} existing={u.mentorEvaluations} />
         </div>
+      )}
+
+      {isParticipant && (
+        <Card title="سجل النشاط" className="mb-4">
+          <p className="text-xs text-muted mb-3">كل ما سجّله المشارك أو سُجّل عليه، مرتباً من الأحدث. مجموع من سجلات المنصة نفسها.</p>
+          <Timeline entries={await buildTimeline(u.id, 120)} />
+        </Card>
       )}
 
       <div className="grid md:grid-cols-2 gap-4">

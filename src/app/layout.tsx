@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { thmanyahDisplay, thmanyahSans } from "./fonts";
 import PwaRegistrar from "@/components/PwaRegistrar";
+import ThemeScript from "@/components/ThemeScript";
 
 export const metadata: Metadata = {
   title: { default: "معالم التربية", template: "%s — معالم التربية" },
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#111111",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f0f0f" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -26,6 +30,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl" className={`${thmanyahSans.variable} ${thmanyahDisplay.variable}`}>
+      <head><ThemeScript /></head>
       <body className="antialiased">
         {children}
         <PwaRegistrar />

@@ -6,6 +6,7 @@ import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
 import { vapidPublicKey } from "@/lib/notify";
 import InstallButton from "@/components/InstallButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { changePassword } from "@/app/(auth)/actions";
 import ContactCards from "@/components/ContactCards";
 import Link from "next/link";
@@ -33,6 +34,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <PushToggle publicKey={await vapidPublicKey()} />
         </Card>
         <ContactCards userId={user.id} back="/app/settings" />
+        <Card title="مظهر الواجهة">
+          <p className="text-sm text-muted mb-3">الوضع الليلي يريح العين في القراءة المسائية. «حسب الجهاز» يتبع إعداد جوالك تلقائياً.</p>
+          <ThemeToggle />
+        </Card>
         <Card title="تثبيت التطبيق">
           <InstallButton />
           <p className="text-xs text-muted mt-2"><Link href="/install" className="underline">دليل التثبيت للآيفون والأندرويد</Link></p>

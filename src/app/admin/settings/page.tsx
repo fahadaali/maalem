@@ -4,6 +4,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import PushToggle from "@/components/PushToggle";
 import InstallButton from "@/components/InstallButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { changePassword } from "@/app/(auth)/actions";
 import { startPreview, saveEmailSettings, disableEmail, sendTestEmail } from "../actions";
 import { Eye } from "lucide-react";
@@ -39,6 +40,10 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
         </Card>
         <Card title="الإشعارات على جهازي"><PushToggle publicKey={await vapidPublicKey()} /></Card>
         <ContactCards userId={me.id} back="/admin/settings" />
+        <Card title="مظهر الواجهة">
+          <p className="text-sm text-muted mb-3">الوضع الليلي يريح العين في القراءة المسائية. «حسب الجهاز» يتبع إعداد جوالك تلقائياً.</p>
+          <ThemeToggle />
+        </Card>
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>
