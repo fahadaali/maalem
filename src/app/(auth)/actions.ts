@@ -37,3 +37,26 @@ export async function changePassword(formData: FormData) {
   await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10) } });
   redirect(back + "?ok=" + encodeURIComponent("تم تغيير كلمة المرور"));
 }
+
+/** تنبيهات البريد: عنوان المشارك وموافقته على استقبال التنبيهات إليه */
+export async function updateContactPrefs(formData: FormData) {
+  const user = await requireUser();
+  const email = str(formData.get("email")).trim();
+  const optIn = str(formData.get("emailOptIn")) === "on";
+  const back = str(formData.get("back")) || "/app/settings";
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    redirect(back + "?err=" + encodeURIComponent("البريد الإلكتروني غير صحيح"));
+  }
+  await db.user.update({ where: { id: user.id }, data: { email: email || null, emailOptIn: optIn } });
+  redirect(back + "?ok=" + encodeURIComponent("حُفظت تفضيلات التنبيهات"));
+}
+
+/** رابط اشتراك التقويم: يُولَّد عند الطلب، وإعادة توليده تُبطل الرابط السابق */
+export async function refreshCalendarLink(formData: FormData) {
+  const user = await requireUser();
+  const back = str(formData.get("back")) || "/app/settings";
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  await db.user.update({ where: { id: user.id }, data: { calendarToken: token } });
+  redirect(back + "?ok=" + encodeURIComponent("جاهز — انسخ الرابط وأضفه في تطبيق التقويم"));
+}

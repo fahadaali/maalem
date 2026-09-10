@@ -3,7 +3,8 @@ import { requireRole } from "@/lib/auth";
 import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { notifyWeekChange, saveWeek } from "../actions";
+import { notifyWeekChange, saveWeek, saveScheduleTimes } from "../actions";
+import { scheduleTimes } from "@/lib/ics";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 import { SCHEDULE_NOTE } from "@/lib/program";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
   const parsed = Number(sp.week);
   const selected = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, cur);
   const w = weeks.find((x) => x.number === selected) ?? weeks[0];
+  const times = await scheduleTimes();
 
   return (
     <>
@@ -27,6 +29,20 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
       />
       <FormMessage ok={sp.ok} err={sp.err} />
       <p className="text-sm text-muted mb-3">{SCHEDULE_NOTE}</p>
+      <Card title="مواعيد اللقاءات في تقويم المشاركين" className="mb-4">
+        <p className="text-sm text-muted mb-3">
+          هذه الساعات تُستعمل في تقويم البرنامج الذي يشترك به المشاركون على جوالاتهم. عدّلها لتطابق مواعيدكم الفعلية.
+        </p>
+        <form action={saveScheduleTimes}>
+          <div className="grid md:grid-cols-4 gap-3">
+            <div className="field"><label className="label">بداية اللقاء الحضوري (السبت)</label><input type="time" name="sessionTime" className="input" dir="ltr" defaultValue={times.sessionTime} /></div>
+            <div className="field"><label className="label">مدته بالدقائق</label><input type="number" name="sessionMinutes" className="input" dir="ltr" min={15} max={480} defaultValue={times.sessionMinutes} /></div>
+            <div className="field"><label className="label">بداية حلقة النقاش (الثلاثاء)</label><input type="time" name="circleTime" className="input" dir="ltr" defaultValue={times.circleTime} /></div>
+            <div className="field"><label className="label">مدتها بالدقائق</label><input type="number" name="circleMinutes" className="input" dir="ltr" min={15} max={480} defaultValue={times.circleMinutes} /></div>
+          </div>
+          <SubmitButton secondary>حفظ المواعيد</SubmitButton>
+        </form>
+      </Card>
       <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
         {weeks.map((x) => (
           <Link key={x.number} href={`/admin/schedule?week=${x.number}`} className={cn("badge shrink-0", x.number === selected && "badge-ink", x.number === cur && x.number !== selected && "border-ink")}>

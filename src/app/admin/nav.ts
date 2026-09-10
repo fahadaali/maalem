@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen, Library, CalendarDays, Gauge, NotebookPen, UserPlus, Wallet, FileBarChart, BadgeCheck, MessageSquareHeart, Archive, Layers } from "lucide-react";
+import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen, Library, CalendarDays, Gauge, NotebookPen, UserPlus, Wallet, FileBarChart, BadgeCheck, MessageSquareHeart, Archive, Layers, TrendingUp, AlarmClock } from "lucide-react";
 import type { NavItem } from "@/components/shell/AppShell";
 
 export const ADMIN_NAV: NavItem[] = [
@@ -11,6 +11,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/field", label: "اعتماد المعايشة", icon: Footprints },
   { href: "/admin/projects", label: "مشاريع التخرج", icon: GraduationCap },
   { href: "/admin/grades", label: "كشف الدرجات", icon: Award },
+  { href: "/admin/trends", label: "الاتجاهات", icon: TrendingUp },
   { href: "/admin/diagnostic", label: "التقييم التشخيصي", icon: Gauge },
   { href: "/admin/schedule", label: "جدول البرنامج", icon: CalendarDays },
   { href: "/admin/materials", label: "مكتبة المواد", icon: Library },
@@ -23,6 +24,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/archive", label: "الأرشفة والتصدير", icon: Archive },
   { href: "/admin/phases", label: "مراحل المشروع", icon: ListTodo },
   { href: "/admin/notifications", label: "الإشعارات", icon: Bell, tab: true },
+  { href: "/admin/reminders", label: "التذكيرات المجدولة", icon: AlarmClock },
   { href: "/program", label: "وثيقة البرنامج", icon: BookOpen },
   { href: "/admin/cohorts", label: "الدفعات", icon: Layers },
   { href: "/admin/settings", label: "الإعدادات", icon: Settings },

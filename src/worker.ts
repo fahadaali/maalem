@@ -16,14 +16,18 @@ async function cronSecret(env: CloudflareEnv): Promise<string> {
 
 export default {
   fetch: nextApp.fetch,
-  async scheduled(_event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
     const base = env.APP_URL || "https://maalem.local";
+    // الجدول اليومي يشغّل تذكيرات البرنامج الثابتة، والجدول الساعي يرسل التذكيرات المخصصة في مواعيدها
+    const paths = event.cron === "0 4 * * *" ? ["/api/cron/reminders", "/api/cron/dispatch"] : ["/api/cron/dispatch"];
     ctx.waitUntil(
       (async () => {
         const key = await cronSecret(env);
         if (!key) return; // المنصة لم تُعدّ بعد
-        const req = new Request(`${base}/api/cron/reminders?key=${encodeURIComponent(key)}`);
-        await nextApp.fetch(req, env, ctx);
+        for (const path of paths) {
+          const req = new Request(`${base}${path}?key=${encodeURIComponent(key)}`);
+          await nextApp.fetch(req, env, ctx);
+        }
       })(),
     );
   },

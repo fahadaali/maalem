@@ -23,6 +23,8 @@ model User {
   charterName          String?
   surveyDoneAt         DateTime?
   portfolioSubmittedAt DateTime?
+  emailOptIn           Boolean   @default(true)
+  calendarToken        String?   @unique
   mentorId             String?
   mentor               User?     @relation("Mentorship", fields: [mentorId], references: [id])
   mentees              User[]    @relation("Mentorship")
@@ -69,6 +71,7 @@ model Cohort {
   minutes     SessionMinutes[]
   reports     ProgramReport[]
   survey      SurveyResponse[]
+  reminders   Reminder[]
 }
 
 /// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
@@ -541,4 +544,22 @@ model Attachment {
   createdAt   DateTime @default(now())
 
   @@index([userId, kind, refId])
+}
+
+/// تذكير مخصص يجدوله مدير المشروع فيُرسل في موعده
+model Reminder {
+  id        String    @id @default(cuid())
+  cohortId  String?
+  cohort    Cohort?   @relation(fields: [cohortId], references: [id])
+  title     String
+  body      String
+  url       String?
+  sendAt    DateTime
+  audience  String    @default("PARTICIPANTS") // ALL | PARTICIPANTS | MENTORS | ADMINS | ONE
+  userId    String?
+  sentAt    DateTime?
+  channels  String    @default("PUSH") // PUSH | PUSH_EMAIL
+  createdAt DateTime  @default(now())
+
+  @@index([sentAt, sendAt])
 }

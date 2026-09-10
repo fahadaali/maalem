@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { saveAttendance } from "../actions";
+import { saveAttendance, copyAttendanceFromWeek } from "../actions";
+import AttendanceQuickFill from "@/components/AttendanceQuickFill";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 
 import { ATTENDANCE_LABELS, cn } from "@/lib/utils";
@@ -40,7 +41,23 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       </div>
       <Card title={`الأسبوع ${info.label} · ${info.hijri}`}>
         <div className="text-xs text-muted mb-3">اللقاء: {info.session}</div>
-        <form action={saveAttendance}>
+        {week > 0 && (
+          <form action={copyAttendanceFromWeek} className="flex flex-wrap items-end gap-2 mb-3 pb-3 border-b border-line">
+            <input type="hidden" name="week" value={week} />
+            <div>
+              <label className="label">نسخ الحضور من أسبوع سابق</label>
+              <select name="from" className="select" defaultValue={String(week - 1)}>
+                {weeks.filter((w) => w.number < week && w.number >= 0).map((w) => (
+                  <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>
+                ))}
+              </select>
+            </div>
+            <SubmitButton secondary pendingText="جارٍ النسخ…">نسخ</SubmitButton>
+            <span className="text-xs text-muted">ينسخ ما لم يُرصد في هذا الأسبوع فقط، ولا يمسّ ما رصدته.</span>
+          </form>
+        )}
+        <AttendanceQuickFill />
+        <form action={saveAttendance} data-attendance>
           <input type="hidden" name="week" value={week} />
           <div className="table-wrap">
             <table className="table">

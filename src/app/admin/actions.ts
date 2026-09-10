@@ -14,6 +14,8 @@ import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from 
 import { deleteObject } from "@/lib/storage";
 import { computeGrades } from "@/lib/grades";
 import { levelFor } from "@/lib/grades";
+import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
+import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -693,4 +695,174 @@ export async function saveMentorEvaluation(formData: FormData) {
   await notifyUsers([userId], { title: "تقييم المشرف المرافق", body: `سُجّل تقييم ${period} لمعايشتك الميدانية`, url: "/app/field" });
   revalidatePath(back);
   ok(back, `تم حفظ تقييم ${participant.name}`);
+}
+
+// ——— التذكيرات المخصصة ———
+const AUDIENCES = new Set(["ALL", "PARTICIPANTS", "MENTORS", "ADMINS", "ONE"]);
+
+export async function saveReminder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const title = str(formData.get("title"));
+  const body = str(formData.get("body"));
+  const url = str(formData.get("url"));
+  const audience = str(formData.get("audience")) || "PARTICIPANTS";
+  const userId = str(formData.get("userId")) || null;
+  const date = str(formData.get("date"));
+  const time = str(formData.get("time")) || "07:00";
+  const channels = str(formData.get("channels")) === "PUSH_EMAIL" ? "PUSH_EMAIL" : "PUSH";
+  if (!title || !body) fail("/admin/reminders", "اكتب عنوان التذكير ونصه");
+  if (!AUDIENCES.has(audience)) fail("/admin/reminders", "فئة غير صحيحة");
+  if (audience === "ONE" && !userId) fail("/admin/reminders", "اختر المشارك المقصود");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) fail("/admin/reminders", "اختر تاريخ الإرسال ووقته");
+  const sendAt = new Date(`${date}T${time}:00+03:00`);
+  if (Number.isNaN(sendAt.getTime())) fail("/admin/reminders", "موعد غير صحيح");
+  const data = {
+    title, body, url: url || null, audience,
+    userId: audience === "ONE" ? userId : null,
+    sendAt, channels,
+  };
+  if (id) {
+    const row = await db.reminder.findUnique({ where: { id } });
+    if (!row) fail("/admin/reminders", "التذكير غير موجود");
+    if (row.sentAt) fail("/admin/reminders", "أُرسل هذا التذكير، ولا يُعدَّل بعد إرساله");
+    await db.reminder.update({ where: { id }, data });
+  } else {
+    await db.reminder.create({ data: { ...data, cohortId: await activeCohortId() } });
+  }
+  revalidatePath("/admin/reminders");
+  ok("/admin/reminders", id ? "حُدّث التذكير" : "جُدول التذكير");
+}
+
+export async function deleteReminder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  await db.reminder.delete({ where: { id } }).catch(() => {});
+  revalidatePath("/admin/reminders");
+  ok("/admin/reminders", "حُذف التذكير");
+}
+
+export async function sendReminderNow(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const r = await db.reminder.findUnique({ where: { id } });
+  if (!r) fail("/admin/reminders", "التذكير غير موجود");
+  if (r.sentAt) fail("/admin/reminders", "أُرسل من قبل");
+  const scope = r.cohortId ? { cohortId: r.cohortId } : {};
+  let ids: string[] = [];
+  if (r.audience === "ONE" && r.userId) ids = [r.userId];
+  else if (r.audience === "ADMINS") ids = (await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } })).map((u) => u.id);
+  else if (r.audience === "MENTORS") ids = (await db.user.findMany({ where: { role: "MENTOR", active: true, ...scope }, select: { id: true } })).map((u) => u.id);
+  else if (r.audience === "ALL") {
+    const rows = await db.user.findMany({ where: { active: true, OR: [scope, { role: "ADMIN" }] }, select: { id: true } });
+    ids = rows.map((u) => u.id);
+  } else ids = (await db.user.findMany({ where: { role: "PARTICIPANT", active: true, ...scope }, select: { id: true } })).map((u) => u.id);
+
+  const res = await notifyUsers(ids, { title: r.title, body: r.body, url: r.url ?? undefined }, { email: r.channels === "PUSH_EMAIL" ? "always" : "fallback" });
+  await db.reminder.update({ where: { id }, data: { sentAt: new Date() } });
+  revalidatePath("/admin/reminders");
+  ok("/admin/reminders", `أُرسل إلى ${res.inApp} مستخدماً (دفع: ${res.pushed}، بريد: ${res.emailed})`);
+}
+
+// ——— قناة البريد ———
+export async function saveEmailSettings(formData: FormData) {
+  await admin();
+  const provider = str(formData.get("provider"));
+  const apiKey = str(formData.get("apiKey"));
+  const from = str(formData.get("from"));
+  const fromName = str(formData.get("fromName"));
+  if (from && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(from)) fail("/admin/settings", "عنوان المُرسل غير صحيح");
+  await saveEmailConfig({ provider, apiKey, from, fromName });
+  revalidatePath("/admin/settings");
+  ok("/admin/settings", "حُفظت إعدادات البريد");
+}
+
+export async function disableEmail() {
+  await admin();
+  await clearEmailConfig();
+  revalidatePath("/admin/settings");
+  ok("/admin/settings", "أُوقفت قناة البريد");
+}
+
+export async function sendTestEmail(formData: FormData) {
+  const me = await admin();
+  const to = str(formData.get("to"));
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) fail("/admin/settings", "أدخل بريداً صحيحاً للتجربة");
+  const sent = await sendEmail([to], "رسالة تجريبية من معالم التربية", `وصلتك هذه الرسالة من ${me.name} للتأكد من عمل قناة البريد.`);
+  if (!sent) fail("/admin/settings", "تعذّر الإرسال — تحقق من المفتاح وعنوان المُرسل");
+  ok("/admin/settings", `أُرسلت رسالة تجريبية إلى ${to}`);
+}
+
+// ——— مواعيد اللقاءات في التقويم ———
+export async function saveScheduleTimes(formData: FormData) {
+  await admin();
+  const pairs: [string, string][] = [
+    [SCHEDULE_KEYS.sessionTime, str(formData.get("sessionTime")) || SCHEDULE_DEFAULTS.sessionTime],
+    [SCHEDULE_KEYS.sessionMinutes, String(num(formData.get("sessionMinutes"), SCHEDULE_DEFAULTS.sessionMinutes))],
+    [SCHEDULE_KEYS.circleTime, str(formData.get("circleTime")) || SCHEDULE_DEFAULTS.circleTime],
+    [SCHEDULE_KEYS.circleMinutes, String(num(formData.get("circleMinutes"), SCHEDULE_DEFAULTS.circleMinutes))],
+  ];
+  for (const [k, v] of pairs) {
+    if (k.endsWith("Time") && !/^\d{2}:\d{2}$/.test(v)) fail("/admin/schedule", "صيغة الوقت يجب أن تكون HH:MM");
+    await db.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } });
+  }
+  revalidatePath("/admin/schedule");
+  ok("/admin/schedule", "حُفظت مواعيد اللقاءات، وستظهر في تقويمات المشاركين");
+}
+
+// ——— الإدخال الجماعي ———
+
+/** نسخ حضور أسبوع سابق إلى الأسبوع الحالي، دون المساس بما رُصد فيه */
+export async function copyAttendanceFromWeek(formData: FormData) {
+  await admin();
+  const week = num(formData.get("week"), -1);
+  const from = num(formData.get("from"), -1);
+  const path = `/admin/attendance?week=${week}`;
+  if (week < 0 || week > 14 || from < 0 || from > 14) fail("/admin/attendance", "أسبوع غير صحيح");
+  if (week === from) fail(path, "اختر أسبوعاً مختلفاً للنسخ منه");
+  const ids = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
+  if (!ids.length) fail(path, "لا مشاركين في الدفعة");
+  const source = await db.attendance.findMany({ where: { week: from, userId: { in: ids } } });
+  if (!source.length) fail(path, `لا حضور مرصود في الأسبوع ${from}`);
+  const existing = await db.attendance.findMany({ where: { week, userId: { in: ids } }, select: { userId: true, type: true } });
+  const taken = new Set(existing.map((e) => `${e.userId}:${e.type}`));
+  const rows = source.filter((s) => !taken.has(`${s.userId}:${s.type}`));
+  if (!rows.length) fail(path, "كل السجلات مرصودة في هذا الأسبوع، ولم يُنسخ شيء");
+  await db.attendance.createMany({
+    data: rows.map((s) => ({ userId: s.userId, week, type: s.type, status: s.status, participation: s.participation, circleScore: s.circleScore })),
+  });
+  revalidatePath("/admin/attendance");
+  ok(path, `نُسخ ${rows.length} سجلاً من الأسبوع ${from} — راجعها قبل الاعتماد`);
+}
+
+/** استيراد المشاركين من جدول ملصوق: الاسم، اسم المستخدم، كلمة المرور، الجوال، البريد */
+export async function importParticipants(formData: FormData) {
+  await admin();
+  const raw = str(formData.get("rows"));
+  const role = str(formData.get("role")) === "MENTOR" ? "MENTOR" : "PARTICIPANT";
+  if (!raw.trim()) fail("/admin/participants", "الصق الصفوف أولاً");
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 100) fail("/admin/participants", "الحد الأقصى 100 صف في المرة الواحدة");
+  const cohortId = await activeCohortId();
+  const added: string[] = [];
+  const skipped: string[] = [];
+  for (const line of lines) {
+    const cells = line.split(/\t|,|\s*\|\s*|؛|;/).map((c) => c.trim());
+    const [name, username, password, phone, email] = cells;
+    if (!name || !username) { skipped.push(line.slice(0, 24)); continue; }
+    const user = username.toLowerCase();
+    if (!/^[a-z0-9_.-]{3,30}$/.test(user)) { skipped.push(name); continue; }
+    if (password && password.length < 6) { skipped.push(name); continue; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { skipped.push(name); continue; }
+    if (await db.user.findUnique({ where: { username: user } })) { skipped.push(name); continue; }
+    const pass = password || Math.random().toString(36).slice(2, 10);
+    await db.user.create({
+      data: { cohortId, name, username: user, role, phone: phone || null, email: email || null, passwordHash: await bcrypt.hash(pass, 10) },
+    });
+    added.push(password ? name : `${name} (كلمة المرور: ${pass})`);
+  }
+  revalidatePath("/admin/participants");
+  if (!added.length) fail("/admin/participants", "لم يُضف أحد — تحقق من صيغة الصفوف وأسماء المستخدمين");
+  const msg = `أُضيف ${added.length}: ${added.join(" · ")}` + (skipped.length ? ` — وتُخطي ${skipped.length}: ${skipped.join("، ")}` : "");
+  ok("/admin/participants", msg.slice(0, 600));
 }

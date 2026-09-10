@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { createUser } from "../actions";
+import { createUser, importParticipants } from "../actions";
 import { computeGrades } from "@/lib/grades";
 import { ROLE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
@@ -78,6 +78,27 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
               </select>
             </div>
             <SubmitButton>إضافة</SubmitButton>
+          </form>
+        </Card>
+        <Card title="استيراد دفعة من جدول">
+          <p className="text-sm text-muted mb-3">
+            الصق الصفوف من جدولك — صف لكل مستخدم بهذا الترتيب: الاسم، اسم المستخدم، كلمة المرور، الجوال، البريد.
+            كلمة المرور والجوال والبريد اختيارية، ومن تُرك بلا كلمة مرور تُولَّد له واحدة وتظهر لك بعد الإضافة.
+            الفاصل بين الحقول: مسافة جدولة أو فاصلة أو «|».
+          </p>
+          <form action={importParticipants}>
+            <div className="field">
+              <label className="label">الصفوف</label>
+              <textarea name="rows" className="textarea" rows={5} dir="ltr" required placeholder={"عبدالله محمد\tabdullah\tPass#1234\t0500000000\tab@example.com"} />
+            </div>
+            <div className="field">
+              <label className="label">الدور</label>
+              <select name="role" className="select" defaultValue="PARTICIPANT">
+                <option value="PARTICIPANT">مشارك</option>
+                <option value="MENTOR">مشرف مرافق</option>
+              </select>
+            </div>
+            <SubmitButton secondary pendingText="جارٍ الاستيراد…">استيراد</SubmitButton>
           </form>
         </Card>
         <Card title="المشرفون المرافقون والإداريون">

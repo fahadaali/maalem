@@ -6,6 +6,7 @@ import PushToggle from "@/components/PushToggle";
 import { vapidPublicKey } from "@/lib/notify";
 import InstallButton from "@/components/InstallButton";
 import { changePassword } from "@/app/(auth)/actions";
+import ContactCards from "@/components/ContactCards";
 
 export const metadata = { title: "الإعدادات" };
 
@@ -18,6 +19,7 @@ export default async function MentorSettings({ searchParams }: { searchParams: P
       <FormMessage ok={ok} err={err} />
       <div className="space-y-4">
         <Card title="الإشعارات"><PushToggle publicKey={await vapidPublicKey()} /></Card>
+        <ContactCards userId={me.id} back="/mentor/settings" />
         <Card title="تثبيت التطبيق"><InstallButton /></Card>
         <Card title="تغيير كلمة المرور">
           <form action={changePassword}>
