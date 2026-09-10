@@ -7,6 +7,8 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addFeedbackSession, updateUser } from "../../actions";
 import { computeGrades } from "@/lib/grades";
+import CompetencyCard from "@/components/CompetencyCard";
+import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { CONTINUOUS_ASSESSMENT } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
 import { formatShort, todayKey } from "@/lib/dates";
@@ -38,6 +40,7 @@ export default async function ParticipantDetail({ params, searchParams }: { para
   const mentors = await db.user.findMany({ where: { role: "MENTOR", active: true }, select: { id: true, name: true } });
   const isParticipant = u.role === "PARTICIPANT";
   const g = isParticipant ? await computeGrades(u.id) : null;
+  const comps = isParticipant ? await computeCompetencies(u.id) : null;
   const parts: Record<string, number> = g ? { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership } : {};
 
   return (
@@ -69,6 +72,8 @@ export default async function ParticipantDetail({ params, searchParams }: { para
           </Card>
         </div>
       )}
+
+      {comps && <div className="mb-4"><CompetencyCard rows={comps} overall={overallAttainment(comps)} compact /></div>}
 
       {isParticipant && (
         <div className="grid md:grid-cols-2 gap-4 mb-4">

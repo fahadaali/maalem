@@ -1,4 +1,4 @@
-import { Home, BookOpen, ClipboardList, FileText, ListChecks, Users, Megaphone, GraduationCap, Target, PenLine, Repeat, FolderOpen, Bell, Settings, Menu, CalendarDays, Library, ScrollText, Gauge } from "lucide-react";
+import { Home, BookOpen, ClipboardList, FileText, ListChecks, Users, Megaphone, GraduationCap, Target, PenLine, Repeat, FolderOpen, Bell, Settings, Menu, CalendarDays, Library, ScrollText, Gauge, NotebookPen, Target as TargetIcon } from "lucide-react";
 import type { NavItem } from "@/components/shell/AppShell";
 
 export const PARTICIPANT_NAV: NavItem[] = [
@@ -12,6 +12,8 @@ export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app/project", label: "مشروع التخرج", icon: GraduationCap },
   { href: "/app/plan", label: "خطة التعلم", icon: Target },
   { href: "/app/materials", label: "مكتبة المواد", icon: Library },
+  { href: "/app/minutes", label: "محاضر اللقاءات", icon: NotebookPen },
+  { href: "/app/competencies", label: "بطاقة الكفاءات", icon: TargetIcon },
   { href: "/app/charter", label: "ميثاق المشاركة", icon: ScrollText },
   { href: "/app/diagnostic", label: "التقييم التشخيصي", icon: Gauge },
   { href: "/app/reflection", label: "دفتر التأمل", icon: PenLine },

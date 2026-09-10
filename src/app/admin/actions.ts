@@ -407,3 +407,120 @@ export async function notifyWeekChange(formData: FormData) {
   });
   ok(`/admin/schedule?week=${number}`, "أُرسل إشعار التحديث للمشاركين");
 }
+
+// ——— محاضر اللقاءات وحلقات النقاش ———
+const MINUTES_TYPES = new Set(["INPERSON", "REMOTE", "MONTHLY"]);
+
+export async function saveMinutes(formData: FormData) {
+  await admin();
+  const week = num(formData.get("week"), -99);
+  const type = str(formData.get("type"));
+  const minutes = str(formData.get("minutes"));
+  const back = `/admin/minutes?week=${week}`;
+  if (week === -99 || !MINUTES_TYPES.has(type)) fail("/admin/minutes", "بيانات غير صحيحة");
+  if (!minutes) fail(back, "اكتب نص المحضر");
+  const data = {
+    date: keyToDate(str(formData.get("date")) || new Date().toISOString().slice(0, 10)),
+    title: str(formData.get("title")) || null,
+    guestName: str(formData.get("guestName")) || null,
+    present: str(formData.get("present")) || null,
+    minutes,
+    decisions: str(formData.get("decisions")) || null,
+  };
+  await db.sessionMinutes.upsert({ where: { week_type: { week, type } }, create: { week, type, ...data }, update: data });
+  if (str(formData.get("notify")) === "on") {
+    await notifyRole("PARTICIPANT", { title: `محضر ${type === "REMOTE" ? "حلقة النقاش" : "اللقاء"} — الأسبوع ${week}`, body: minutes.slice(0, 120), url: "/app/minutes" });
+  }
+  revalidatePath("/admin/minutes");
+  ok(back, "تم حفظ المحضر");
+}
+
+export async function deleteMinutes(formData: FormData) {
+  await admin();
+  const week = num(formData.get("week"), -99);
+  const type = str(formData.get("type"));
+  await db.sessionMinutes.deleteMany({ where: { week, type } });
+  revalidatePath("/admin/minutes");
+  ok(`/admin/minutes?week=${week}`, "تم حذف المحضر");
+}
+
+// ——— الخبراء وضيوف اللقاءات ———
+export async function saveGuest(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const name = str(formData.get("name"));
+  const topic = str(formData.get("topic"));
+  if (!name || !topic) fail("/admin/guests", "الاسم والموضوع حقلان إلزاميان");
+  const status = str(formData.get("status")) || "CANDIDATE";
+  if (!["CANDIDATE", "CONFIRMED", "DONE", "DECLINED"].includes(status)) fail("/admin/guests", "حالة غير صحيحة");
+  const data = {
+    name, topic, status,
+    week: str(formData.get("week")) === "" ? null : num(formData.get("week")),
+    contact: str(formData.get("contact")) || null,
+    backup: formData.get("backup") === "on",
+    notes: str(formData.get("notes")) || null,
+  };
+  if (id) await db.guest.update({ where: { id }, data });
+  else await db.guest.create({ data });
+  revalidatePath("/admin/guests");
+  ok("/admin/guests", id ? "تم تحديث بيانات الضيف" : "تمت إضافة الضيف");
+}
+
+export async function deleteGuest(formData: FormData) {
+  await admin();
+  await db.guest.delete({ where: { id: str(formData.get("id")) } });
+  revalidatePath("/admin/guests");
+  ok("/admin/guests", "تم حذف الضيف");
+}
+
+// ——— الميزانية: المقدّر مقابل الفعلي ———
+export async function saveBudgetEntry(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const item = str(formData.get("item"));
+  if (!item) fail("/admin/budget", "اكتب اسم البند");
+  const actualRaw = str(formData.get("actual"));
+  const data = {
+    item,
+    basis: str(formData.get("basis")) || null,
+    planned: num(formData.get("planned"), 0),
+    actual: actualRaw === "" ? null : num(formData.get("actual"), 0),
+    optional: formData.get("optional") === "on",
+    note: str(formData.get("note")) || null,
+    order: num(formData.get("order"), 0),
+    spentAt: actualRaw === "" ? null : new Date(),
+  };
+  if (data.planned < 0 || (data.actual ?? 0) < 0) fail("/admin/budget", "المبالغ لا تكون سالبة");
+  if (id) await db.budgetEntry.update({ where: { id }, data });
+  else await db.budgetEntry.create({ data });
+  revalidatePath("/admin/budget");
+  ok("/admin/budget", id ? "تم تحديث البند" : "تمت إضافة البند");
+}
+
+export async function deleteBudgetEntry(formData: FormData) {
+  await admin();
+  await db.budgetEntry.delete({ where: { id: str(formData.get("id")) } });
+  revalidatePath("/admin/budget");
+  ok("/admin/budget", "تم حذف البند");
+}
+
+// ——— تقارير الجهة: الشهري والختامي ———
+export async function saveProgramReport(formData: FormData) {
+  await admin();
+  const kind = str(formData.get("kind")) === "FINAL" ? "FINAL" : "MONTHLY";
+  const period = str(formData.get("period"));
+  const summary = str(formData.get("summary"));
+  if (!period) fail("/admin/program-reports", "حدد الفترة");
+  if (!summary) fail("/admin/program-reports", "اكتب ملخص التقرير");
+  const data = {
+    summary,
+    highlights: str(formData.get("highlights")) || null,
+    challenges: str(formData.get("challenges")) || null,
+    lessons: str(formData.get("lessons")) || null,
+    recommendations: str(formData.get("recommendations")) || null,
+    snapshot: str(formData.get("snapshot")) || null,
+  };
+  await db.programReport.upsert({ where: { kind_period: { kind, period } }, create: { kind, period, ...data }, update: data });
+  revalidatePath("/admin/program-reports");
+  ok(`/admin/program-reports?kind=${kind}&period=${encodeURIComponent(period)}`, "تم حفظ التقرير");
+}

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
 import { COMPLETION_LEVELS, CONTINUOUS_ASSESSMENT } from "@/lib/program";
+import PrintButton from "@/components/PrintButton";
 
 export const metadata = { title: "كشف الدرجات" };
 
@@ -12,7 +13,7 @@ export default async function GradesPage() {
   const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
   return (
     <>
-      <PageHeader title="كشف الدرجات ومستويات الإتمام" subtitle="تقييم مستمر 70 + مشروع تخرج 30. الدرجات تُحدَّث آلياً." actions={<button className="btn btn-secondary btn-sm no-print" data-print>طباعة</button>} />
+      <PageHeader title="كشف الدرجات ومستويات الإتمام" subtitle="تقييم مستمر 70 + مشروع تخرج 30. الدرجات تُحدَّث آلياً." actions={<PrintButton />} />
       <div className="table-wrap mb-6">
         <table className="table">
           <thead>
@@ -43,7 +44,6 @@ export default async function GradesPage() {
           {COMPLETION_LEVELS.map((l) => <li key={l.level}><span className="font-medium">{l.level}</span> ({l.min === 0 ? "أقل من 60" : `${l.min} فأكثر`}): {l.certificate}</li>)}
         </ul>
       </Card>
-      <script dangerouslySetInnerHTML={{ __html: `document.querySelector('[data-print]')?.addEventListener('click',()=>window.print())` }} />
     </>
   );
 }
