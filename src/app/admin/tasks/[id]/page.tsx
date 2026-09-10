@@ -5,7 +5,8 @@ import { PageHeader, Card, BackLink, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { deleteAssignment, gradeSubmission, updateAssignment } from "../../actions";
-import { ACTIVE_WEEKS, formatDateTime } from "@/lib/dates";
+import { formatDateTime } from "@/lib/dates";
+import { getActiveWeeks } from "@/lib/weeks";
 import { COMPETENCIES, RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
@@ -22,6 +23,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   const { ok, err } = await searchParams;
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { include: { user: true }, orderBy: { submittedAt: "asc" } } } });
   if (!a) notFound();
+  const activeWeeks = await getActiveWeeks();
   const files = await listAttachments({ kind: "SUBMISSION", refId: a.id });
   const participants = await db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } });
   const attRows = await db.attachment.findMany({ where: { kind: "SUBMISSION", refId: a.id } });
@@ -91,7 +93,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
             <div className="field">
               <label className="label">الأسبوع</label>
               <select name="week" className="select" defaultValue={a.week}>
-                {ACTIVE_WEEKS.map((w) => <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>)}
+                {activeWeeks.map((w) => <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>)}
               </select>
             </div>
             <div className="field"><label className="label">موعد التسليم</label><input type="datetime-local" name="dueAt" className="input" required defaultValue={toLocalInput(a.dueAt)} /></div>

@@ -5,7 +5,8 @@ import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveWeeklyReport } from "../../actions";
-import { formatDateTime, getWeek, reportDueDate } from "@/lib/dates";
+import { formatDateTime, reportDueDate } from "@/lib/dates";
+import { getWeekByNumber } from "@/lib/weeks";
 
 export const metadata = { title: "التقرير الأسبوعي" };
 
@@ -14,7 +15,7 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   const { week: w } = await params;
   const { ok, err } = await searchParams;
   const week = Number(w);
-  const info = getWeek(week);
+  const info = await getWeekByNumber(week);
   if (!info || week > 12) notFound();
   const [report, quizzes, cards] = await Promise.all([
     db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } } }),

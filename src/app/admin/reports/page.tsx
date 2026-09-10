@@ -5,7 +5,8 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { reviewReport } from "../actions";
-import { ACTIVE_WEEKS, currentWeekNumber, formatDateTime, reportDueDate } from "@/lib/dates";
+import { formatDateTime, reportDueDate } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "التقارير الأسبوعية" };
@@ -14,7 +15,8 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   await requireRole("ADMIN");
   const sp = await searchParams;
   const parsed = Number(sp.week);
-  const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(12, currentWeekNumber()));
+  const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(12, await currentWeekNumber()));
+  const activeWeeks = await getActiveWeeks();
   const [participants, reports] = await Promise.all([
     db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } }),
     db.weeklyReport.findMany({ where: { week }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
@@ -30,7 +32,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
       <PageHeader title="مراجعة التقارير الأسبوعية" subtitle={`الأسبوع ${week} · موعد التسليم ${formatDateTime(due)}`} />
       <FormMessage ok={sp.ok} err={sp.err} />
       <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {ACTIVE_WEEKS.map((w) => (
+        {activeWeeks.map((w) => (
           <Link key={w.number} href={`/admin/reports?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number}</Link>
         ))}
       </div>

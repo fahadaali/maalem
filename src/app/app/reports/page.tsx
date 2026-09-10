@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Badge } from "@/components/ui";
-import { ACTIVE_WEEKS, currentWeekNumber, formatShort, reportDueDate } from "@/lib/dates";
+import { formatShort, reportDueDate } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 
 export const metadata = { title: "التقارير الأسبوعية" };
 
@@ -10,13 +11,14 @@ export default async function ReportsPage() {
   const user = await requireParticipantView();
   const reports = await db.weeklyReport.findMany({ where: { userId: user.id } });
   const byWeek = new Map(reports.map((r) => [r.week, r]));
-  const cur = currentWeekNumber();
+  const cur = await currentWeekNumber();
+  const activeWeeks = await getActiveWeeks();
 
   return (
     <>
       <PageHeader title="التقارير الأسبوعية" subtitle="تقرير رقمي بقالب موحد يُسلَّم كل خميس قبل الساعة العاشرة مساءً (ملحق 1)." />
       <div className="space-y-2">
-        {ACTIVE_WEEKS.map((w) => {
+        {activeWeeks.map((w) => {
           const r = byWeek.get(w.number);
           const future = w.number > cur;
           return (

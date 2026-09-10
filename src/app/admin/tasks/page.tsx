@@ -5,7 +5,8 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createAssignment } from "../actions";
-import { ACTIVE_WEEKS, currentWeekNumber, formatShort, reportDueDate } from "@/lib/dates";
+import { formatShort, reportDueDate } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { COMPETENCIES } from "@/lib/program";
 
 export const metadata = { title: "المهام والتقييم" };
@@ -21,7 +22,8 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
     db.assignment.findMany({ orderBy: [{ week: "asc" }, { dueAt: "asc" }], include: { submissions: { select: { gradedAt: true } } } }),
     db.user.count({ where: { role: "PARTICIPANT", active: true } }),
   ]);
-  const nextWeek = Math.max(0, Math.min(12, currentWeekNumber() + 1));
+  const nextWeek = Math.max(0, Math.min(12, (await currentWeekNumber()) + 1));
+  const activeWeeks = await getActiveWeeks();
 
   return (
     <>
@@ -56,7 +58,7 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
               <div className="field">
                 <label className="label">الأسبوع</label>
                 <select name="week" className="select" defaultValue={nextWeek}>
-                  {ACTIVE_WEEKS.map((w) => <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>)}
+                  {activeWeeks.map((w) => <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>)}
                 </select>
               </div>
               <div className="field"><label className="label">موعد التسليم</label><input type="datetime-local" name="dueAt" className="input" required defaultValue={toLocalInput(reportDueDate(nextWeek))} /></div>

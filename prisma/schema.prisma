@@ -9,18 +9,21 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  name         String
-  phone        String?
-  email        String?
-  passwordHash String
-  role         String   @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
-  active       Boolean  @default(true)
-  mentorId     String?
-  mentor       User?    @relation("Mentorship", fields: [mentorId], references: [id])
-  mentees      User[]   @relation("Mentorship")
-  createdAt    DateTime @default(now())
+  id                String    @id @default(cuid())
+  username          String    @unique
+  name              String
+  phone             String?
+  email             String?
+  passwordHash      String
+  role              String    @default("PARTICIPANT") // ADMIN | PARTICIPANT | MENTOR
+  active            Boolean   @default(true)
+  charterAcceptedAt DateTime?
+  charterName       String?
+  surveyDoneAt      DateTime?
+  mentorId          String?
+  mentor            User?     @relation("Mentorship", fields: [mentorId], references: [id])
+  mentees           User[]    @relation("Mentorship")
+  createdAt         DateTime  @default(now())
 
   pushSubscriptions PushSubscription[]
   notifications     Notification[]
@@ -38,6 +41,135 @@ model User {
   habits            Habit[]
   tadabbur          TadabburStop[]
   feedbackSessions  FeedbackSession[]
+  diagnostics       Diagnostic[]
+  certificate       Certificate?
+}
+
+/// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
+model ProgramWeek {
+  id           String   @id @default(cuid())
+  number       Int      @unique
+  label        String
+  hijri        String
+  gregorian    String // YYYY-MM-DD (السبت)
+  competency   String
+  session      String
+  circle       String
+  reading      String
+  task         String
+  meetingPlace String?
+  remoteUrl    String?
+  note         String?
+  updatedAt    DateTime @updatedAt
+}
+
+/// التقييم التشخيصي: قياس ذاتي للكفاءات الثماني قبل البرنامج وبعده
+model Diagnostic {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage     String // PRE | POST
+  scores    String // JSON: { "<slug>": 1..5 }
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, stage])
+}
+
+/// مكتبة المواد: الكتب والقوالب والأدلة
+model Material {
+  id          String   @id @default(cuid())
+  title       String
+  kind        String // BOOK | TEMPLATE | GUIDE | LINK
+  author      String?
+  description String?
+  url         String?
+  competency  String?
+  week        Int?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+/// محضر لقاء حضوري أو حلقة نقاش
+model SessionMinutes {
+  id        String   @id @default(cuid())
+  week      Int
+  type      String // INPERSON | REMOTE | MONTHLY
+  date      DateTime
+  title     String?
+  guestName String?
+  present   String? // أسماء الحاضرين كما رصدها المدير
+  minutes   String
+  decisions String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([week, type])
+}
+
+/// الخبراء وضيوف اللقاءات الشهرية، ومعهم قائمة البدائل
+model Guest {
+  id      String  @id @default(cuid())
+  name    String
+  topic   String
+  week    Int?
+  contact String?
+  status  String  @default("CANDIDATE") // CANDIDATE | CONFIRMED | DONE | DECLINED
+  backup  Boolean @default(false)
+  notes   String?
+
+  createdAt DateTime @default(now())
+}
+
+/// بنود الميزانية: المقدّر من الخطة مقابل المصروف الفعلي
+model BudgetEntry {
+  id       String    @id @default(cuid())
+  item     String
+  basis    String?
+  planned  Float     @default(0)
+  actual   Float?
+  optional Boolean   @default(false)
+  note     String?
+  order    Int       @default(0)
+  spentAt  DateTime?
+}
+
+/// استبانة رضا المشاركين — مجهولة: لا تُربط الإجابات بصاحبها
+model SurveyResponse {
+  id        String   @id @default(cuid())
+  answers   String // JSON: { "<key>": 1..5 }
+  liked     String?
+  improve   String?
+  createdAt DateTime @default(now())
+}
+
+/// التقرير الشهري للجهة والتقرير الختامي
+model ProgramReport {
+  id              String   @id @default(cuid())
+  kind            String // MONTHLY | FINAL
+  period          String // مثال: "الشهر الأول" أو "ختامي"
+  summary         String
+  highlights      String?
+  challenges      String?
+  lessons         String?
+  recommendations String?
+  snapshot        String? // JSON بأرقام المنصة وقت الإعداد
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([kind, period])
+}
+
+/// وثيقة الإتمام
+model Certificate {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serial   String   @unique
+  level    String
+  total    Float
+  note     String?
+  issuedAt DateTime @default(now())
 }
 
 model PushSubscription {
@@ -65,9 +197,9 @@ model Notification {
 }
 
 model Attendance {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   week   Int
   type   String // INPERSON | REMOTE
   status String // PRESENT | LATE | EXCUSED | ABSENT
@@ -221,13 +353,13 @@ model PeerEvaluation {
 }
 
 model GraduationProject {
-  id           String    @id @default(cuid())
-  userId       String    @unique
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   topic        String
   problem      String?
   mentorName   String?
-  status       String    @default("PROPOSED") // PROPOSED | APPROVED | DRAFT | FINAL | JUDGED
+  status       String   @default("PROPOSED") // PROPOSED | APPROVED | DRAFT | FINAL | JUDGED
   draftLink    String?
   finalLink    String?
   adminNote    String?
@@ -238,8 +370,8 @@ model GraduationProject {
   integration  Int?
   presentation Int?
   judgeNote    String?
-  updatedAt    DateTime  @updatedAt
-  createdAt    DateTime  @default(now())
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
 }
 
 model LearningPlan {
@@ -253,11 +385,11 @@ model LearningPlan {
 }
 
 model Reflection {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date      DateTime @default(now())
-  text      String
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date   DateTime @default(now())
+  text   String
 }
 
 model Habit {
@@ -270,9 +402,9 @@ model Habit {
 }
 
 model HabitLog {
-  id      String   @id @default(cuid())
+  id      String @id @default(cuid())
   habitId String
-  habit   Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  habit   Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
   date    String // YYYY-MM-DD
 
   @@unique([habitId, date])
@@ -289,11 +421,11 @@ model TadabburStop {
 }
 
 model FeedbackSession {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date      DateTime @default(now())
-  notes     String
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date   DateTime @default(now())
+  notes  String
 }
 
 model ChecklistItem {

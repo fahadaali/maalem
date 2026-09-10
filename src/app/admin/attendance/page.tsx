@@ -5,8 +5,8 @@ import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveAttendance } from "../actions";
-import { WEEKS } from "@/lib/program";
-import { currentWeekNumber } from "@/lib/dates";
+import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
+
 import { ATTENDANCE_LABELS, cn } from "@/lib/utils";
 
 export const metadata = { title: "الحضور" };
@@ -14,9 +14,10 @@ export const metadata = { title: "الحضور" };
 export default async function AttendancePage({ searchParams }: { searchParams: Promise<{ week?: string; ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
   const sp = await searchParams;
+  const weeks = await getWeeks();
   const parsed = Number(sp.week);
-  const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(13, currentWeekNumber()));
-  const info = WEEKS.find((w) => w.number === week) ?? WEEKS[0];
+  const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(13, resolveCurrentWeek(weeks)));
+  const info = weeks.find((w) => w.number === week) ?? weeks[0];
   const [participants, rows] = await Promise.all([
     db.user.findMany({ where: { role: "PARTICIPANT", active: true }, orderBy: { name: "asc" } }),
     db.attendance.findMany({ where: { week } }),
@@ -29,7 +30,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <PageHeader title="سجل الحضور" subtitle="اللقاء الحضوري (السبت) وحلقة النقاش عن بُعد (الثلاثاء). الحد الأدنى: 85% حضوري و80% عن بُعد." />
       <FormMessage ok={sp.ok} err={sp.err} />
       <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {WEEKS.filter((w) => w.number <= 13).map((w) => (
+        {weeks.filter((w) => w.number <= 13).map((w) => (
           <Link key={w.number} href={`/admin/attendance?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number === 13 ? "الختامي" : w.number}</Link>
         ))}
       </div>

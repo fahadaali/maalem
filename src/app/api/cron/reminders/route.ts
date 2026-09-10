@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { notifyUsers } from "@/lib/notify";
-import { currentWeekNumber, getWeek, todayKey, weekdayIndex } from "@/lib/dates";
+import { todayKey, weekdayIndex } from "@/lib/dates";
+import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { getCronSecret } from "@/lib/secrets";
 
 /**
@@ -19,8 +20,8 @@ export async function GET(req: Request) {
   const now = new Date();
   const today = todayKey(now);
   const wd = weekdayIndex(now);
-  const weekNo = currentWeekNumber(now);
-  const week = getWeek(weekNo);
+  const weekNo = await currentWeekNumber(now);
+  const week = await getWeekByNumber(weekNo);
   const sent: string[] = [];
 
   const once = async (kind: string, fn: () => Promise<void>) => {

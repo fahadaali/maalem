@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import NotificationsList from "@/components/NotificationsList";
 import { markAdminRead, sendNotification } from "../actions";
-import { currentWeek } from "@/lib/dates";
+import { currentWeek } from "@/lib/weeks";
 import { pushEnabled } from "@/lib/notify";
 
 export const metadata = { title: "الإشعارات" };
@@ -18,7 +18,7 @@ export default async function AdminNotificationsPage({ searchParams }: { searchP
     db.notification.findMany({ where: { userId: me.id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.pushSubscription.count(),
   ]);
-  const week = currentWeek();
+  const week = await currentWeek();
   const templates = week
     ? [
         { title: "تذكير الورد والمهمة الأسبوعية", body: `الورد: ${week.reading}. المهمة: ${week.task}.`, url: "/app/reading" },

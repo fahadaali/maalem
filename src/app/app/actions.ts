@@ -7,6 +7,7 @@ import { isPreview, requireRole, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { num, str } from "@/lib/utils";
+import { COMPETENCIES, CHARTER } from "@/lib/program";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -288,4 +289,36 @@ export async function markAllRead(formData: FormData) {
   const back = str(formData.get("back")) || "/app/notifications";
   revalidatePath(back);
   redirect(back);
+}
+
+// ——— ميثاق المشاركة ———
+export async function acceptCharter(formData: FormData) {
+  const user = await participant();
+  const name = str(formData.get("name"));
+  const agreed = CHARTER.every((_, i) => formData.get(`item_${i}`) === "on");
+  if (!agreed) fail("/app/charter", "أقرّ ببنود الميثاق كلها قبل التوقيع");
+  if (name.length < 4) fail("/app/charter", "اكتب اسمك الثلاثي كما هو في السجل");
+  await db.user.update({ where: { id: user.id }, data: { charterAcceptedAt: new Date(), charterName: name } });
+  await notifyAdmins({ title: "توقيع ميثاق المشاركة", body: `${user.name} وقّع ميثاق المشاركة`, url: "/admin/participants" });
+  revalidatePath("/app");
+  ok("/app/charter", "تم توقيع الميثاق. وفقك الله");
+}
+
+// ——— التقييم التشخيصي ———
+export async function saveDiagnostic(formData: FormData) {
+  const user = await participant();
+  const stage = str(formData.get("stage")) === "POST" ? "POST" : "PRE";
+  const scores: Record<string, number> = {};
+  for (const c of COMPETENCIES) {
+    const v = num(formData.get(c.slug), 0);
+    if (v < 1 || v > 5) fail("/app/diagnostic", "قيّم كل كفاءة من 1 إلى 5");
+    scores[c.slug] = v;
+  }
+  const notes = str(formData.get("notes"));
+  const existing = await db.diagnostic.findUnique({ where: { userId_stage: { userId: user.id, stage } } });
+  if (existing) fail("/app/diagnostic", "سبق أن عبّأت هذا التقييم");
+  await db.diagnostic.create({ data: { userId: user.id, stage, scores: JSON.stringify(scores), notes: notes || null } });
+  await notifyAdmins({ title: stage === "PRE" ? "تقييم تشخيصي قبلي" : "تقييم تشخيصي بعدي", body: `${user.name} عبّأ التقييم`, url: "/admin/diagnostic" });
+  revalidatePath("/app");
+  ok("/app/diagnostic", "تم حفظ التقييم التشخيصي");
 }

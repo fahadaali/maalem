@@ -4,7 +4,7 @@ import { PageHeader, Card, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addTadabbur, deleteTadabbur, saveLearningPlan } from "../actions";
-import { ACTIVE_WEEKS, currentWeekNumber } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
 
 export const metadata = { title: "خطة التعلم الشخصية" };
@@ -16,7 +16,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     db.learningPlan.findUnique({ where: { userId: user.id } }),
     db.tadabburStop.findMany({ where: { userId: user.id }, orderBy: { week: "asc" } }),
   ]);
-  const cur = Math.max(0, Math.min(12, currentWeekNumber()));
+  const cur = Math.max(0, Math.min(12, await currentWeekNumber()));
+  const activeWeeks = await getActiveWeeks();
 
   return (
     <>
@@ -48,7 +49,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             <div className="field">
               <label className="label">الأسبوع</label>
               <select name="week" className="select" defaultValue={cur}>
-                {ACTIVE_WEEKS.map((w) => <option key={w.number} value={w.number}>الأسبوع {w.label}</option>)}
+                {activeWeeks.map((w) => <option key={w.number} value={w.number}>الأسبوع {w.label}</option>)}
               </select>
             </div>
             <div className="field">

@@ -5,6 +5,7 @@ import { cache } from "react";
 import { db } from "./db";
 import { getAuthSecret } from "./secrets";
 import { homeFor, PREVIEW_COOKIE, type Role } from "./roles";
+import { ensureSchema } from "./setup";
 
 export { homeFor };
 export type { Role };
@@ -55,6 +56,7 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
 
 /** المستخدم الحالي من الجلسة (بعد التحقق من وجوده وفعاليته في قاعدة البيانات). */
 export const getSession = cache(async (): Promise<SessionUser | null> => {
+  await ensureSchema();
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;

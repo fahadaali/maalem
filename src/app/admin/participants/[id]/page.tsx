@@ -56,6 +56,7 @@ export default async function ParticipantDetail({ params, searchParams }: { para
           </Card>
           <Card title="ملف الإنجاز">
             <ul className="text-sm divide-y divide-line">
+              <li className="py-1.5 flex justify-between"><span>ميثاق المشاركة</span><span className="text-muted">{u.charterAcceptedAt ? `موقّع باسم ${u.charterName}` : "غير موقّع"}</span></li>
               <li className="py-1.5 flex justify-between"><span>خطة التعلم الشخصية</span><span className="text-muted">{u.learningPlan ? "مسلّمة" : "لم تُسلَّم"}</span></li>
               <li className="py-1.5 flex justify-between"><span>بطاقات القراءة</span><span className="text-muted">{u._count.readingCards}</span></li>
               <li className="py-1.5 flex justify-between"><span>التقارير الأسبوعية</span><span className="text-muted">{u.weeklyReports.length}</span></li>

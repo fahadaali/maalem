@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Stat, Badge } from "@/components/ui";
-import { currentWeekNumber, dayName, formatHijri, formatGregorian, getWeek, weekdayIndex, reportDueDate, formatDateTime } from "@/lib/dates";
+import { dayName, formatHijri, formatGregorian, weekdayIndex, reportDueDate, formatDateTime } from "@/lib/dates";
+import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
 import FormMessage from "@/components/FormMessage";
 
@@ -12,8 +13,8 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   await requireRole("ADMIN");
   const { ok } = await searchParams;
   const now = new Date();
-  const weekNo = currentWeekNumber(now);
-  const week = getWeek(weekNo);
+  const weekNo = await currentWeekNumber(now);
+  const week = await getWeekByNumber(weekNo);
   const wd = weekdayIndex(now);
   const routine = MANAGER_ROUTINE.filter((r) => r.weekday === wd);
 
@@ -26,6 +27,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
     db.quiz.count({ where: { published: false } }),
     db.checklistItem.findMany({ where: { done: true } }),
     db.notification.findMany({ where: { user: { role: "ADMIN" } }, orderBy: { createdAt: "desc" }, take: 5, distinct: ["title", "body"] }),
+  ]);
+  const [unsignedCharter, missingDiagnostic, materialsCount] = await Promise.all([
+    db.user.count({ where: { role: "PARTICIPANT", active: true, charterAcceptedAt: null } }),
+    db.user.count({ where: { role: "PARTICIPANT", active: true, diagnostics: { none: { stage: "PRE" } } } }),
+    db.material.count(),
   ]);
   const prepPhase = PHASES[0];
   const prepDone = checklist.filter((c) => c.group === prepPhase.key).length;
@@ -73,6 +79,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
       <div className="grid md:grid-cols-2 gap-4">
         <Card title="بنود معلّقة">
           <ul className="text-sm divide-y divide-line">
+            {unsignedCharter > 0 && <li className="py-2 flex justify-between"><Link href="/admin/participants" className="hover:underline">لم يوقّعوا ميثاق المشاركة</Link><Badge>{unsignedCharter}</Badge></li>}
+            {missingDiagnostic > 0 && <li className="py-2 flex justify-between"><Link href="/admin/diagnostic" className="hover:underline">لم يعبّئوا التقييم التشخيصي القبلي</Link><Badge>{missingDiagnostic}</Badge></li>}
+            {materialsCount === 0 && <li className="py-2 flex justify-between"><Link href="/admin/materials" className="hover:underline">مكتبة المواد فارغة — ارفع الكتب والقوالب</Link><Badge>0</Badge></li>}
             {pendingProjects > 0 && <li className="py-2 flex justify-between"><Link href="/admin/projects" className="hover:underline">موضوعات مشاريع بانتظار الاعتماد</Link><Badge>{pendingProjects}</Badge></li>}
             {unpublishedQuizzes > 0 && <li className="py-2 flex justify-between"><Link href="/admin/quizzes" className="hover:underline">اختبارات غير منشورة</Link><Badge>{unpublishedQuizzes}</Badge></li>}
             {reportsThisWeek.filter((r) => !r.reviewedAt).length > 0 && <li className="py-2 flex justify-between"><Link href={`/admin/reports?week=${weekNo}`} className="hover:underline">تقارير لم تُراجع هذا الأسبوع</Link><Badge>{reportsThisWeek.filter((r) => !r.reviewedAt).length}</Badge></li>}
@@ -83,7 +92,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                 <div className="text-xs text-muted mt-1">{missing.map((m) => m.name).join("، ")}</div>
               </li>
             )}
-            {pendingProjects === 0 && unpublishedQuizzes === 0 && missing.length === 0 && weekNo >= 0 && <li className="py-2 text-muted">لا بنود معلّقة.</li>}
+            {pendingProjects === 0 && unpublishedQuizzes === 0 && missing.length === 0 && unsignedCharter === 0 && missingDiagnostic === 0 && materialsCount > 0 && weekNo >= 0 && <li className="py-2 text-muted">لا بنود معلّقة.</li>}
           </ul>
         </Card>
         <Card title="آخر الأحداث" action={<Link href="/admin/notifications" className="text-xs text-muted underline">الكل</Link>}>

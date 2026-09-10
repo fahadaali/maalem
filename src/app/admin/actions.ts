@@ -10,6 +10,7 @@ import { keyToDate } from "@/lib/dates";
 import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
+import { deleteObject } from "@/lib/storage";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -319,4 +320,90 @@ export async function endPreview() {
   const jar = await cookies();
   jar.delete(PREVIEW_COOKIE);
   redirect("/admin");
+}
+
+// ——— مكتبة المواد ———
+const MATERIAL_KINDS = new Set(["BOOK", "TEMPLATE", "GUIDE", "LINK"]);
+
+export async function saveMaterial(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const title = str(formData.get("title"));
+  const kind = str(formData.get("kind"));
+  const url = str(formData.get("url"));
+  if (!title) fail("/admin/materials", "اكتب عنوان المادة");
+  if (!MATERIAL_KINDS.has(kind)) fail("/admin/materials", "نوع غير صحيح");
+  if (url && !/^https?:\/\//i.test(url)) fail("/admin/materials", "الرابط يجب أن يبدأ بـ http أو https");
+  const data = {
+    title,
+    kind,
+    author: str(formData.get("author")) || null,
+    description: str(formData.get("description")) || null,
+    url: url || null,
+    competency: str(formData.get("competency")) || null,
+    week: str(formData.get("week")) === "" ? null : num(formData.get("week")),
+    order: num(formData.get("order"), 0),
+  };
+  if (id) await db.material.update({ where: { id }, data });
+  else {
+    const created = await db.material.create({ data });
+    await notifyRole("PARTICIPANT", { title: "مادة جديدة في المكتبة", body: created.title, url: "/app/materials" });
+  }
+  revalidatePath("/admin/materials");
+  ok("/admin/materials", id ? "تم تحديث المادة" : "تمت إضافة المادة وإشعار المشاركين");
+}
+
+export async function deleteMaterial(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const files = await db.attachment.findMany({ where: { kind: "MATERIAL", refId: id } });
+  for (const f of files) {
+    await deleteObject(f.key).catch(() => {});
+    await db.attachment.delete({ where: { id: f.id } }).catch(() => {});
+  }
+  await db.material.delete({ where: { id } });
+  revalidatePath("/admin/materials");
+  ok("/admin/materials", "تم حذف المادة");
+}
+
+// ——— جدول البرنامج: تعديل أسبوع (المواعيد، اللقاء، الحلقة، الورد، المهمة، الروابط) ———
+export async function saveWeek(formData: FormData) {
+  await admin();
+  const number = num(formData.get("number"), -99);
+  const gregorian = str(formData.get("gregorian"));
+  const remoteUrl = str(formData.get("remoteUrl"));
+  if (number === -99) fail("/admin/schedule", "أسبوع غير صحيح");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(gregorian)) fail("/admin/schedule", "تاريخ غير صحيح");
+  if (remoteUrl && !/^https?:\/\//i.test(remoteUrl)) fail("/admin/schedule", "رابط الحلقة يجب أن يبدأ بـ http أو https");
+  await db.programWeek.update({
+    where: { number },
+    data: {
+      gregorian,
+      hijri: str(formData.get("hijri")),
+      competency: str(formData.get("competency")),
+      session: str(formData.get("session")),
+      circle: str(formData.get("circle")),
+      reading: str(formData.get("reading")),
+      task: str(formData.get("task")),
+      meetingPlace: str(formData.get("meetingPlace")) || null,
+      remoteUrl: remoteUrl || null,
+      note: str(formData.get("note")) || null,
+    },
+  });
+  revalidatePath("/admin/schedule");
+  revalidatePath("/program/schedule");
+  ok(`/admin/schedule?week=${number}`, "تم تحديث الأسبوع");
+}
+
+export async function notifyWeekChange(formData: FormData) {
+  await admin();
+  const number = num(formData.get("number"), -99);
+  const w = await db.programWeek.findUnique({ where: { number } });
+  if (!w) fail("/admin/schedule", "أسبوع غير موجود");
+  await notifyRole("PARTICIPANT", {
+    title: `تحديث جدول الأسبوع ${w.label}`,
+    body: `${w.session}${w.note ? " — " + w.note : ""}`,
+    url: "/program/schedule",
+  });
+  ok(`/admin/schedule?week=${number}`, "أُرسل إشعار التحديث للمشاركين");
 }

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen } from "lucide-react";
+import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen, Library, CalendarDays, Gauge } from "lucide-react";
 import type { NavItem } from "@/components/shell/AppShell";
 
 export const ADMIN_NAV: NavItem[] = [
@@ -11,6 +11,9 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/field", label: "اعتماد المعايشة", icon: Footprints },
   { href: "/admin/projects", label: "مشاريع التخرج", icon: GraduationCap },
   { href: "/admin/grades", label: "كشف الدرجات", icon: Award },
+  { href: "/admin/diagnostic", label: "التقييم التشخيصي", icon: Gauge },
+  { href: "/admin/schedule", label: "جدول البرنامج", icon: CalendarDays },
+  { href: "/admin/materials", label: "مكتبة المواد", icon: Library },
   { href: "/admin/phases", label: "مراحل المشروع", icon: ListTodo },
   { href: "/admin/notifications", label: "الإشعارات", icon: Bell, tab: true },
   { href: "/program", label: "وثيقة البرنامج", icon: BookOpen },

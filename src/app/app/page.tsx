@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { Video } from "lucide-react";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat, Badge } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
-import { currentWeekNumber, dayName, formatHijri, formatGregorian, getWeek, reportDueDate, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
+import { dayName, formatHijri, formatGregorian, reportDueDate, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
+import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { computeGrades } from "@/lib/grades";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
 
@@ -13,12 +15,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { err, ok: okMsg } = await searchParams;
   const user = await requireParticipantView();
   const now = new Date();
-  const weekNo = currentWeekNumber(now);
-  const week = getWeek(weekNo);
+  const weekNo = await currentWeekNumber(now);
+  const week = await getWeekByNumber(weekNo);
   const wd = weekdayIndex(now);
   const today = todayKey(now);
 
-  const [grades, todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments] = await Promise.all([
+  const [grades, todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics] = await Promise.all([
     computeGrades(user.id),
     db.readingCard.findFirst({ where: { userId: user.id, date: { gte: new Date(`${today}T00:00:00+03:00`), lt: new Date(`${today}T23:59:59+03:00`) } } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week: weekNo } } }) : null,
@@ -26,7 +28,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.quiz.findMany({ where: { published: true, attempts: { none: { userId: user.id } } }, select: { id: true, title: true }, take: 3 }),
     db.assignment.findMany({ where: { dueAt: { gte: now }, submissions: { none: { userId: user.id } } }, orderBy: { dueAt: "asc" }, take: 3 }),
     db.assignment.count({ where: { dueAt: { gte: now } } }),
+    db.user.findUnique({ where: { id: user.id }, select: { charterAcceptedAt: true } }),
+    db.diagnostic.findMany({ where: { userId: user.id }, select: { stage: true } }),
   ]);
+  const needsCharter = user.role === "PARTICIPANT" && !me?.charterAcceptedAt;
+  const needsDiagnostic = user.role === "PARTICIPANT" && !diagnostics.some((d) => d.stage === "PRE");
+  const needsPostDiagnostic = user.role === "PARTICIPANT" && weekNo >= 12 && diagnostics.some((d) => d.stage === "PRE") && !diagnostics.some((d) => d.stage === "POST");
 
   const routine = weekNo < 0 || weekNo > 13 ? undefined : PARTICIPANT_ROUTINE.find((r) => (wd === 6 && r.day === "السبت") || (wd >= 0 && wd <= 4 && r.day === "الأحد – الخميس") || (wd === 5 && r.day === "الجمعة"));
   const isReadingDay = wd >= 0 && wd <= 4;
@@ -47,6 +54,32 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       />
 
       <FormMessage ok={okMsg} err={err} />
+
+      {(needsCharter || needsDiagnostic || needsPostDiagnostic) && (
+        <Card className="mb-4 border-ink">
+          <div className="text-xs text-muted mb-1">مطلوب منك</div>
+          <ul className="text-sm space-y-2">
+            {needsCharter && (
+              <li className="flex flex-wrap items-center justify-between gap-2">
+                <span>توقيع ميثاق المشاركة — شرط لبدء البرنامج ومنح وثيقة الإتمام.</span>
+                <Link href="/app/charter" className="btn btn-sm shrink-0">توقيع الميثاق</Link>
+              </li>
+            )}
+            {needsDiagnostic && (
+              <li className="flex flex-wrap items-center justify-between gap-2">
+                <span>التقييم التشخيصي القبلي — يقيس مستواك قبل البرنامج ولا يدخل في درجاتك.</span>
+                <Link href="/app/diagnostic" className="btn btn-sm btn-secondary shrink-0">تعبئة التقييم</Link>
+              </li>
+            )}
+            {needsPostDiagnostic && (
+              <li className="flex flex-wrap items-center justify-between gap-2">
+                <span>التقييم التشخيصي البعدي — قارن مستواك الآن بما كان في البداية.</span>
+                <Link href="/app/diagnostic" className="btn btn-sm btn-secondary shrink-0">تعبئة التقييم</Link>
+              </li>
+            )}
+          </ul>
+        </Card>
+      )}
 
       {/* مهمة اليوم */}
       <Card className="mb-4 border-ink">
@@ -88,6 +121,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div><dt className="text-xs text-muted">الورد القرائي</dt><dd>{week.reading}</dd></div>
             <div><dt className="text-xs text-muted">المهمة الأسبوعية</dt><dd>{week.task}</dd></div>
           </dl>
+          {(week.remoteUrl || week.meetingPlace || week.note) && (
+            <div className="flex flex-wrap gap-2 mt-3 items-center text-sm">
+              {week.meetingPlace && <span className="badge badge-soft">المكان: {week.meetingPlace}</span>}
+              {week.remoteUrl && (
+                <a href={week.remoteUrl} target="_blank" rel="noopener" className="btn btn-sm btn-secondary">
+                  <Video size={14} /> دخول حلقة النقاش
+                </a>
+              )}
+              {week.note && <span className="badge">{week.note}</span>}
+            </div>
+          )}
           {due && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <Badge tone={report ? "ink" : "default"}>{report ? "التقرير الأسبوعي مسلّم" : `تسليم التقرير: الخميس 10 مساءً (${daysUntil(due, now) >= 0 ? `بعد ${daysUntil(due, now)} يوم` : "فات الموعد"})`}</Badge>

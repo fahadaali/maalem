@@ -5,13 +5,15 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createQuiz } from "../actions";
-import { ACTIVE_WEEKS, currentWeekNumber } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 
 export const metadata = { title: "الاختبارات التكوينية" };
 
 export default async function AdminQuizzesPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
+  const activeWeeks = await getActiveWeeks();
+  const curWeek = Math.max(1, Math.min(12, await currentWeekNumber()));
   const quizzes = await db.quiz.findMany({ orderBy: [{ week: "asc" }, { createdAt: "asc" }], include: { _count: { select: { questions: true, attempts: true } }, attempts: true } });
   return (
     <>
@@ -46,9 +48,9 @@ export default async function AdminQuizzesPage({ searchParams }: { searchParams:
               </div>
               <div className="field">
                 <label className="label">الأسبوع</label>
-                <select name="week" className="select" defaultValue={Math.max(1, Math.min(12, currentWeekNumber()))}>
+                <select name="week" className="select" defaultValue={curWeek}>
                   <option value="">—</option>
-                  {ACTIVE_WEEKS.filter((w) => w.number > 0).map((w) => <option key={w.number} value={w.number}>الأسبوع {w.number}</option>)}
+                  {activeWeeks.filter((w) => w.number > 0).map((w) => <option key={w.number} value={w.number}>الأسبوع {w.number}</option>)}
                 </select>
               </div>
             </div>

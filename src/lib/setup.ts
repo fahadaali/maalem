@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { MIGRATIONS } from "./schema-sql";
+import { BUDGET, WEEKS } from "./program";
 
 /** هل جدول المستخدمين موجود؟ */
 export async function schemaReady(): Promise<boolean> {
@@ -36,4 +37,44 @@ export async function applyMigrations(): Promise<string[]> {
 export async function needsSetup(): Promise<boolean> {
   if (!(await schemaReady())) return true;
   return (await db.user.count()) === 0;
+}
+
+/** يبذر بيانات الخطة القابلة للتعديل (الأسابيع والميزانية) إن لم تكن موجودة */
+export async function ensureProgramData(): Promise<void> {
+  if ((await db.programWeek.count()) === 0) {
+    for (const w of WEEKS) {
+      await db.programWeek.create({
+        data: {
+          number: w.number, label: w.label, hijri: w.hijri, gregorian: w.gregorian,
+          competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+        },
+      });
+    }
+  }
+  if ((await db.budgetEntry.count()) === 0) {
+    let order = 0;
+    for (const i of BUDGET.items) {
+      await db.budgetEntry.create({ data: { item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
+    }
+  }
+}
+
+let bootPromise: Promise<void> | null = null;
+
+/**
+ * تُنفَّذ مرة واحدة في كل نسخة عاملة: تطبّق أي ترحيل جديد لم يُطبَّق بعد،
+ * ثم تبذر بيانات الخطة. بهذا تصل التحديثات إلى قاعدة تعمل بلا تدخل يدوي.
+ */
+export function ensureSchema(): Promise<void> {
+  bootPromise ??= (async () => {
+    try {
+      const applied = await applyMigrations();
+      if (applied.length) console.log("applied migrations:", applied.join(", "));
+      await ensureProgramData();
+    } catch (e) {
+      bootPromise = null;
+      console.error("schema boot failed:", (e as Error).message);
+    }
+  })();
+  return bootPromise;
 }

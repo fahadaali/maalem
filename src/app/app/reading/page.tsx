@@ -5,7 +5,8 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addReadingCard, deleteReadingCard } from "../actions";
 import { BOOK_TITLES, READING_NOTE } from "@/lib/program";
-import { currentWeek, dayName, formatShort, todayKey } from "@/lib/dates";
+import { dayName, formatShort, todayKey } from "@/lib/dates";
+import { currentWeek } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
 
 export const metadata = { title: "بطاقة القراءة اليومية" };
@@ -15,7 +16,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
   const { ok, err } = await searchParams;
   const cards = await db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 60 });
   const total = await db.readingCard.count({ where: { userId: user.id } });
-  const week = currentWeek();
+  const week = await currentWeek();
   const last = cards[0];
 
   return (
