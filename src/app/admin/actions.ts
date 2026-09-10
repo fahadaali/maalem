@@ -17,6 +17,8 @@ import { levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
 import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
 import { getCompletionLevels } from "@/lib/content";
+import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
+import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -181,18 +183,80 @@ export async function createQuiz(formData: FormData) {
   redirect(`/admin/quizzes/${q.id}`);
 }
 
+/** يقرأ سؤالاً من النموذج ويتحقق منه بحسب نوعه */
+function readQuestion(formData: FormData, path: string) {
+  const kind = str(formData.get("kind")) || "MCQ";
+  if (!(kind in QUESTION_KINDS)) fail(path, "نوع سؤال غير معروف");
+  const text = str(formData.get("text"));
+  if (!text) fail(path, "اكتب نص السؤال");
+  const explanation = str(formData.get("explanation")) || null;
+
+  if (kind === "SHORT") {
+    const answers = str(formData.get("answers")).split("|").map((a) => a.trim()).filter(Boolean);
+    if (!answers.length) fail(path, "اكتب الإجابة المقبولة، ويفصل بين صورها الحرف |");
+    return { kind, text, options: "[]", correctIndex: 0, answers: answers.join("|"), explanation };
+  }
+  if (kind === "TRUEFALSE") {
+    const correctIndex = num(formData.get("correctIndex"), -1);
+    if (correctIndex !== 0 && correctIndex !== 1) fail(path, "حدد: صواب أم خطأ");
+    return { kind, text, options: JSON.stringify(TRUE_FALSE_OPTIONS), correctIndex, answers: null, explanation };
+  }
+  const options = [0, 1, 2, 3].map((i) => str(formData.get(`opt${i}`))).filter(Boolean);
+  const correctIndex = num(formData.get("correctIndex"), -1);
+  if (options.length < 2) fail(path, "خياران على الأقل");
+  if (correctIndex < 0 || correctIndex >= options.length) fail(path, "حدد الإجابة الصحيحة");
+  return { kind, text, options: JSON.stringify(options), correctIndex, answers: null, explanation };
+}
+
 export async function addQuestion(formData: FormData) {
   await admin();
   const quizId = str(formData.get("quizId"));
-  const text = str(formData.get("text"));
-  const options = [0, 1, 2, 3].map((i) => str(formData.get(`opt${i}`))).filter(Boolean);
-  const correctIndex = num(formData.get("correctIndex"), -1);
   const path = `/admin/quizzes/${quizId}`;
-  if (!text || options.length < 2) fail(path, "نص السؤال وخياران على الأقل");
-  if (correctIndex < 0 || correctIndex >= options.length) fail(path, "حدد الإجابة الصحيحة");
+  const q = readQuestion(formData, path);
   const order = (await db.question.count({ where: { quizId } })) + 1;
-  await db.question.create({ data: { quizId, order, text, options: JSON.stringify(options), correctIndex } });
+  await db.question.create({ data: { quizId, order, ...q } });
+  if (str(formData.get("toBank")) === "on") {
+    await db.bankQuestion.create({ data: { cohortId: await activeCohortId(), topic: str(formData.get("topic")) || "FIQH", week: str(formData.get("week")) === "" ? null : num(formData.get("week")), ...q } });
+  }
   ok(path, "تمت إضافة السؤال");
+}
+
+// ——— بنك الأسئلة ———
+export async function addBankQuestion(formData: FormData) {
+  await admin();
+  const q = readQuestion(formData, "/admin/bank");
+  await db.bankQuestion.create({
+    data: { cohortId: await activeCohortId(), topic: str(formData.get("topic")) || "FIQH", week: str(formData.get("week")) === "" ? null : num(formData.get("week")), ...q },
+  });
+  revalidatePath("/admin/bank");
+  ok("/admin/bank", "أُضيف السؤال إلى البنك");
+}
+
+export async function deleteBankQuestion(formData: FormData) {
+  await admin();
+  await db.bankQuestion.delete({ where: { id: str(formData.get("id")) } }).catch(() => {});
+  revalidatePath("/admin/bank");
+  ok("/admin/bank", "حُذف السؤال من البنك");
+}
+
+/** نسخ أسئلة مختارة من البنك إلى اختبار */
+export async function copyFromBank(formData: FormData) {
+  await admin();
+  const quizId = str(formData.get("quizId"));
+  const path = `/admin/quizzes/${quizId}`;
+  const ids = formData.getAll("pick").map((v) => String(v)).filter(Boolean);
+  if (!ids.length) fail(path, "اختر سؤالاً واحداً على الأقل");
+  const quiz = await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } });
+  if (!quiz) fail("/admin/quizzes", "الاختبار غير موجود");
+  const rows = await db.bankQuestion.findMany({ where: { id: { in: ids } } });
+  let order = await db.question.count({ where: { quizId } });
+  for (const r of rows) {
+    await db.question.create({
+      data: { quizId, order: ++order, kind: r.kind, text: r.text, options: r.options, correctIndex: r.correctIndex, answers: r.answers, explanation: r.explanation },
+    });
+  }
+  revalidatePath(path);
+  ok(path, `نُسخ ${rows.length} سؤالاً من البنك`);
 }
 
 export async function deleteQuestion(formData: FormData) {
@@ -1014,4 +1078,38 @@ export async function deleteCompetencyItem(formData: FormData) {
   await db.competencyItemRow.delete({ where: { id: str(formData.get("id")) } }).catch(() => {});
   revalidatePath("/admin/competencies");
   ok(`/admin/competencies?c=${competencyId}`, "حُذفت المفردة");
+}
+
+// ——— البتّ في طلبات الاستئذان ———
+export async function decideExcuse(formData: FormData) {
+  const me = await admin();
+  const id = str(formData.get("id"));
+  const approve = str(formData.get("approve")) === "1";
+  const decision = str(formData.get("decision")) || null;
+  const row = await db.excuseRequest.findUnique({ where: { id }, include: { user: { select: { name: true } } } });
+  if (!row) fail("/admin/excuses", "الطلب غير موجود");
+  if (row.status !== "PENDING") fail("/admin/excuses", "بُتّ في هذا الطلب من قبل");
+
+  if (approve && row.week != null && row.kind.startsWith("ABSENCE")) {
+    // الاستئذان المقبول يُرصد معذوراً، والمعذور لا يُحتسب عليه في نسبة الحضور
+    const type = row.kind === "ABSENCE_REMOTE" ? "REMOTE" : "INPERSON";
+    await db.attendance.upsert({
+      where: { userId_week_type: { userId: row.userId, week: row.week, type } },
+      create: { userId: row.userId, week: row.week, type, status: "EXCUSED", note: `استئذان معتمد: ${row.reason}`.slice(0, 180) },
+      update: { status: "EXCUSED" },
+    });
+  }
+
+  await db.excuseRequest.update({
+    where: { id },
+    data: { status: approve ? "APPROVED" : "REJECTED", decision, decidedBy: me.name, decidedAt: new Date() },
+  });
+  await notifyUsers([row.userId], {
+    title: approve ? "قُبل طلبك" : "لم يُقبل طلبك",
+    body: `${EXCUSE_KINDS[row.kind as ExcuseKind] ?? row.kind}${decision ? ` — ${decision}` : ""}`,
+    url: "/app/excuses",
+  });
+  revalidatePath("/admin/excuses");
+  revalidatePath("/admin/attendance");
+  ok("/admin/excuses", approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
 }

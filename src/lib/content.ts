@@ -99,3 +99,26 @@ export async function levelForTotal(total: number): Promise<Level> {
   const levels = await getCompletionLevels();
   return levels.find((l) => total >= l.min) ?? levels[levels.length - 1];
 }
+
+export type BookProgress = Book & { furthestPage: number; cards: number; percent: number; lastDate: Date | null };
+
+/** تقدّم القراءة في كل كتاب: أبعد صفحة بلغها المشارك، وعدد بطاقاته فيه */
+export async function bookProgress(userId: string): Promise<BookProgress[]> {
+  const books = await getBooks();
+  const cards = await db.readingCard.findMany({
+    where: { userId },
+    select: { book: true, toPage: true, date: true },
+  });
+  return books.map((b) => {
+    const mine = cards.filter((c) => c.book === b.title);
+    const furthestPage = mine.reduce((m, c) => Math.max(m, c.toPage), 0);
+    const lastDate = mine.reduce<Date | null>((m, c) => (!m || c.date > m ? c.date : m), null);
+    return {
+      ...b,
+      furthestPage,
+      cards: mine.length,
+      percent: b.pages > 0 ? Math.min(100, Math.round((furthestPage / b.pages) * 100)) : 0,
+      lastDate,
+    };
+  });
+}

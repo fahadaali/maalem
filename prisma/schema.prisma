@@ -48,6 +48,7 @@ model User {
   feedbackSessions  FeedbackSession[]
   diagnostics       Diagnostic[]
   certificate       Certificate?
+  excuseRequests    ExcuseRequest[]
   mentorEvaluations MentorEvaluation[]   @relation("MentorEvalOf")
   evaluationsGiven  MentorEvaluation[]   @relation("MentorEvalBy")
   finalGrade        FinalGrade?
@@ -62,21 +63,22 @@ model Cohort {
   closedAt  DateTime?
   createdAt DateTime  @default(now())
 
-  users        User[]
-  weeks        ProgramWeek[]
-  assignments  Assignment[]
-  quizzes      Quiz[]
-  budget       BudgetEntry[]
-  guests       Guest[]
-  minutes      SessionMinutes[]
-  reports      ProgramReport[]
-  survey       SurveyResponse[]
-  reminders    Reminder[]
-  books        ProgramBook[]
-  charter      CharterItem[]
-  assessment   AssessmentItem[]
-  levels       CompletionLevel[]
-  competencies CompetencyDef[]
+  users         User[]
+  weeks         ProgramWeek[]
+  assignments   Assignment[]
+  quizzes       Quiz[]
+  budget        BudgetEntry[]
+  guests        Guest[]
+  minutes       SessionMinutes[]
+  reports       ProgramReport[]
+  survey        SurveyResponse[]
+  reminders     Reminder[]
+  books         ProgramBook[]
+  charter       CharterItem[]
+  assessment    AssessmentItem[]
+  levels        CompletionLevel[]
+  competencies  CompetencyDef[]
+  bankQuestions BankQuestion[]
 }
 
 /// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
@@ -346,13 +348,18 @@ model Quiz {
 }
 
 model Question {
-  id           String @id @default(cuid())
+  id           String  @id @default(cuid())
   quizId       String
-  quiz         Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quiz         Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
   order        Int
   text         String
+  kind         String  @default("MCQ") // MCQ | TRUEFALSE | SHORT
   options      String // JSON array of strings
   correctIndex Int
+  /// الإجابات المقبولة للسؤال القصير، يفصل بينها |
+  answers      String?
+  /// شرح الإجابة يظهر للمشارك بعد التسليم
+  explanation  String?
 }
 
 model QuizAttempt {
@@ -656,4 +663,43 @@ model CompetencyItemRow {
   refs         String // مراجع مفصولة بأسطر
 
   @@index([competencyId, order])
+}
+
+/// بنك الأسئلة: أسئلة محفوظة تُنسخ إلى الاختبارات عند الحاجة
+model BankQuestion {
+  id           String   @id @default(cuid())
+  cohortId     String?
+  cohort       Cohort?  @relation(fields: [cohortId], references: [id])
+  kind         String   @default("MCQ") // MCQ | TRUEFALSE | SHORT
+  text         String
+  options      String
+  correctIndex Int
+  answers      String?
+  explanation  String?
+  /// تصنيف السؤال: FIQH | QURAN | OTHER
+  topic        String   @default("FIQH")
+  week         Int?
+  createdAt    DateTime @default(now())
+
+  @@index([cohortId, topic])
+}
+
+/// طلب استئذان عن لقاء أو تأجيل تسليم، يبتّه مدير المشروع
+model ExcuseRequest {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         String // ABSENCE | EXTENSION
+  week         Int?
+  assignmentId String?
+  reason       String
+  untilAt      DateTime?
+  status       String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  decision     String?
+  decidedBy    String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }

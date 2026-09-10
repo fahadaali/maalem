@@ -1,10 +1,15 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, BackLink, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { addQuestion, deleteQuestion, deleteQuiz, publishQuiz, resetQuizAttempt } from "../../actions";
+import { addQuestion, deleteQuestion, deleteQuiz, publishQuiz, resetQuizAttempt, copyFromBank } from "../../actions";
+import QuestionFields from "@/components/QuestionFields";
+import { QUESTION_KINDS, QUIZ_TOPICS } from "@/lib/quiz";
+import { cohortWhere } from "@/lib/cohort";
+import { getActiveWeeks } from "@/lib/weeks";
 import { parseJSON } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 
@@ -16,6 +21,10 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
   const { ok, err } = await searchParams;
   const q = await db.quiz.findUnique({ where: { id }, include: { questions: { orderBy: { order: "asc" } }, attempts: { include: { user: true }, orderBy: { createdAt: "asc" } } } });
   if (!q) notFound();
+  const [bank, weeks] = await Promise.all([
+    db.bankQuestion.findMany({ where: await cohortWhere(), orderBy: { createdAt: "desc" }, take: 50 }),
+    getActiveWeeks(),
+  ]);
 
   return (
     <>
@@ -43,9 +52,15 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
                   <div className="font-medium">{i + 1}. {qq.text}</div>
                   <form action={deleteQuestion}><input type="hidden" name="id" value={qq.id} /><button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button></form>
                 </div>
-                <ol className="text-sm mt-1 space-y-0.5">
-                  {opts.map((o, oi) => <li key={oi} className={oi === qq.correctIndex ? "font-bold" : "text-muted"}>{oi === qq.correctIndex ? "✓ " : "· "}{o}</li>)}
-                </ol>
+                <div className="text-xs text-muted mt-0.5">{QUESTION_KINDS[qq.kind as keyof typeof QUESTION_KINDS] ?? qq.kind}</div>
+                {qq.kind === "SHORT" ? (
+                  <p className="text-sm mt-1">الإجابة: <span className="font-medium">{(qq.answers ?? "").split("|").join(" · ")}</span></p>
+                ) : (
+                  <ol className="text-sm mt-1 space-y-0.5">
+                    {opts.map((o, oi) => <li key={oi} className={oi === qq.correctIndex ? "font-bold" : "text-muted"}>{oi === qq.correctIndex ? "✓ " : "· "}{o}</li>)}
+                  </ol>
+                )}
+                {qq.explanation && <p className="text-xs text-muted mt-1">الشرح: {qq.explanation}</p>}
               </Card>
             );
           })}
@@ -82,16 +97,36 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
           <Card title="سؤال جديد">
             <form action={addQuestion}>
               <input type="hidden" name="quizId" value={q.id} />
-              <div className="field"><label className="label">نص السؤال</label><textarea name="text" className="textarea" rows={2} required /></div>
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="field flex items-center gap-2">
-                  <input type="radio" name="correctIndex" value={i} required={i === 0} className="accent-black" title="الإجابة الصحيحة" />
-                  <input name={`opt${i}`} className="input" placeholder={`الخيار ${i + 1}${i > 1 ? " (اختياري)" : ""}`} required={i < 2} />
-                </div>
-              ))}
-              <p className="text-xs text-muted mb-3">حدد الدائرة بجانب الإجابة الصحيحة.</p>
+              <QuestionFields showBankFields weeks={weeks.map((w) => ({ number: w.number, label: w.label }))} />
+              <label className="flex items-center gap-2 text-sm mb-3">
+                <input type="checkbox" name="toBank" /> احفظه في بنك الأسئلة أيضاً
+              </label>
               <SubmitButton>إضافة السؤال</SubmitButton>
             </form>
+          </Card>
+          <Card title="نسخ من بنك الأسئلة" action={<Link href="/admin/bank" className="text-xs text-muted hover:text-ink">إدارة البنك</Link>}>
+            {bank.length === 0 ? (
+              <p className="text-sm text-muted">البنك فارغ. أضف أسئلة إليه لتنسخها هنا.</p>
+            ) : (
+              <form action={copyFromBank}>
+                <input type="hidden" name="quizId" value={q.id} />
+                <div className="max-h-72 overflow-y-auto space-y-1 mb-3">
+                  {bank.map((b) => (
+                    <label key={b.id} className="flex gap-2 items-start text-sm p-2 rounded-lg hover:bg-paper-2">
+                      <input type="checkbox" name="pick" value={b.id} className="mt-1" />
+                      <span>
+                        {b.text}
+                        <span className="text-xs text-muted block">
+                          {QUESTION_KINDS[b.kind as keyof typeof QUESTION_KINDS] ?? b.kind} · {QUIZ_TOPICS[b.topic as keyof typeof QUIZ_TOPICS] ?? b.topic}
+                          {b.week != null ? ` · الأسبوع ${b.week}` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <SubmitButton secondary pendingText="جارٍ النسخ…">نسخ المحدد</SubmitButton>
+              </form>
+            )}
           </Card>
           <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><button className="btn btn-ghost btn-sm text-muted">حذف الاختبار بالكامل</button></form>
         </div>

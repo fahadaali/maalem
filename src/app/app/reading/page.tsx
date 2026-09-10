@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addReadingCard, deleteReadingCard } from "../actions";
 import { READING_NOTE } from "@/lib/program";
-import { getBookTitles } from "@/lib/content";
+import { getBookTitles, bookProgress } from "@/lib/content";
 import { dayName, formatShort, todayKey } from "@/lib/dates";
 import { currentWeek } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
@@ -19,6 +19,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
   const cards = await db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 60 });
   const total = await db.readingCard.count({ where: { userId: user.id } });
   const week = await currentWeek();
+  const progress = await bookProgress(user.id);
   const last = cards[0];
 
   return (
@@ -31,6 +32,25 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
           {week.reading}
         </div>
       )}
+      <Card title="تقدّمي في الكتب" className="mb-4">
+        <p className="text-xs text-muted mb-3">النسبة من أبعد صفحة سجّلتها في بطاقاتك، لا من عدد البطاقات.</p>
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+          {progress.filter((b) => b.pages > 0).map((b) => (
+            <div key={b.title}>
+              <div className="flex justify-between text-xs mb-1 gap-2">
+                <span className="truncate">{b.title}</span>
+                <span className="text-muted tabular-nums shrink-0">{b.furthestPage} / {b.pages} صفحة</span>
+              </div>
+              <div className="progress"><span style={{ width: `${b.percent}%` }} /></div>
+              <div className="text-xs text-muted mt-1">
+                {b.cards ? `${b.cards} بطاقة · آخرها ${formatShort(b.lastDate!)}` : "لم تبدأ بعد"}
+                {b.circle !== "—" ? ` · حلقته ${b.circle}` : ""}
+              </div>
+            </div>
+          ))}
+          {progress.filter((b) => b.pages > 0).length === 0 && <p className="text-sm text-muted">لا كتب مسجّلة بصفحاتها.</p>}
+        </div>
+      </Card>
       <div className="grid md:grid-cols-[1fr_320px] gap-4 items-start">
         <Card title="بطاقة جديدة">
           <form action={addReadingCard}>

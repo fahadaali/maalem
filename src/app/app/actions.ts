@@ -9,6 +9,8 @@ import { keyToDate, todayKey } from "@/lib/dates";
 import { num, str } from "@/lib/utils";
 import { SURVEY_QUESTIONS } from "@/lib/program";
 import { getCharter, getCompetencies } from "@/lib/content";
+import { isCorrect } from "@/lib/quiz";
+import { EXCUSE_KINDS, isExcuseKind } from "@/lib/excuses";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -87,8 +89,8 @@ export async function submitQuiz(formData: FormData) {
   if (!quiz || !quiz.published) fail("/app/quizzes", "الاختبار غير متاح");
   const existing = await db.quizAttempt.findUnique({ where: { quizId_userId: { quizId, userId: user.id } } });
   if (existing) fail(`/app/quizzes/${quizId}`, "سبق أن أديت هذا الاختبار");
-  const answers = quiz.questions.map((q) => num(formData.get(`q_${q.id}`), -1));
-  const score = quiz.questions.reduce((s, q, i) => s + (answers[i] === q.correctIndex ? 1 : 0), 0);
+  const answers = quiz.questions.map((q) => (q.kind === "SHORT" ? str(formData.get(`q_${q.id}`)) : num(formData.get(`q_${q.id}`), -1)));
+  const score = quiz.questions.reduce((s, q, i) => s + (isCorrect(q, answers[i]) ? 1 : 0), 0);
   await db.quizAttempt.create({ data: { quizId, userId: user.id, score, total: quiz.questions.length, answers: JSON.stringify(answers) } });
   revalidatePath("/app");
   redirect(`/app/quizzes/${quizId}`);
@@ -352,4 +354,52 @@ export async function submitPortfolio() {
   await notifyAdmins({ title: "تسليم ملف الإنجاز", body: `${user.name} سلّم ملف إنجازه النهائي`, url: "/admin/participants" });
   revalidatePath("/app/portfolio");
   ok("/app/portfolio", "تم تسليم ملف الإنجاز لمدير المشروع");
+}
+
+// ——— الاستئذان وتأجيل التسليم ———
+export async function requestExcuse(formData: FormData) {
+  const user = await participant();
+  const kind = str(formData.get("kind"));
+  if (!isExcuseKind(kind)) fail("/app/excuses", "اختر نوع الطلب");
+  const reason = str(formData.get("reason"));
+  if (reason.length < 10) fail("/app/excuses", "اكتب سبباً واضحاً (10 أحرف فأكثر)");
+
+  let week: number | null = null;
+  let assignmentId: string | null = null;
+  let untilAt: Date | null = null;
+
+  if (kind === "EXTENSION") {
+    assignmentId = str(formData.get("assignmentId")) || null;
+    if (!assignmentId) fail("/app/excuses", "اختر المهمة المطلوب تأجيلها");
+    const a = await db.assignment.findUnique({ where: { id: assignmentId }, select: { id: true } });
+    if (!a) fail("/app/excuses", "المهمة غير موجودة");
+    const until = str(formData.get("until"));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) fail("/app/excuses", "حدد التاريخ المطلوب التأجيل إليه");
+    untilAt = new Date(`${until}T22:00:00+03:00`);
+    if (untilAt.getTime() < Date.now()) fail("/app/excuses", "التاريخ المطلوب مضى");
+  } else {
+    week = num(formData.get("week"), -1);
+    if (week < 0 || week > 14) fail("/app/excuses", "اختر الأسبوع");
+  }
+
+  const duplicate = await db.excuseRequest.findFirst({
+    where: { userId: user.id, kind, status: "PENDING", ...(assignmentId ? { assignmentId } : { week }) },
+  });
+  if (duplicate) fail("/app/excuses", "لك طلب مماثل قيد النظر");
+
+  await db.excuseRequest.create({ data: { userId: user.id, kind, week, assignmentId, reason, untilAt } });
+  await notifyAdmins({ title: "طلب استئذان جديد", body: `${user.name}: ${EXCUSE_KINDS[kind]}`, url: "/admin/excuses" });
+  revalidatePath("/app/excuses");
+  ok("/app/excuses", "أُرسل الطلب، وستصلك نتيجته إشعاراً");
+}
+
+export async function cancelExcuse(formData: FormData) {
+  const user = await participant();
+  const id = str(formData.get("id"));
+  const row = await db.excuseRequest.findUnique({ where: { id } });
+  if (!row || row.userId !== user.id) fail("/app/excuses", "الطلب غير موجود");
+  if (row.status !== "PENDING") fail("/app/excuses", "بُتّ في هذا الطلب ولا يُسحب");
+  await db.excuseRequest.delete({ where: { id } });
+  revalidatePath("/app/excuses");
+  ok("/app/excuses", "سُحب الطلب");
 }
