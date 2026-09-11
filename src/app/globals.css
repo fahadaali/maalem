@@ -65,7 +65,6 @@ body {
   font-size: 15px;
   line-height: 1.7;
   min-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 h1, h2, h3, .display {
@@ -136,6 +135,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 .tabbar-link[aria-current="page"] { color: var(--ink); font-weight: 600; }
 
 .divider { border-top: 1px solid var(--line); margin: 1.25rem 0; }
+
+/* مساحة أسفل المحتوى تكفي شريط تبويبات الجوال ومنطقته الآمنة، وتزول على الشاشات العريضة */
+.app-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { .app-main { padding-bottom: 2rem; } }
 
 @media print {
   .no-print { display: none !important; }

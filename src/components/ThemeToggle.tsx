@@ -2,15 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
+import { THEME_COLORS, THEME_KEY as KEY } from "@/lib/theme";
 
-const KEY = "maalem-theme";
 type Theme = "system" | "light" | "dark";
+
+/** لون شريط حالة النظام يتبع السمة المطبَّقة، وإلا بقي مخالفاً للواجهة */
+function syncStatusBar(dark: boolean) {
+  let m = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
+  if (!m) {
+    m = document.createElement("meta");
+    m.setAttribute("name", "theme-color");
+    document.head.appendChild(m);
+  }
+  m.setAttribute("content", dark ? THEME_COLORS.dark : THEME_COLORS.light);
+}
 
 /** يضع السمة على عنصر الجذر، والنظام يعني إزالتها فتتبع تفضيل الجهاز */
 function apply(theme: Theme) {
   const root = document.documentElement;
   if (theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", theme);
+  syncStatusBar(theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme === "dark");
 }
 
 export default function ThemeToggle({ compact }: { compact?: boolean }) {
@@ -26,6 +38,11 @@ export default function ThemeToggle({ compact }: { compact?: boolean }) {
     }
     setTheme(saved);
     apply(saved);
+    // من اختار «حسب الجهاز» يتبع تغيّر تفضيل النظام أثناء الاستعمال
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => { if (saved === "system") syncStatusBar(mq.matches); };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   const pick = (t: Theme) => {

@@ -45,7 +45,14 @@ export default async function AppShell({ user, items, children, base }: { user: 
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* الشريط العلوي */}
-        <header className="sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 h-14 flex items-center justify-between" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        {/*
+          الارتفاع يضيف حشوة المنطقة الآمنة إلى ارتفاع الشريط بدل أن تقتطع منه:
+          مع h-14 وحدها كان محتوى الترويسة ينضغط بمقدار شريط حالة الجهاز فيبدو مقصوصاً.
+        */}
+        <header
+          className="sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between"
+          style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
+        >
           <Link href={base} className="display text-lg font-bold md:hidden">
             معالم التربية
           </Link>
@@ -60,10 +67,10 @@ export default async function AppShell({ user, items, children, base }: { user: 
           </Link>
         </header>
 
-        <main className="flex-1 px-4 py-5 md:px-8 md:py-8 max-w-6xl w-full mx-auto pb-24 md:pb-8">{children}</main>
+        <main className="app-main flex-1 px-4 py-5 md:px-8 md:py-8 max-w-6xl w-full mx-auto">{children}</main>
 
         {/* شريط التبويبات (الجوال) */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line flex" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line flex" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}>
           {/* تبويبات الجوال هي المسارات الساخنة: تُجلب مسبقاً فيكون النقر فتحاً لا انتظاراً */}
           {tabs.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link">

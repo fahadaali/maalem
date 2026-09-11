@@ -18,11 +18,12 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * لا يُصدَّر themeColor من هنا عمداً: الوسم المشروط بـ prefers-color-scheme يتبع
+ * تفضيل النظام وحده ويتجاهل اختيار المستخدم داخل التطبيق، والمتصفح يأخذ بأول وسم
+ * مطابق فيغلب المشروطُ ما يضبطه النص. فيتولّى نص الإقلاع إنشاءه وضبطه وحده.
+ */
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f0f0f" },
-  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
