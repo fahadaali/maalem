@@ -722,6 +722,9 @@ export async function activateCohort(formData: FormData) {
   if (!target) fail("/admin/cohorts", "الدفعة غير موجودة");
   await db.cohort.updateMany({ where: { active: true }, data: { active: false } });
   await db.cohort.update({ where: { id }, data: { active: true } });
+  // دفعة أُنشئت قبل إتاحة تحرير محتوى الوثيقة قد تكون بلا كتب ولا ميثاق ولا أوزان.
+  // تُستكمل هنا عند التفعيل، فلا يبقى ذلك معلّقاً على أول تشغيل تالٍ للخادم.
+  await ensureProgramData(id);
   revalidatePath("/admin");
   ok("/admin/cohorts", `الدفعة النشطة الآن: ${target.name}`);
 }

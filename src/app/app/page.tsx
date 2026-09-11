@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Video } from "lucide-react";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { PageHeader, Card, Progress, Stat, Badge } from "@/components/ui";
+import { PageHeader, Card, Badge } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import { dayName, formatHijri, formatGregorian, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
 import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
-import { computeGrades } from "@/lib/grades";
+import ProgressSummary, { ProgressSummarySkeleton } from "@/components/ProgressSummary";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -21,8 +22,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const wd = weekdayIndex(now);
   const today = todayKey(now);
 
-  const [grades, todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics] = await Promise.all([
-    computeGrades(user.id),
+  const [todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics] = await Promise.all([
     db.readingCard.findFirst({ where: { userId: user.id, date: { gte: new Date(`${today}T00:00:00+03:00`), lt: new Date(`${today}T23:59:59+03:00`) } } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week: weekNo } } }) : null,
     db.notification.count({ where: { userId: user.id, readAt: null } }),
@@ -162,23 +162,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </Card>
       )}
 
-      {/* التقدم */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label="المجموع الحالي" value={`${grades.total}`} hint={`من 100 · ${grades.level}`} href="/app/portfolio" />
-        <Stat label="بطاقات القراءة" value={grades.stats.cards} hint={`من ${grades.stats.expectedCards}`} href="/app/reading" />
-        <Stat label="ساعات المعايشة" value={grades.stats.fieldHours} hint="من 12 معتمدة" href="/app/field" />
-        <Stat label="المهام المسلّمة" value={`${grades.stats.submitted}/${grades.stats.assignments || activeAssignments}`} hint={`تم تقييم ${grades.stats.graded}`} href="/app/tasks" />
-      </div>
-      <Card title="التقييم المستمر (70)">
-        <div className="space-y-3">
-          <Progress label="الحضور والمشاركة (10)" value={grades.attendance} max={10} />
-          <Progress label="الورد القرائي والحلقات (15)" value={grades.reading} max={15} />
-          <Progress label="الاختبارات التكوينية (10)" value={grades.quizzes} max={10} />
-          <Progress label="المهام والتقارير (20)" value={grades.tasks} max={20} />
-          <Progress label="المعايشة الميدانية (10)" value={grades.field} max={10} />
-          <Progress label="الدور القيادي (5)" value={grades.leadership} max={5} />
-        </div>
-      </Card>
+      {/* التقدم — يتدفّق بعد رسم الصفحة، فلا يحبسها احتساب الدرجة */}
+      <Suspense fallback={<ProgressSummarySkeleton />}>
+        <ProgressSummary userId={user.id} fallbackAssignments={activeAssignments} />
+      </Suspense>
     </>
   );
 }

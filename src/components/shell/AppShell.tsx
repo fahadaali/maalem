@@ -64,8 +64,9 @@ export default async function AppShell({ user, items, children, base }: { user: 
 
         {/* شريط التبويبات (الجوال) */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line flex" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {/* تبويبات الجوال هي المسارات الساخنة: تُجلب مسبقاً فيكون النقر فتحاً لا انتظاراً */}
           {tabs.map((i) => (
-            <NavLink key={i.href} href={i.href} exact={i.exact} className="tabbar-link">
+            <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link">
               <i.icon size={20} strokeWidth={1.75} />
               <span>{i.short ?? i.label}</span>
             </NavLink>
