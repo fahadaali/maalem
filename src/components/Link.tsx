@@ -18,7 +18,7 @@ type Props = ComponentProps<typeof NextLink>;
  * فالجلب هنا عند اللمس أو مرور المؤشر: طلب واحد للمسار المقصود وحده، يسبق
  * النقر بما يكفي ليبقى الانتقال فورياً، بلا زحام.
  */
-export default function Link({ prefetch, onPointerDown, onMouseEnter, ...rest }: Props) {
+export default function Link({ prefetch, onPointerDown, onTouchStart, onMouseEnter, ...rest }: Props) {
   const router = useRouter();
   const href = rest.href;
   const warm = () => {
@@ -32,6 +32,11 @@ export default function Link({ prefetch, onPointerDown, onMouseEnter, ...rest }:
       onPointerDown={(e) => {
         warm();
         onPointerDown?.(e);
+      }}
+      // احتياط لمتصفحات قديمة لا تطلق أحداث المؤشر — iOS قبل 13
+      onTouchStart={(e) => {
+        warm();
+        onTouchStart?.(e);
       }}
       onMouseEnter={(e) => {
         warm();

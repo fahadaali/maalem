@@ -22,11 +22,17 @@ export default async function AppShell({ user, items, children, base }: { user: 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
       {/* الشريط الجانبي (سطح المكتب) */}
-      <aside className="hidden md:flex md:w-64 flex-col border-e border-line p-4 sticky top-0 h-dvh">
+      <aside className="shell-side md:w-64 flex-col border-e border-line p-4 sticky top-0 h-dvh">
         <Link href={base} className="display text-xl font-bold px-2 mb-6 block">
           معالم التربية
         </Link>
-        <nav className="flex flex-col gap-1 flex-1">
+        {/*
+          min-h-0 مع التمرير: القائمة أطول من الشاشة في لوحة الإدارة — اثنان
+          وثلاثون رابطاً — والإطار ملتصق بارتفاع الشاشة، فكانت أواخرها تخرج
+          خارجها ولا سبيل إلى الوصول إليها على أي جهاز. وبغير min-h-0 لا ينكمش
+          عنصر الـ flex فلا يعمل التمرير.
+        */}
+        <nav className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
           {sideItems.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact}>
               <i.icon size={18} strokeWidth={1.75} />
@@ -72,7 +78,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
         <main className="app-main flex-1 px-4 py-5 md:px-8 md:py-8 max-w-6xl w-full mx-auto">{children}</main>
 
         {/* شريط التبويبات (الجوال) */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line flex" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}>
+        <nav className="shell-tabs fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}>
           {/* تبويبات الجوال هي المسارات الساخنة: تُسخَّن بالتتابع وعند اللمس، لا دفعةً واحدة */}
           {tabs.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link">

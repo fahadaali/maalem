@@ -20,7 +20,8 @@ export default function PushToggle({ compact, publicKey }: { compact?: boolean; 
   useEffect(() => {
     (async () => {
       if (!key) return setState("no-keys");
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      // فحص القيم لا وجود الخصائص: التصفح الخاص يُبقي الأسماء وقيمُها غير معرّفة
+      if (!navigator.serviceWorker || !window.PushManager || !window.Notification) {
         const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
         const standalone = (navigator as unknown as { standalone?: boolean }).standalone === true;
         return setState(ios && !standalone ? "ios-not-installed" : "unsupported");

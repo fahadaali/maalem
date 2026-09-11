@@ -14,7 +14,13 @@ export default function PwaRegistrar() {
   const reloading = useRef(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    /**
+     * فحص القيمة لا وجود الخاصية: فايرفوكس في التصفح الخاص — وبعض المتصفحات في
+     * سياق غير آمن — يُبقي الخاصية موجودة وقيمتها غير معرّفة، فيمرّ فحص «in»
+     * ثم ينكسر أول استعمال ويسقط التطبيق كله.
+     */
+    const sw = navigator.serviceWorker;
+    if (!sw) return;
     let reg: ServiceWorkerRegistration | undefined;
 
     const onControllerChange = () => {
@@ -22,19 +28,19 @@ export default function PwaRegistrar() {
       reloading.current = true;
       window.location.reload();
     };
-    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    sw.addEventListener("controllerchange", onControllerChange);
 
-    navigator.serviceWorker
+    sw
       .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then((r) => {
         reg = r;
-        if (r.waiting && navigator.serviceWorker.controller) setWaiting(r.waiting);
+        if (r.waiting && sw.controller) setWaiting(r.waiting);
         r.addEventListener("updatefound", () => {
           const next = r.installing;
           if (!next) return;
           next.addEventListener("statechange", () => {
             // إصدار جديد جاهز، وهناك إصدار يعمل حالياً => تحديث متاح
-            if (next.state === "installed" && navigator.serviceWorker.controller) {
+            if (next.state === "installed" && sw.controller) {
               setWaiting(next);
               setDismissed(false);
             }
@@ -52,7 +58,7 @@ export default function PwaRegistrar() {
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      sw.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);
 

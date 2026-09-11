@@ -17,8 +17,11 @@ var t=null;try{t=localStorage.getItem(K)}catch(e){}
 var explicit=(t==="dark"||t==="light")?t:null;
 if(explicit)document.documentElement.setAttribute("data-theme",explicit);
 var dark=explicit?explicit==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
-var metas=document.querySelectorAll('meta[name="theme-color"]');
-for(var i=0;i<metas.length;i++){if(metas[i].hasAttribute("media"))metas[i].remove()}
+/* الوسم موجود في الوثيقة من الخادم، فيُضبط محتواه ولا يُنشأ هنا: إنشاؤه أو
+   حذفه قبل الترطيب يجعل رأس الصفحة مخالفاً لما صيّره الخادم، فيرمي React خطأ
+   ترطيب ويعيد رسم الصفحة كلها. وأما تغيير قيمة السمة فمأذون بـ suppressHydrationWarning. */
+var metas=document.querySelectorAll('meta[name="theme-color"][media]');
+for(var i=0;i<metas.length;i++){metas[i].remove()}
 var m=document.querySelector('meta[name="theme-color"]:not([media])');
 if(!m){m=document.createElement("meta");m.setAttribute("name","theme-color");document.head.appendChild(m)}
 m.setAttribute("content",dark?C.dark:C.light);

@@ -64,7 +64,16 @@ body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.7;
+  /* vh أولاً ثم dvh: الأجهزة الأقدم من دعم dvh تتجاهل السطر الثاني وتبقى على الأول */
+  min-height: 100vh;
   min-height: 100dvh;
+}
+
+/* الأجهزة الأقدم من دعم dvh — آيفون قبل iOS 15.4 وأندرويد قبل Chrome 108 —
+   تُسقط الخاصية كلها فلا يمتد الإطار على الشاشة. فيُعطى قياس vh بديلاً. */
+@supports not (height: 100dvh) {
+  .min-h-dvh { min-height: 100vh; }
+  .h-dvh { height: 100vh; }
 }
 
 h1, h2, h3, .display {
@@ -138,7 +147,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 
 /* مساحة أسفل المحتوى تكفي شريط تبويبات الجوال ومنطقته الآمنة، وتزول على الشاشات العريضة */
 .app-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
-@media (min-width: 768px) { .app-main { padding-bottom: 2rem; } }
+/* الحشوة السفلى تتبع شرط ظهور شريط التبويبات نفسه، عرضاً وارتفاعاً */
+@media (min-width: 768px) and (min-height: 600px) { .app-main { padding-bottom: 2rem; } }
 
 @media print {
   .no-print { display: none !important; }
@@ -249,4 +259,19 @@ html[data-standalone] #boot { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .boot-mark, .boot-sub { opacity: 1; animation: none; }
   .boot-rule { width: min(22vw, 7rem); animation: none; }
+}
+
+/*
+  اختيار شكل التنقّل بالعرض والارتفاع معاً، لا بالعرض وحده.
+
+  الجوال في الوضع الأفقي يتجاوز عرض نقطة التوقف (٨٤٤ بكسل مثلاً) فكان يُعرض له
+  الشريط الجانبي الطويل داخل شاشة ارتفاعها ٣٩٠ — قائمة لا تليق بها. فاشتُرط مع
+  العرض ارتفاعٌ كافٍ: الألواح والحواسيب تأخذ الشريط الجانبي، والجوال يبقى على
+  شريط التبويبات في الوضعين.
+*/
+.shell-side { display: none; }
+.shell-tabs { display: flex; }
+@media (min-width: 768px) and (min-height: 600px) {
+  .shell-side { display: flex; }
+  .shell-tabs { display: none; }
 }

@@ -33,7 +33,6 @@ self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "SKIP_WAITING") self.skipWaiting();
   if (data.type === "GET_VERSION") event.ports[0]?.postMessage(VERSION);
-  if (data.type === "SET_BADGE") event.waitUntil(setBadge(data.count));
 });
 
 self.addEventListener("fetch", (event) => {

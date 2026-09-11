@@ -3,6 +3,7 @@ import "./globals.css";
 import { thmanyahDisplay, thmanyahSans } from "./fonts";
 import PwaRegistrar from "@/components/PwaRegistrar";
 import ThemeScript from "@/components/ThemeScript";
+import { THEME_COLORS } from "@/lib/theme";
 import StartupImages from "@/components/StartupImages";
 import StaleAssetGuard from "@/components/StaleAssetGuard";
 import BootSplash from "@/components/BootSplash";
@@ -33,8 +34,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ar" dir="rtl" className={`${thmanyahSans.variable} ${thmanyahDisplay.variable}`}>
-      <head><ThemeScript /><StartupImages /></head>
+    <html lang="ar" dir="rtl" className={`${thmanyahSans.variable} ${thmanyahDisplay.variable}`} suppressHydrationWarning>
+      <head>
+        {/*
+          وسم لون شريط الحالة يُصيَّر من الخادم ويضبط نصُّ الإقلاع محتواه قبل أول
+          رسم. إنشاؤه في المتصفح كان يخالف رأسَ الصفحة الذي صيّره الخادم فيرمي
+          React خطأ ترطيب ويعيد رسم الصفحة كلها.
+        */}
+        <meta name="theme-color" content={THEME_COLORS.light} suppressHydrationWarning />
+        <ThemeScript />
+        <StartupImages />
+      </head>
       <body className="antialiased">
         {/*
           شاشة الإقلاع مرسومة من الخادم وأولَ عنصر في الصفحة: تظهر مع أول رسم،
