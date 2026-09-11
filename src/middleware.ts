@@ -28,6 +28,15 @@ export function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? decodeClaims(token) : null;
 
+  /**
+   * نقطة دخول التطبيق المثبَّت (start_url). من كان داخلاً يُحوَّل إلى لوحته من
+   * الحافة مباشرة، بلا تصيير الصفحة الرئيسة ولا لمس قاعدة البيانات — فيختصر
+   * فتحُ التطبيق رحلةً كاملة إلى الخادم كانت تسبق كل شيء.
+   */
+  if (pathname === "/") {
+    return session ? NextResponse.redirect(new URL(homeFor(session.role), req.url)) : NextResponse.next();
+  }
+
   if (!session) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
@@ -42,5 +51,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/admin/:path*", "/mentor/:path*"],
+  matcher: ["/", "/app/:path*", "/admin/:path*", "/mentor/:path*"],
 };

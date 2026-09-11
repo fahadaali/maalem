@@ -3,6 +3,7 @@ import "./globals.css";
 import { thmanyahDisplay, thmanyahSans } from "./fonts";
 import PwaRegistrar from "@/components/PwaRegistrar";
 import ThemeScript from "@/components/ThemeScript";
+import StartupImages from "@/components/StartupImages";
 
 export const metadata: Metadata = {
   title: { default: "معالم التربية", template: "%s — معالم التربية" },
@@ -30,7 +31,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl" className={`${thmanyahSans.variable} ${thmanyahDisplay.variable}`}>
-      <head><ThemeScript /></head>
+      <head><ThemeScript /><StartupImages /></head>
       <body className="antialiased">
         {children}
         <PwaRegistrar />

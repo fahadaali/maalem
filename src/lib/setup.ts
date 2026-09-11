@@ -136,13 +136,30 @@ let bootPromise: Promise<void> | null = null;
  * تُنفَّذ مرة واحدة في كل نسخة عاملة: تطبّق أي ترحيل جديد لم يُطبَّق بعد،
  * ثم تبذر بيانات الخطة. بهذا تصل التحديثات إلى قاعدة تعمل بلا تدخل يدوي.
  */
+/**
+ * بصمة الحالة المتوقعة: عدد الترحيلات المعروفة. تتغير كلما أُضيف ترحيل جديد،
+ * فتُعاد التهيئة عندها وحدها.
+ */
+const BOOT_STAMP = `v${MIGRATIONS.length}`;
+const BOOT_KEY = "boot:stamp";
+
+/**
+ * تُنفَّذ مرة واحدة في كل نسخة عاملة. الحالة الشائعة — قاعدة مهيأة أصلاً —
+ * تكلّف استعلاماً واحداً يقرأ البصمة، بدل عشر رحلات تتحقق من كل جدول.
+ * وهذا يقع على أول طلب في كل نسخة عاملة جديدة، لا مرة واحدة في عمر المنصة،
+ * فكان أثقل ما في فتح التطبيق البارد.
+ */
 export function ensureSchema(): Promise<void> {
   bootPromise ??= (async () => {
     try {
+      const stamp = await db.setting.findUnique({ where: { key: BOOT_KEY } }).catch(() => null);
+      if (stamp?.value === BOOT_STAMP) return;
+
       const applied = await applyMigrations();
       if (applied.length) console.log("applied migrations:", applied.join(", "));
       const cohortId = await ensureCohort();
       await ensureProgramData(cohortId);
+      await db.setting.upsert({ where: { key: BOOT_KEY }, update: { value: BOOT_STAMP }, create: { key: BOOT_KEY, value: BOOT_STAMP } });
     } catch (e) {
       bootPromise = null;
       console.error("schema boot failed:", (e as Error).message);
