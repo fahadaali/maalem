@@ -4,6 +4,7 @@ import { thmanyahDisplay, thmanyahSans } from "./fonts";
 import PwaRegistrar from "@/components/PwaRegistrar";
 import ThemeScript from "@/components/ThemeScript";
 import StartupImages from "@/components/StartupImages";
+import StaleAssetGuard from "@/components/StaleAssetGuard";
 
 export const metadata: Metadata = {
   title: { default: "معالم التربية", template: "%s — معالم التربية" },
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head><ThemeScript /><StartupImages /></head>
       <body className="antialiased">
         {children}
+        <StaleAssetGuard />
         <PwaRegistrar />
       </body>
     </html>

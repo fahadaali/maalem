@@ -1,6 +1,12 @@
 /* عامل الخدمة لمنصة معالم التربية: تحديث كامل عند كل إصدار + تخزين مؤقت + إشعارات الدفع */
 const VERSION = "__SW_VERSION__";
 const CACHE = `maalem-${VERSION}`;
+/**
+ * مخزون الأصول الثابتة لا يحمل رقم الإصدار: أسماء ملفاتها تحمل بصمة محتواها،
+ * فلا تقدُم ولا تتعارض. وحذفها مع كل إصدار كان ينزع من تحت صفحةٍ مفتوحة رقعاتِها
+ * التي قد تطلبها بعد النشر — فتتعطّل بـ «فشل تحميل الرقعة» وتظهر شاشة خطأ.
+ */
+const STATIC_CACHE = "maalem-static";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/manifest.webmanifest", "/icons/icon-192.png"];
 
@@ -12,9 +18,10 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // حذف كل مخزون الإصدارات السابقة: تحديث كامل لا جزئي
+      // تُحذف مخزونات الإصدارات السابقة، ويبقى مخزون الأصول الثابتة لأن الصفحات
+      // المفتوحة على الإصدار السابق قد تطلب منه رقعةً بعد النشر
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => k !== CACHE && k !== STATIC_CACHE).map((k) => caches.delete(k)));
       if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
       await self.clients.claim();
     })(),
@@ -34,20 +41,29 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // الملفات الثابتة (أسماؤها تحمل بصمة المحتوى): من التخزين المؤقت أولاً
+  // الملفات الثابتة (أسماؤها تحمل بصمة المحتوى): من التخزين المؤقت أولاً،
+  // وإن تعذّرت الشبكة أو اختفى الملف بعد نشر جديد فمن المخزون، فلا تنكسر صفحة مفتوحة
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(
-      caches.match(req).then(
-        (hit) =>
-          hit ||
-          fetch(req).then((res) => {
-            if (res.ok) {
-              const copy = res.clone();
-              caches.open(CACHE).then((c) => c.put(req, copy));
-            }
+      (async () => {
+        const hit = await caches.match(req);
+        if (hit) return hit;
+        try {
+          const res = await fetch(req);
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(STATIC_CACHE).then((c) => c.put(req, copy));
             return res;
-          }),
-      ),
+          }
+          // اختفى الملف من الخادم بعد نشر جديد: نسخة المخزون أولى من ردٍّ فاشل يكسر الصفحة
+          const stale = await caches.match(req, { ignoreSearch: true });
+          return stale || res;
+        } catch (e) {
+          const fallback = await caches.match(req, { ignoreSearch: true });
+          if (fallback) return fallback;
+          throw e;
+        }
+      })(),
     );
     return;
   }
