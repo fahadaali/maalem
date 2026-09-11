@@ -16,7 +16,21 @@ const fmt = (() => {
       f = new Intl.DateTimeFormat(locale, { timeZone: TZ, ...opts });
       cache.set(key, f);
     }
-    return f;
+    /**
+     * تنسيق لا يرمي: تاريخ غير صالح في صفٍّ واحد كان يرمي RangeError فتسقط
+     * الصفحة كلها إلى شاشة تعطّل. الآن يظهر مكانه شَرطة ويبقى ما عداه.
+     */
+    return {
+      format(d: Date): string {
+        const t = d instanceof Date ? d.getTime() : Date.parse(String(d));
+        if (!Number.isFinite(t)) return "—";
+        try {
+          return f!.format(t);
+        } catch {
+          return "—";
+        }
+      },
+    };
   };
 })();
 
