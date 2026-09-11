@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { PageHeader } from "@/components/ui";
 import { logout } from "@/app/(auth)/actions";
 import { LogOut } from "lucide-react";

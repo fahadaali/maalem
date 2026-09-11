@@ -84,10 +84,41 @@ export function recover(): "reload" | "repair" | "give-up" {
   return "give-up";
 }
 
+
+/**
+ * أعطال بثّ عابرة: انقطع بثّ الصفحة من الخادم قبل اكتماله، فرمى React
+ * «Connection closed»، أو تعذّر الجلب أصلاً. لا عيب في الصفحة نفسها،
+ * وعلاجها إعادة الطلب لا شاشة خطأ.
+ */
+const TRANSIENT = /Connection closed|Failed to fetch|NetworkError|Load failed|network error|The operation was aborted/i;
+
+export function isTransientStreamError(error: unknown): boolean {
+  if (!error) return false;
+  const e = error as { message?: string };
+  return TRANSIENT.test(String(e.message ?? error));
+}
+
+const RETRY = "maalem-retry";
+
+/** درجة المحاولة التالية لعطل عابر: 1 إعادة طلب، 2 إعادة تحميل، 0 توقّف */
+export function nextTransientStep(): 0 | 1 | 2 {
+  let n = 0;
+  try {
+    const raw = sessionStorage.getItem(RETRY);
+    const v = raw ? (JSON.parse(raw) as Attempts) : null;
+    if (v && Date.now() - v.at < WINDOW_MS) n = v.n;
+    sessionStorage.setItem(RETRY, JSON.stringify({ at: Date.now(), n: n + 1 }));
+  } catch {
+    // لا تخزين متاح: تُسمح محاولة واحدة
+  }
+  return n === 0 ? 1 : n === 1 ? 2 : 0;
+}
+
 /** تصفير العدّ بعد أن تستقر صفحة، فتبدأ أي مشكلة لاحقة من أول درجات التعافي */
 export function resetRecovery() {
   try {
     sessionStorage.removeItem(GUARD);
+    sessionStorage.removeItem(RETRY);
   } catch {
     // لا تخزين متاح
   }

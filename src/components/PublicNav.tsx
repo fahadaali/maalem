@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { getSession, homeFor } from "@/lib/auth";
 
 export default async function PublicNav() {

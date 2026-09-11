@@ -1,8 +1,9 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Bell, LogOut } from "lucide-react";
 import { NavLink } from "./NavLink";
+import WarmTabs from "./WarmTabs";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
@@ -71,7 +72,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
 
         {/* شريط التبويبات (الجوال) */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line flex" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}>
-          {/* تبويبات الجوال هي المسارات الساخنة: تُجلب مسبقاً فيكون النقر فتحاً لا انتظاراً */}
+          {/* تبويبات الجوال هي المسارات الساخنة: تُسخَّن بالتتابع وعند اللمس، لا دفعةً واحدة */}
           {tabs.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link">
               <i.icon size={20} strokeWidth={1.75} />
@@ -80,6 +81,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
           ))}
         </nav>
       </div>
+      <WarmTabs hrefs={tabs.filter((i) => i.href !== base).map((i) => i.href)} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PROGRAM } from "@/lib/program";

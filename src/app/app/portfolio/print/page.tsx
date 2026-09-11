@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { requireParticipantView } from "@/lib/auth";
 import PortfolioSheet from "@/components/PortfolioSheet";
 import PrintButton from "@/components/PrintButton";

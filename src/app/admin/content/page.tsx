@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveBook, deleteBook, saveCharter, saveAssessment, saveLevels } from "../actions";
 import { cohortWhere } from "@/lib/cohort";
-import Link from "next/link";
+import Link from "@/components/Link";
 
 export const metadata = { title: "محتوى الوثيقة" };
 

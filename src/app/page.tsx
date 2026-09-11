@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { BookOpen, CalendarDays, ClipboardList, Smartphone, Users, GraduationCap } from "lucide-react";
 import PublicNav from "@/components/PublicNav";
 import { PROGRAM } from "@/lib/program";

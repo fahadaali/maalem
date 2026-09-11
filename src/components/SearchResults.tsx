@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Card, Empty, Badge } from "@/components/ui";
 import type { Hit } from "@/lib/search";
 

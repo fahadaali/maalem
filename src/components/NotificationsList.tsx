@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Empty } from "@/components/ui";
 import { formatDateTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";

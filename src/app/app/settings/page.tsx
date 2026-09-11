@@ -9,7 +9,7 @@ import InstallButton from "@/components/InstallButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import { changePassword } from "@/app/(auth)/actions";
 import ContactCards from "@/components/ContactCards";
-import Link from "next/link";
+import Link from "@/components/Link";
 
 export const metadata = { title: "الإعدادات" };
 

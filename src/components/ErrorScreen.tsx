@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { RotateCcw, RefreshCw, LifeBuoy, ChevronDown } from "lucide-react";
-import { errorDetail, isStaleAssetError, recover, repairNow } from "@/lib/client-errors";
+import { useRouter } from "next/navigation";
+import { errorDetail, isStaleAssetError, isTransientStreamError, nextTransientStep, recover, repairNow } from "@/lib/client-errors";
 
 /**
  * شاشة تعطّل بديلة عن رسالة Next الإنجليزية.
@@ -10,15 +11,31 @@ import { errorDetail, isStaleAssetError, recover, repairNow } from "@/lib/client
  * المخزون إن تكرّر — وإلا عُرض للمستخدم ما يفعله بدل أن تُترك الشاشة سوداء.
  */
 export default function ErrorScreen({ error, reset, bare }: { error: Error & { digest?: string }; reset?: () => void; bare?: boolean }) {
-  const [stage, setStage] = useState<"" | "reload" | "repair">("");
+  const [stage, setStage] = useState<"" | "reload" | "repair" | "retry">("");
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!isStaleAssetError(error)) return;
-    const r = recover();
-    if (r !== "give-up") setStage(r);
-  }, [error]);
+    if (isStaleAssetError(error)) {
+      const r = recover();
+      if (r !== "give-up") setStage(r);
+      return;
+    }
+    // عطل بثّ عابر: يُعاد الطلب مرة، ثم يُعاد التحميل، ثم تُترك الشاشة للمستخدم
+    if (!isTransientStreamError(error)) return;
+    const step = nextTransientStep();
+    if (step === 1 && reset) {
+      setStage("retry");
+      router.refresh();
+      const t = window.setTimeout(reset, 500);
+      return () => window.clearTimeout(t);
+    }
+    if (step === 2) {
+      setStage("reload");
+      window.location.reload();
+    }
+  }, [error, reset, router]);
 
   const frame = bare ? "min-h-dvh" : "py-10";
 
@@ -26,7 +43,9 @@ export default function ErrorScreen({ error, reset, bare }: { error: Error & { d
     return (
       <div className={`${frame} flex flex-col items-center justify-center gap-3 p-6 text-center`}>
         <RefreshCw size={22} className="animate-spin" aria-hidden />
-        <p className="text-sm text-muted">{stage === "repair" ? "يُنظَّف المخزون ويُعاد التحميل…" : "يُحدَّث التطبيق إلى آخر إصدار…"}</p>
+        <p className="text-sm text-muted">
+          {stage === "repair" ? "يُنظَّف المخزون ويُعاد التحميل…" : stage === "retry" ? "انقطع الاتصال أثناء التحميل، تُعاد المحاولة…" : "يُحدَّث التطبيق إلى آخر إصدار…"}
+        </p>
       </div>
     );
   }

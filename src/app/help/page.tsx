@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import PublicNav from "@/components/PublicNav";
 import { PageHeader, Card } from "@/components/ui";
 import { PROGRAM } from "@/lib/program";
