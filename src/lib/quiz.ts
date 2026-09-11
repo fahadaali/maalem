@@ -35,8 +35,3 @@ export function isCorrect(q: Gradable, given: number | string | null): boolean {
   }
   return Number(given) === q.correctIndex;
 }
-
-/** خيارات السؤال بحسب نوعه */
-export function optionsFor(kind: string, raw: string[]): string[] {
-  return kind === "TRUEFALSE" ? TRUE_FALSE_OPTIONS : raw;
-}

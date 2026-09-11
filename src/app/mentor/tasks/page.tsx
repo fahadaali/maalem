@@ -9,7 +9,7 @@ import { mentorGradeSubmission } from "../actions";
 import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { formatDateTime } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
-import { withFiles } from "@/lib/attachments";
+import { attachmentsByUser } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "تقييم مهام مجموعتي" };
@@ -24,14 +24,13 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
   const ids = mentees.map((m) => m.id);
   const selected = assignments.find((a) => a.id === sp.a) ?? assignments[0];
   const rows = selected
-    ? await withFiles(
-        await db.submission.findMany({
-          where: { assignmentId: selected.id, userId: { in: ids } },
-          include: { user: { select: { id: true, name: true } } },
-          orderBy: { submittedAt: "asc" },
-        }),
-      )
+    ? await db.submission.findMany({
+        where: { assignmentId: selected.id, userId: { in: ids } },
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { submittedAt: "asc" },
+      })
     : [];
+  const filesByUser = selected ? await attachmentsByUser("SUBMISSION", selected.id) : new Map();
 
   return (
     <>
@@ -68,7 +67,7 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
                     <div className="text-xs text-muted mb-2">سُلّمت {formatDateTime(s.submittedAt)}</div>
                     <p className="text-sm whitespace-pre-wrap">{s.content}</p>
                     {s.link && <p className="text-sm mt-1"><a href={s.link} className="underline" target="_blank" rel="noreferrer" dir="ltr">{s.link}</a></p>}
-                    <div className="mt-2"><Attachments kind="SUBMISSION" refId={s.assignmentId} initial={s.files} readOnly /></div>
+                    <div className="mt-2"><Attachments kind="SUBMISSION" refId={s.assignmentId} initial={filesByUser.get(s.userId) ?? []} readOnly /></div>
                     <form action={mentorGradeSubmission} className="border-t border-line pt-3 mt-3">
                       <input type="hidden" name="id" value={s.id} />
                       <div className="table-wrap">

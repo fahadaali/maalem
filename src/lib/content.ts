@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { db } from "./db";
 import { cohortWhere } from "./cohort";
 import { BOOKS, CHARTER, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC, COMPLETION_LEVELS, COMPETENCIES, type Competency } from "./program";
@@ -12,7 +13,7 @@ export type Book = { order: number; title: string; author: string; pages: number
 export type AssessmentRow = { key: string; label: string; points: number; tool: string | null; minimum: string | null; description: string | null };
 export type Level = { min: number; level: string; certificate: string };
 
-export async function getBooks(): Promise<Book[]> {
+export const getBooks = cache(async (): Promise<Book[]> => {
   try {
     const rows = await db.programBook.findMany({ where: await cohortWhere(), orderBy: { order: "asc" } });
     if (rows.length) return rows.map((r) => ({ order: r.order, title: r.title, author: r.author, pages: r.pages, weeks: r.weeks, circle: r.circle, availability: r.availability }));
@@ -20,13 +21,13 @@ export async function getBooks(): Promise<Book[]> {
     // القاعدة غير مهيأة بعد
   }
   return BOOKS.map((b) => ({ ...b }));
-}
+});
 
 export async function getBookTitles(): Promise<string[]> {
   return (await getBooks()).filter((b) => b.pages > 0).map((b) => b.title);
 }
 
-export async function getCharter(): Promise<string[]> {
+export const getCharter = cache(async (): Promise<string[]> => {
   try {
     const rows = await db.charterItem.findMany({ where: await cohortWhere(), orderBy: { order: "asc" } });
     if (rows.length) return rows.map((r) => r.text);
@@ -34,9 +35,9 @@ export async function getCharter(): Promise<string[]> {
     // القاعدة غير مهيأة بعد
   }
   return [...CHARTER];
-}
+});
 
-async function assessment(kind: "CONTINUOUS" | "PROJECT"): Promise<AssessmentRow[]> {
+const assessment = cache(async (kind: "CONTINUOUS" | "PROJECT"): Promise<AssessmentRow[]> => {
   try {
     const rows = await db.assessmentItem.findMany({ where: { kind, ...(await cohortWhere()) }, orderBy: { order: "asc" } });
     if (rows.length) return rows.map((r) => ({ key: r.key, label: r.label, points: r.points, tool: r.tool, minimum: r.minimum, description: r.description }));
@@ -46,7 +47,7 @@ async function assessment(kind: "CONTINUOUS" | "PROJECT"): Promise<AssessmentRow
   return kind === "CONTINUOUS"
     ? CONTINUOUS_ASSESSMENT.map((c) => ({ key: c.key, label: c.component, points: c.points, tool: c.tool, minimum: c.minimum, description: null }))
     : PROJECT_RUBRIC.map((r) => ({ key: r.key, label: r.criterion, points: r.points, tool: null, minimum: null, description: r.description }));
-}
+});
 
 export async function getContinuous(): Promise<AssessmentRow[]> {
   return assessment("CONTINUOUS");
@@ -56,7 +57,7 @@ export async function getProjectRubric(): Promise<AssessmentRow[]> {
   return assessment("PROJECT");
 }
 
-export async function getCompletionLevels(): Promise<Level[]> {
+export const getCompletionLevels = cache(async (): Promise<Level[]> => {
   try {
     const rows = await db.completionLevel.findMany({ where: await cohortWhere(), orderBy: { min: "desc" } });
     if (rows.length) return rows.map((r) => ({ min: r.min, level: r.level, certificate: r.certificate }));
@@ -64,9 +65,9 @@ export async function getCompletionLevels(): Promise<Level[]> {
     // القاعدة غير مهيأة بعد
   }
   return COMPLETION_LEVELS.map((l) => ({ ...l }));
-}
+});
 
-export async function getCompetencies(): Promise<Competency[]> {
+export const getCompetencies = cache(async (): Promise<Competency[]> => {
   try {
     const rows = await db.competencyDef.findMany({ where: await cohortWhere(), orderBy: { order: "asc" }, include: { items: { orderBy: { order: "asc" } } } });
     if (rows.length) {
@@ -87,13 +88,7 @@ export async function getCompetencies(): Promise<Competency[]> {
     // القاعدة غير مهيأة بعد
   }
   return COMPETENCIES;
-}
-
-/** مجموع نقاط التقييم المستمر ومشروع التخرج كما ضُبطت */
-export async function getTotals(): Promise<{ continuous: number; project: number }> {
-  const [c, p] = await Promise.all([getContinuous(), getProjectRubric()]);
-  return { continuous: c.reduce((s, x) => s + x.points, 0), project: p.reduce((s, x) => s + x.points, 0) };
-}
+});
 
 export async function levelForTotal(total: number): Promise<Level> {
   const levels = await getCompletionLevels();
@@ -122,3 +117,19 @@ export async function bookProgress(userId: string): Promise<BookProgress[]> {
     };
   });
 }
+
+/**
+ * ما يُتوقع من المشارك عبر البرنامج، مشتقاً من عدد الأسابيع التطويرية في جدول
+ * الدفعة لا من رقم ثابت، فيتبع أي تقصير أو تمديد يجريه مدير المشروع.
+ */
+export const programExpectations = cache(async () => {
+  const { getWeeks } = await import("./weeks");
+  const weeks = await getWeeks();
+  const developmental = weeks.filter((w) => w.number >= 1 && w.number <= 12).length || 12;
+  return {
+    weeks: developmental,
+    cards: developmental * 5, // خمس بطاقات أسبوعياً
+    reports: developmental,
+    fieldHours: developmental, // ساعة معايشة أسبوعياً
+  };
+});

@@ -7,16 +7,9 @@ import { saveReminder, deleteReminder, sendReminderNow } from "../actions";
 import { formatDateTime, todayKey } from "@/lib/dates";
 import { participantsWhere } from "@/lib/cohort";
 import { emailEnabled } from "@/lib/email";
+import { REMINDER_AUDIENCES as AUDIENCE_LABEL } from "@/lib/reminders";
 
 export const metadata = { title: "التذكيرات المجدولة" };
-
-const AUDIENCE_LABEL: Record<string, string> = {
-  ALL: "الجميع",
-  PARTICIPANTS: "المشاركون",
-  MENTORS: "المشرفون المرافقون",
-  ADMINS: "مديرو المشروع",
-  ONE: "مشارك بعينه",
-};
 
 export default async function RemindersPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
@@ -89,7 +82,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
                   <div className="text-sm text-muted whitespace-pre-wrap">{r.body}</div>
                   <div className="flex gap-1 mt-1 flex-wrap">
                     <Badge>{formatDateTime(r.sendAt)}</Badge>
-                    <Badge tone="soft">{r.audience === "ONE" ? names.get(r.userId ?? "") ?? "مشارك" : AUDIENCE_LABEL[r.audience]}</Badge>
+                    <Badge tone="soft">{r.audience === "ONE" ? names.get(r.userId ?? "") ?? "مشارك" : AUDIENCE_LABEL[r.audience as keyof typeof AUDIENCE_LABEL]}</Badge>
                     {r.channels === "PUSH_EMAIL" && <Badge tone="soft">بريد للجميع</Badge>}
                   </div>
                 </div>
@@ -120,7 +113,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
                 {sent.map((r) => (
                   <tr key={r.id}>
                     <td>{r.title}</td>
-                    <td>{r.audience === "ONE" ? names.get(r.userId ?? "") ?? "مشارك" : AUDIENCE_LABEL[r.audience]}</td>
+                    <td>{r.audience === "ONE" ? names.get(r.userId ?? "") ?? "مشارك" : AUDIENCE_LABEL[r.audience as keyof typeof AUDIENCE_LABEL]}</td>
                     <td className="text-muted">{r.sentAt ? formatDateTime(r.sentAt) : "—"}</td>
                   </tr>
                 ))}

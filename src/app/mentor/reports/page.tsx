@@ -5,8 +5,8 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { mentorReviewReport } from "../actions";
-import { formatDateTime, reportDueDate } from "@/lib/dates";
-import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
+import { formatDateTime } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "تقارير مجموعتي" };
@@ -33,7 +33,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
   const ids = mentees.map((m) => m.id);
   const reports = await db.weeklyReport.findMany({ where: { week, userId: { in: ids } }, include: { user: true }, orderBy: { submittedAt: "asc" } });
   const submitted = new Set(reports.map((r) => r.userId));
-  const due = reportDueDate(week);
+  const due = await reportDueDate(week);
 
   return (
     <>

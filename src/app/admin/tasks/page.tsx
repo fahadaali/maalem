@@ -5,8 +5,8 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createAssignment } from "../actions";
-import { formatShort, reportDueDate } from "@/lib/dates";
-import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
+import { formatShort } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { getCompetencies } from "@/lib/content";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
@@ -62,7 +62,7 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
                   {activeWeeks.map((w) => <option key={w.number} value={w.number}>{w.number === 0 ? "الافتتاحي" : `الأسبوع ${w.number}`}</option>)}
                 </select>
               </div>
-              <div className="field"><label className="label">موعد التسليم</label><input type="datetime-local" name="dueAt" className="input" required defaultValue={toLocalInput(reportDueDate(nextWeek))} /></div>
+              <div className="field"><label className="label">موعد التسليم</label><input type="datetime-local" name="dueAt" className="input" required defaultValue={toLocalInput(await reportDueDate(nextWeek))} /></div>
             </div>
             <div className="field">
               <label className="label">الكفاءة</label>

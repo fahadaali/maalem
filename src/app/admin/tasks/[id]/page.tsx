@@ -10,7 +10,7 @@ import { getActiveWeeks } from "@/lib/weeks";
 import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { getCompetencies } from "@/lib/content";
 import Attachments from "@/components/Attachments";
-import { listAttachments } from "@/lib/attachments";
+import { attachmentsByUser } from "@/lib/attachments";
 import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "تقييم مهمة" };
@@ -26,11 +26,9 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { include: { user: true }, orderBy: { submittedAt: "asc" } } } });
   if (!a) notFound();
   const activeWeeks = await getActiveWeeks();
-  const files = await listAttachments({ kind: "SUBMISSION", refId: a.id });
+
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
-  const attRows = await db.attachment.findMany({ where: { kind: "SUBMISSION", refId: a.id } });
-  const filesByUser = new Map<string, typeof files>();
-  for (const r of attRows) filesByUser.set(r.userId, [...(filesByUser.get(r.userId) ?? []), ...files.filter((f) => f.id === r.id)]);
+  const filesByUser = await attachmentsByUser("SUBMISSION", a.id);
   const submittedIds = new Set(a.submissions.map((s) => s.userId));
   const missing = participants.filter((p) => !submittedIds.has(p.id));
 

@@ -5,8 +5,8 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { reviewReport } from "../actions";
-import { formatDateTime, reportDueDate } from "@/lib/dates";
-import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
+import { formatDateTime } from "@/lib/dates";
+import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
 import { participantsWhere } from "@/lib/cohort";
 
@@ -23,7 +23,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
     db.weeklyReport.findMany({ where: { week }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
   ]);
   const byUser = new Map(reports.map((r) => [r.userId, r]));
-  const due = reportDueDate(week);
+  const due = await reportDueDate(week);
   const rows = [
     ["الورد القرائي المنجز", "reading"], ["أبرز الفوائد", "benefits"], ["المهمة الأسبوعية", "taskProgress"], ["المعايشة الميدانية", "fieldNote"], ["نتيجة الاختبار", "quizResult"], ["تطبيق في الميدان", "application"], ["صعوبة تحتاج دعماً", "difficulty"],
   ] as const;

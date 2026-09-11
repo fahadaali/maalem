@@ -4,8 +4,8 @@ import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat, Badge } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
-import { dayName, formatHijri, formatGregorian, reportDueDate, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
-import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
+import { dayName, formatHijri, formatGregorian, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
+import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
 import { computeGrades } from "@/lib/grades";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
 import { cohortWhere } from "@/lib/cohort";
@@ -38,7 +38,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const routine = weekNo < 0 || weekNo > 13 ? undefined : PARTICIPANT_ROUTINE.find((r) => (wd === 6 && r.day === "السبت") || (wd >= 0 && wd <= 4 && r.day === "الأحد – الخميس") || (wd === 5 && r.day === "الجمعة"));
   const isReadingDay = wd >= 0 && wd <= 4;
-  const due = weekNo >= 0 && weekNo <= 12 ? reportDueDate(weekNo) : null;
+  const due = weekNo >= 0 && weekNo <= 12 ? await reportDueDate(weekNo) : null;
 
   return (
     <>

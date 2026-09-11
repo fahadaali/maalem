@@ -1,11 +1,11 @@
-import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen, Library, CalendarDays, Gauge, NotebookPen, UserPlus, Wallet, FileBarChart, BadgeCheck, MessageSquareHeart, Archive, Layers, TrendingUp, AlarmClock, FileCog, Grid3x3, Database, CalendarOff, Search, LifeBuoy } from "lucide-react";
+import { LayoutDashboard, Users, CalendarCheck, FileText, ClipboardList, ListChecks, Footprints, GraduationCap, Bell, ListTodo, Award, Settings, BookOpen, Library, CalendarDays, Gauge, NotebookPen, UserPlus, Wallet, FileBarChart, BadgeCheck, MessageSquareHeart, Archive, Layers, TrendingUp, AlarmClock, FileCog, Grid3x3, Database, CalendarOff, Search, LifeBuoy, Menu } from "lucide-react";
 import type { NavItem } from "@/components/shell/AppShell";
 
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "اللوحة", icon: LayoutDashboard, exact: true, tab: true },
-  { href: "/admin/participants", label: "المشاركون", icon: Users, tab: true },
+  { href: "/admin/participants", label: "المشاركون", icon: Users },
   { href: "/admin/attendance", label: "الحضور", icon: CalendarCheck, tab: true },
-  { href: "/admin/reports", label: "التقارير الأسبوعية", icon: FileText, tab: true },
+  { href: "/admin/reports", label: "التقارير الأسبوعية", icon: FileText, tab: true, short: "التقارير" },
   { href: "/admin/tasks", label: "المهام والتقييم", icon: ClipboardList },
   { href: "/admin/quizzes", label: "الاختبارات", icon: ListChecks },
   { href: "/admin/bank", label: "بنك الأسئلة", icon: Database },
@@ -34,4 +34,5 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/search", label: "البحث", icon: Search },
   { href: "/help", label: "المساعدة", icon: LifeBuoy },
   { href: "/admin/settings", label: "الإعدادات", icon: Settings },
+  { href: "/admin/more", label: "المزيد", icon: Menu, tab: true, tabOnly: true },
 ];

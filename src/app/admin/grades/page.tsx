@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui";
-import { computeGrades } from "@/lib/grades";
+import { computeGradesFor } from "@/lib/grades";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { Badge } from "@/components/ui";
@@ -23,7 +23,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
   const [continuous, levels] = await Promise.all([getContinuous(), getCompletionLevels()]);
   const contMax = continuous.reduce((s, c) => s + c.points, 0);
-  const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+  const grades = await computeGradesFor(participants.map((p) => p.id));
   const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } });
   const finalOf = (id: string) => finals.find((f) => f.userId === id);
   const finalTotal = (f: { computed: number; adjustment: number }) => Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10));

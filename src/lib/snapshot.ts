@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { computeGrades } from "./grades";
+import { computeGradesFor } from "./grades";
 import { currentWeekNumber } from "./weeks";
 import { participantsWhere } from "./cohort";
 
@@ -25,7 +25,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const week = await currentWeekNumber();
   const participants = await db.user.findMany({ where: await participantsWhere(), select: { id: true, charterAcceptedAt: true } });
   const ids = participants.map((p) => p.id);
-  const grades = await Promise.all(ids.map((id) => computeGrades(id)));
+  const grades = await computeGradesFor(ids);
   const [cards, reports, submissions, graded, field, attempts, leadership, projects] = await Promise.all([
     db.readingCard.count({ where: { userId: { in: ids } } }),
     db.weeklyReport.count({ where: { userId: { in: ids } } }),

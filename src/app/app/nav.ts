@@ -18,7 +18,7 @@ export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app/diagnostic", label: "التقييم التشخيصي", icon: Gauge },
   { href: "/app/reflection", label: "دفتر التأمل", icon: PenLine },
   { href: "/app/habits", label: "متتبع العادات", icon: Repeat },
-  { href: "/app/portfolio", label: "ملف الإنجاز", icon: FolderOpen, tab: true },
+  { href: "/app/portfolio", label: "ملف الإنجاز", icon: FolderOpen, tab: true, short: "الإنجاز" },
   { href: "/app/timeline", label: "سجل نشاطي", icon: History },
   { href: "/app/certificate", label: "وثيقة الإتمام", icon: BadgeCheck },
   { href: "/app/survey", label: "استبانة الرضا", icon: MessageSquareHeart },

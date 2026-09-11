@@ -6,7 +6,7 @@ import FormMessage from "@/components/FormMessage";
 import CertificateSheet from "@/components/CertificateSheet";
 import PrintButton from "@/components/PrintButton";
 import { issueCertificate, revokeCertificate } from "../actions";
-import { computeGrades } from "@/lib/grades";
+import { computeGradesFor } from "@/lib/grades";
 import { formatShort } from "@/lib/dates";
 import { participantsWhere } from "@/lib/cohort";
 
@@ -16,7 +16,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
   await requireRole("ADMIN");
   const sp = await searchParams;
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, include: { certificate: true } });
-  const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+  const grades = await computeGradesFor(participants.map((p) => p.id));
   const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((x) => x.id) } } });
 
   if (sp.print) {

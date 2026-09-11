@@ -8,7 +8,8 @@ import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { logout } from "@/app/(auth)/actions";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean };
+/** `short` تسمية مختصرة لشريط تبويبات الجوال حيث لا يتسع النص الطويل */
+export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string };
 
 export default async function AppShell({ user, items, children, base }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string }) {
   const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
@@ -66,7 +67,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
           {tabs.map((i) => (
             <NavLink key={i.href} href={i.href} exact={i.exact} className="tabbar-link">
               <i.icon size={20} strokeWidth={1.75} />
-              <span>{i.label}</span>
+              <span>{i.short ?? i.label}</span>
             </NavLink>
           ))}
         </nav>

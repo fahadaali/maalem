@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { WEEKS } from "./program";
-import { programStart } from "./dates";
+import { keyToDate } from "./dates";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -83,7 +83,7 @@ function vevent(e: Event, now: Date) {
 export async function buildCalendar(userId: string, cohortId: string | null, appUrl: string): Promise<string> {
   const now = new Date();
   const times = await scheduleTimes();
-  let weeks: { number: number; label: string; session: string; circle: string; task: string; meetingPlace?: string | null; remoteUrl?: string | null }[] = WEEKS;
+  let weeks: { number: number; label: string; gregorian: string; session: string; circle: string; task: string; meetingPlace?: string | null; remoteUrl?: string | null }[] = WEEKS;
   try {
     const rows = await db.programWeek.findMany({ where: cohortId ? { cohortId } : {}, orderBy: { number: "asc" } });
     if (rows.length) weeks = rows;
@@ -96,7 +96,7 @@ export async function buildCalendar(userId: string, cohortId: string | null, app
     if (w.number < 0 || w.number > 13) continue;
     events.push({
       uid: `maalem-session-${w.number}-${userId}@maalem`,
-      start: riyadh(programStart, w.number * 7, times.sessionTime),
+      start: riyadh(keyToDate(w.gregorian), 0, times.sessionTime),
       minutes: times.sessionMinutes,
       summary: `لقاء حضوري — الأسبوع ${w.label}`,
       description: w.session,
@@ -104,7 +104,7 @@ export async function buildCalendar(userId: string, cohortId: string | null, app
     });
     events.push({
       uid: `maalem-circle-${w.number}-${userId}@maalem`,
-      start: riyadh(programStart, w.number * 7 + 3, times.circleTime),
+      start: riyadh(keyToDate(w.gregorian), 3, times.circleTime),
       minutes: times.circleMinutes,
       summary: `حلقة نقاش عن بُعد — الأسبوع ${w.label}`,
       description: w.circle,
@@ -113,7 +113,7 @@ export async function buildCalendar(userId: string, cohortId: string | null, app
     if (w.number <= 12) {
       events.push({
         uid: `maalem-report-${w.number}-${userId}@maalem`,
-        start: riyadh(programStart, w.number * 7 + 5, "21:30"),
+        start: riyadh(keyToDate(w.gregorian), 5, "21:30"),
         minutes: 30,
         summary: `تسليم التقرير الأسبوعي — الأسبوع ${w.label}`,
         description: `المهمة: ${w.task}`,

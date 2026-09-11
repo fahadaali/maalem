@@ -5,7 +5,7 @@ import { PageHeader, Card, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createUser, importParticipants } from "../actions";
-import { computeGrades } from "@/lib/grades";
+import { computeGradesFor } from "@/lib/grades";
 import { ROLE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -17,7 +17,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
   const users = await db.user.findMany({ where: { OR: [await cohortWhere(), { role: "ADMIN" }] }, orderBy: [{ role: "asc" }, { name: "asc" }], include: { mentor: { select: { name: true } } } });
   const participants = users.filter((u) => u.role === "PARTICIPANT");
   const mentors = users.filter((u) => u.role === "MENTOR");
-  const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+  const grades = await computeGradesFor(participants.map((p) => p.id));
 
   return (
     <>

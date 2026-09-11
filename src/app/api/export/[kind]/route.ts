@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { computeGrades } from "@/lib/grades";
+import { computeGradesFor } from "@/lib/grades";
 import { getContinuous } from "@/lib/content";
 import { ATTENDANCE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
   let rows: (string | number)[][] = [];
 
   if (kind === "grades") {
-    const grades = await Promise.all(participants.map((p) => computeGrades(p.id)));
+    const grades = await computeGradesFor(participants.map((p) => p.id));
     const continuous = await getContinuous();
     const contMax = continuous.reduce((s, c) => s + c.points, 0);
     const projMax = grades[0]?.maxes.project ?? 30;

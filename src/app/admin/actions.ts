@@ -19,6 +19,8 @@ import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
 import { getCompletionLevels } from "@/lib/content";
 import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
 import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
+import { dispatchReminder, isAudience } from "@/lib/reminders";
+import { ensureProgramData } from "@/lib/setup";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -249,12 +251,10 @@ export async function copyFromBank(formData: FormData) {
   const quiz = await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } });
   if (!quiz) fail("/admin/quizzes", "الاختبار غير موجود");
   const rows = await db.bankQuestion.findMany({ where: { id: { in: ids } } });
-  let order = await db.question.count({ where: { quizId } });
-  for (const r of rows) {
-    await db.question.create({
-      data: { quizId, order: ++order, kind: r.kind, text: r.text, options: r.options, correctIndex: r.correctIndex, answers: r.answers, explanation: r.explanation },
-    });
-  }
+  const start = await db.question.count({ where: { quizId } });
+  await db.question.createMany({
+    data: rows.map((r, i) => ({ quizId, order: start + i + 1, kind: r.kind, text: r.text, options: r.options, correctIndex: r.correctIndex, answers: r.answers, explanation: r.explanation })),
+  });
   revalidatePath(path);
   ok(path, `نُسخ ${rows.length} سؤالاً من البنك`);
 }
@@ -699,17 +699,20 @@ export async function createCohort(formData: FormData) {
   // أسابيع الدفعة الجديدة من الخطة، بمواعيد تبدأ من تاريخ لقائها الافتتاحي
   const start = new Date(`${startDate}T00:00:00+03:00`).getTime();
   const { WEEKS, BUDGET } = await import("@/lib/program");
-  for (const w of WEEKS) {
-    const d = new Date(start + w.number * 7 * 86400000).toISOString().slice(0, 10);
-    await db.programWeek.create({
-      data: { cohortId: cohort.id, number: w.number, label: w.label, hijri: w.hijri, gregorian: d, competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task },
-    });
-  }
-  let order = 0;
-  for (const i of BUDGET.items) {
-    await db.budgetEntry.create({ data: { cohortId: cohort.id, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
-  }
-  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها وميزانيتها. فعّلها للعمل عليها.`);
+  await db.programWeek.createMany({
+    data: WEEKS.map((w) => ({
+      cohortId: cohort.id, number: w.number, label: w.label, hijri: w.hijri,
+      gregorian: new Date(start + w.number * 7 * 86400000).toISOString().slice(0, 10),
+      competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+    })),
+  });
+  await db.budgetEntry.createMany({
+    data: BUDGET.items.map((i, order) => ({ cohortId: cohort.id, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order })),
+  });
+  // بقية محتوى الوثيقة للدفعة الجديدة: الكتب والميثاق والأوزان والمستويات والكفاءات،
+  // تُبذر الآن لا عند أول تشغيل تالٍ، فتكون قابلة للتحرير من ساعة إنشائها
+  await ensureProgramData(cohort.id);
+  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها وميزانيتها ومحتوى وثيقتها. فعّلها للعمل عليها.`);
 }
 
 export async function activateCohort(formData: FormData) {
@@ -765,8 +768,6 @@ export async function saveMentorEvaluation(formData: FormData) {
 }
 
 // ——— التذكيرات المخصصة ———
-const AUDIENCES = new Set(["ALL", "PARTICIPANTS", "MENTORS", "ADMINS", "ONE"]);
-
 export async function saveReminder(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
@@ -779,7 +780,7 @@ export async function saveReminder(formData: FormData) {
   const time = str(formData.get("time")) || "07:00";
   const channels = str(formData.get("channels")) === "PUSH_EMAIL" ? "PUSH_EMAIL" : "PUSH";
   if (!title || !body) fail("/admin/reminders", "اكتب عنوان التذكير ونصه");
-  if (!AUDIENCES.has(audience)) fail("/admin/reminders", "فئة غير صحيحة");
+  if (!isAudience(audience)) fail("/admin/reminders", "فئة غير صحيحة");
   if (audience === "ONE" && !userId) fail("/admin/reminders", "اختر المشارك المقصود");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) fail("/admin/reminders", "اختر تاريخ الإرسال ووقته");
   const sendAt = new Date(`${date}T${time}:00+03:00`);
@@ -815,18 +816,7 @@ export async function sendReminderNow(formData: FormData) {
   const r = await db.reminder.findUnique({ where: { id } });
   if (!r) fail("/admin/reminders", "التذكير غير موجود");
   if (r.sentAt) fail("/admin/reminders", "أُرسل من قبل");
-  const scope = r.cohortId ? { cohortId: r.cohortId } : {};
-  let ids: string[] = [];
-  if (r.audience === "ONE" && r.userId) ids = [r.userId];
-  else if (r.audience === "ADMINS") ids = (await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } })).map((u) => u.id);
-  else if (r.audience === "MENTORS") ids = (await db.user.findMany({ where: { role: "MENTOR", active: true, ...scope }, select: { id: true } })).map((u) => u.id);
-  else if (r.audience === "ALL") {
-    const rows = await db.user.findMany({ where: { active: true, OR: [scope, { role: "ADMIN" }] }, select: { id: true } });
-    ids = rows.map((u) => u.id);
-  } else ids = (await db.user.findMany({ where: { role: "PARTICIPANT", active: true, ...scope }, select: { id: true } })).map((u) => u.id);
-
-  const res = await notifyUsers(ids, { title: r.title, body: r.body, url: r.url ?? undefined }, { email: r.channels === "PUSH_EMAIL" ? "always" : "fallback" });
-  await db.reminder.update({ where: { id }, data: { sentAt: new Date() } });
+  const res = await dispatchReminder(r);
   revalidatePath("/admin/reminders");
   ok("/admin/reminders", `أُرسل إلى ${res.inApp} مستخدماً (دفع: ${res.pushed}، بريد: ${res.emailed})`);
 }
@@ -974,8 +964,7 @@ export async function saveCharter(formData: FormData) {
   if (added) items.push(added);
   if (!items.length) fail("/admin/content", "الميثاق لا يصح بلا بنود");
   await db.charterItem.deleteMany({ where: cohortId ? { cohortId } : {} });
-  let order = 0;
-  for (const text of items) await db.charterItem.create({ data: { cohortId, order: order++, text } });
+  await db.charterItem.createMany({ data: items.map((text, order) => ({ cohortId, order, text })) });
   revalidatePath("/admin/content");
   ok("/admin/content", `حُفظ الميثاق (${items.length} بنداً)`);
 }

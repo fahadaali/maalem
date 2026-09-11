@@ -53,10 +53,10 @@ export async function needsSetup(): Promise<boolean> {
 export async function ensureCohort(): Promise<string> {
   const active = await db.cohort.findFirst({ where: { active: true } });
   if (active) return active.id;
-  const any = await db.cohort.findFirst({ orderBy: { createdAt: "asc" } });
-  if (any) {
-    await db.cohort.update({ where: { id: any.id }, data: { active: true } });
-    return any.id;
+  const first = await db.cohort.findFirst({ orderBy: { createdAt: "asc" } });
+  if (first) {
+    await db.cohort.update({ where: { id: first.id }, data: { active: true } });
+    return first.id;
   }
   const created = await db.cohort.create({ data: { name: PROGRAM.cohort, startDate: PROGRAM.startDate, active: true } });
   // نسبة البيانات القائمة إلى الدفعة الأولى
@@ -74,60 +74,59 @@ export async function ensureCohort(): Promise<string> {
   return created.id;
 }
 
-/** يبذر بيانات الخطة القابلة للتعديل (الأسابيع والميزانية) إن لم تكن موجودة */
+/** معرّف يُولَّد قبل الكتابة، فتُكتب الكفاءات ومفرداتها دفعةً واحدة */
+const newId = () => crypto.randomUUID().replace(/-/g, "");
+
+/** يبذر محتوى الخطة القابل للتعديل إن لم يكن موجوداً: الأسابيع، والكتب، والميثاق، والأوزان، والمستويات، والكفاءات، والميزانية */
 export async function ensureProgramData(cohortId: string): Promise<void> {
+  // تُكتب البذور بـ createMany: استدعاء واحد لكل جدول بدل استدعاء لكل صف،
+  // فبدء التشغيل الأول على D1 لا يبتلع عشرات الرحلات إلى القاعدة.
   if ((await db.programWeek.count({ where: { cohortId } })) === 0) {
-    for (const w of WEEKS) {
-      await db.programWeek.create({
-        data: {
-          cohortId,
-          number: w.number, label: w.label, hijri: w.hijri, gregorian: w.gregorian,
-          competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
-        },
-      });
-    }
+    await db.programWeek.createMany({
+      data: WEEKS.map((w) => ({
+        cohortId,
+        number: w.number, label: w.label, hijri: w.hijri, gregorian: w.gregorian,
+        competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+      })),
+    });
   }
   if ((await db.programBook.count({ where: { cohortId } })) === 0) {
-    for (const b of BOOKS) {
-      await db.programBook.create({ data: { cohortId, order: b.order, title: b.title, author: b.author, pages: b.pages, weeks: b.weeks, circle: b.circle, availability: b.availability } });
-    }
+    await db.programBook.createMany({
+      data: BOOKS.map((b) => ({ cohortId, order: b.order, title: b.title, author: b.author, pages: b.pages, weeks: b.weeks, circle: b.circle, availability: b.availability })),
+    });
   }
   if ((await db.charterItem.count({ where: { cohortId } })) === 0) {
-    let order = 0;
-    for (const text of CHARTER) await db.charterItem.create({ data: { cohortId, order: order++, text } });
+    await db.charterItem.createMany({ data: CHARTER.map((text, order) => ({ cohortId, order, text })) });
   }
   if ((await db.assessmentItem.count({ where: { cohortId } })) === 0) {
-    let order = 0;
-    for (const c of CONTINUOUS_ASSESSMENT) {
-      await db.assessmentItem.create({ data: { cohortId, kind: "CONTINUOUS", key: c.key, label: c.component, points: c.points, tool: c.tool, minimum: c.minimum, order: order++ } });
-    }
-    order = 0;
-    for (const r of PROJECT_RUBRIC) {
-      await db.assessmentItem.create({ data: { cohortId, kind: "PROJECT", key: r.key, label: r.criterion, points: r.points, description: r.description, order: order++ } });
-    }
+    await db.assessmentItem.createMany({
+      data: [
+        ...CONTINUOUS_ASSESSMENT.map((c, order) => ({ cohortId, kind: "CONTINUOUS", key: c.key, label: c.component, points: c.points, tool: c.tool, minimum: c.minimum, order })),
+        ...PROJECT_RUBRIC.map((r, order) => ({ cohortId, kind: "PROJECT", key: r.key, label: r.criterion, points: r.points, description: r.description, order })),
+      ],
+    });
   }
   if ((await db.completionLevel.count({ where: { cohortId } })) === 0) {
-    for (const l of COMPLETION_LEVELS) await db.completionLevel.create({ data: { cohortId, min: l.min, level: l.level, certificate: l.certificate } });
+    await db.completionLevel.createMany({ data: COMPLETION_LEVELS.map((l) => ({ cohortId, min: l.min, level: l.level, certificate: l.certificate })) });
   }
   if ((await db.competencyDef.count({ where: { cohortId } })) === 0) {
-    for (const c of COMPETENCIES) {
-      const def = await db.competencyDef.create({ data: { cohortId, slug: c.slug, order: c.order, name: c.name, weight: c.weight, intro: c.intro ?? "" } });
-      let order = 0;
-      for (const i of c.items) {
-        await db.competencyItemRow.create({
-          data: {
-            competencyId: def.id, order: order++, title: i.title, program: i.program, indicator: i.indicator,
-            tasks: i.tasks, schedule: i.schedule, cost: i.cost, evidence: i.evidence, refs: i.references.join("\n"),
-          },
-        });
-      }
-    }
+    const defs = COMPETENCIES.map((c) => ({ id: newId(), source: c }));
+    await db.competencyDef.createMany({
+      data: defs.map(({ id, source: c }) => ({ id, cohortId, slug: c.slug, order: c.order, name: c.name, weight: c.weight, intro: c.intro ?? "" })),
+    });
+    await db.competencyItemRow.createMany({
+      data: defs.flatMap(({ id, source: c }) =>
+        c.items.map((i, order) => ({
+          competencyId: id, order, title: i.title, program: i.program, indicator: i.indicator,
+          tasks: i.tasks, schedule: i.schedule, cost: i.cost, evidence: i.evidence, refs: i.references.join("\n"),
+        })),
+      ),
+    });
   }
   if ((await db.budgetEntry.count({ where: { cohortId } })) === 0) {
-    let order = 0;
-    for (const i of BUDGET.items) {
-      await db.budgetEntry.create({ data: { cohortId, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order: order++ } });
-    }
+    await db.budgetEntry.createMany({
+      data: BUDGET.items.map((i, order) => ({ cohortId, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order })),
+    });
   }
 }
 

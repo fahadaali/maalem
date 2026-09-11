@@ -5,8 +5,8 @@ import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveWeeklyReport } from "../../actions";
-import { formatDateTime, reportDueDate } from "@/lib/dates";
-import { getWeekByNumber } from "@/lib/weeks";
+import { formatDateTime } from "@/lib/dates";
+import { getWeekByNumber, reportDueDate } from "@/lib/weeks";
 
 export const metadata = { title: "التقرير الأسبوعي" };
 
@@ -28,7 +28,7 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   return (
     <>
       <BackLink href="/app/reports">التقارير الأسبوعية</BackLink>
-      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(reportDueDate(week))}`} />
+      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(await reportDueDate(week))}`} />
       <FormMessage ok={ok} err={err} />
       {report?.feedback && (
         <Alert tone="success">

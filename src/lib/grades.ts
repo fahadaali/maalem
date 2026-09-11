@@ -1,6 +1,8 @@
 import { db } from "./db";
 import { cohortWhere } from "./cohort";
-import { getContinuous, getProjectRubric, levelForTotal, type Level } from "./content";
+import { getCompletionLevels, getContinuous, getProjectRubric, levelForTotal, programExpectations, type AssessmentRow, type Level } from "./content";
+
+type Expectations = Awaited<ReturnType<typeof programExpectations>>;
 
 export type GradeBreakdown = {
   attendance: number; // /10
@@ -40,34 +42,31 @@ export type GradeBreakdown = {
   };
 };
 
-const EXPECTED_CARDS = 60; // 5 بطاقات × 12 أسبوعاً
-const EXPECTED_FIELD_HOURS = 12;
-
 function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
-export async function levelFor(total: number): Promise<Level> {
-  return levelForTotal(total);
-}
+export { levelForTotal as levelFor };
 
-export async function computeGrades(userId: string): Promise<GradeBreakdown> {
-  const [weights, projectRubric] = await Promise.all([getContinuous(), getProjectRubric()]);
+/** السجلات التي تُحتسب منها درجة مشارك واحد */
+type Rows = {
+  attendance: { status: string; type: string; participation: number | null; circleScore: number | null }[];
+  cards: number;
+  attempts: { score: number; total: number }[];
+  assignments: number;
+  submissions: { gradedAt: Date | null; completeness: number | null; referencing: number | null; application: number | null; punctuality: number | null }[];
+  reports: number;
+  fieldLogs: { hours: number; approvedAt: Date | null }[];
+  activities: { evaluations: { c1: number; c2: number; c3: number; c4: number; c5: number }[] }[];
+  project: { status: string; clarity: number | null; grounding: number | null; design: number | null; integration: number | null; presentation: number | null } | null;
+  mentorEvals: { regularity: number; engagement: number; application: number; conduct: number; growth: number }[];
+};
+
+/** الحساب نفسه — دالة نقية لا تمسّ قاعدة البيانات، فتُستعمل للمفرد وللدفعة معاً */
+function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: AssessmentRow[], levels: Level[], expected: Expectations): GradeBreakdown {
+  const { attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals } = rows;
   /** وزن مكوّن التقييم كما ضُبط في اللوحة، وإلا فوزن الخطة */
   const w = (key: string, fallback: number) => weights.find((x) => x.key === key)?.points ?? fallback;
-
-  const [attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals] = await Promise.all([
-    db.attendance.findMany({ where: { userId } }),
-    db.readingCard.count({ where: { userId } }),
-    db.quizAttempt.findMany({ where: { userId } }),
-    db.assignment.count({ where: await cohortWhere() }),
-    db.submission.findMany({ where: { userId } }),
-    db.weeklyReport.count({ where: { userId } }),
-    db.fieldLog.findMany({ where: { userId } }),
-    db.leadershipActivity.findMany({ where: { userId }, include: { evaluations: true } }),
-    db.graduationProject.findUnique({ where: { userId } }),
-    db.mentorEvaluation.findMany({ where: { userId } }),
-  ]);
 
   /** متوسط تقدير من 1..5 محوَّلاً إلى نسبة 0..1 */
   const rate = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length / 5 : null);
@@ -85,7 +84,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   const attendanceScore = round1((participationRatio === null ? attendancePct : attendancePct * 0.6 + participationRatio * 0.4) * w("attendance", 10));
 
   // الورد القرائي: البطاقات 70% وتقييم المشاركة في الحلقة 30% متى رُصد
-  const readingRatio = Math.min(cards / EXPECTED_CARDS, 1);
+  const readingRatio = Math.min(cards / expected.cards, 1);
   const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
   const circleAvg = circleRatio ?? 0;
   const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * w("reading", 15));
@@ -104,7 +103,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
   const fieldHours = approved.reduce((s, f) => s + f.hours, 0);
   const pendingFieldHours = fieldLogs.filter((f) => !f.approvedAt).reduce((s, f) => s + f.hours, 0);
   // المعايشة: الساعات المعتمدة 70% وتقييم المشرف المرافق 30% متى وُجد
-  const hoursRatio = Math.min(fieldHours / EXPECTED_FIELD_HOURS, 1);
+  const hoursRatio = Math.min(fieldHours / expected.fieldHours, 1);
   const mentorRatio = rate(mentorEvals.map((e) => (e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5));
   const mentorAvg = mentorRatio ?? 0;
   const fieldScore = round1((mentorRatio === null ? hoursRatio : hoursRatio * 0.7 + mentorRatio * 0.3) * w("field", 10));
@@ -119,7 +118,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
     ? (project.clarity ?? 0) + (project.grounding ?? 0) + (project.design ?? 0) + (project.integration ?? 0) + (project.presentation ?? 0)
     : 0;
   const total = round1(continuous + projectScore);
-  const lvl = await levelFor(total);
+  const lvl = levels.find((l) => total >= l.min) ?? levels[levels.length - 1];
 
   return {
     attendance: attendanceScore,
@@ -143,7 +142,7 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
       inPersonPct: Math.round(pct(inPerson) * 100),
       remotePct: Math.round(pct(remote) * 100),
       cards,
-      expectedCards: EXPECTED_CARDS,
+      expectedCards: expected.cards,
       quizAvgPct: Math.round(quizAvg * 100),
       quizCount: attempts.length,
       submitted: submissions.length,
@@ -157,4 +156,82 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
       projectStatus: project?.status ?? null,
     },
   };
+}
+
+/** استعلامات الإعدادات المشتركة بين كل الحسابات في الطلب الواحد */
+async function shared() {
+  const [weights, projectRubric, levels, expected, assignments] = await Promise.all([
+    getContinuous(),
+    getProjectRubric(),
+    getCompletionLevels(),
+    programExpectations(),
+    db.assignment.count({ where: await cohortWhere() }),
+  ]);
+  return { weights, projectRubric, levels, expected, assignments };
+}
+
+export async function computeGrades(userId: string): Promise<GradeBreakdown> {
+  const [cfg, rows] = await Promise.all([shared(), loadOne(userId)]);
+  return computeFrom({ ...rows, assignments: cfg.assignments }, cfg.weights, cfg.projectRubric, cfg.levels, cfg.expected);
+}
+
+async function loadOne(userId: string): Promise<Omit<Rows, "assignments">> {
+  const [attendance, cards, attempts, submissions, reports, fieldLogs, activities, project, mentorEvals] = await Promise.all([
+    db.attendance.findMany({ where: { userId } }),
+    db.readingCard.count({ where: { userId } }),
+    db.quizAttempt.findMany({ where: { userId } }),
+    db.submission.findMany({ where: { userId } }),
+    db.weeklyReport.count({ where: { userId } }),
+    db.fieldLog.findMany({ where: { userId } }),
+    db.leadershipActivity.findMany({ where: { userId }, include: { evaluations: true } }),
+    db.graduationProject.findUnique({ where: { userId } }),
+    db.mentorEvaluation.findMany({ where: { userId } }),
+  ]);
+  return { attendance, cards, attempts, submissions, reports, fieldLogs, activities, project, mentorEvals };
+}
+
+/**
+ * درجات مجموعة مشاركين باستعلام واحد لكل جدول بدل استعلام لكل مشارك،
+ * فكشف الدرجات لثلاثة عشر مشاركاً يكلّف عشرات الاستعلامات لا مئاتها.
+ * تُعاد بالترتيب نفسه الذي وردت به المعرّفات.
+ */
+export async function computeGradesFor(userIds: string[]): Promise<GradeBreakdown[]> {
+  if (userIds.length === 0) return [];
+  const inIds = { userId: { in: userIds } };
+  const [cfg, attendance, cards, attempts, submissions, reports, fieldLogs, activities, projects, mentorEvals] = await Promise.all([
+    shared(),
+    db.attendance.findMany({ where: inIds }),
+    db.readingCard.groupBy({ by: ["userId"], where: inIds, _count: { _all: true } }),
+    db.quizAttempt.findMany({ where: inIds }),
+    db.submission.findMany({ where: inIds }),
+    db.weeklyReport.groupBy({ by: ["userId"], where: inIds, _count: { _all: true } }),
+    db.fieldLog.findMany({ where: inIds }),
+    db.leadershipActivity.findMany({ where: inIds, include: { evaluations: true } }),
+    db.graduationProject.findMany({ where: inIds }),
+    db.mentorEvaluation.findMany({ where: inIds }),
+  ]);
+
+  const by = <T extends { userId: string }>(rows: T[], id: string) => rows.filter((r) => r.userId === id);
+  const countOf = (rows: { userId: string; _count: { _all: number } }[], id: string) => rows.find((r) => r.userId === id)?._count._all ?? 0;
+
+  return userIds.map((id) =>
+    computeFrom(
+      {
+        attendance: by(attendance, id),
+        cards: countOf(cards, id),
+        attempts: by(attempts, id),
+        assignments: cfg.assignments,
+        submissions: by(submissions, id),
+        reports: countOf(reports, id),
+        fieldLogs: by(fieldLogs, id),
+        activities: by(activities, id),
+        project: projects.find((p) => p.userId === id) ?? null,
+        mentorEvals: by(mentorEvals, id),
+      },
+      cfg.weights,
+      cfg.projectRubric,
+      cfg.levels,
+      cfg.expected,
+    ),
+  );
 }

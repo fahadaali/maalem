@@ -2,8 +2,8 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Stat, Badge } from "@/components/ui";
-import { dayName, formatHijri, formatGregorian, weekdayIndex, reportDueDate, formatDateTime } from "@/lib/dates";
-import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
+import { dayName, formatHijri, formatGregorian, weekdayIndex, formatDateTime } from "@/lib/dates";
+import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
 import FormMessage from "@/components/FormMessage";
 import { activeCohort } from "@/lib/cohort";
@@ -74,7 +74,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Stat label="المشاركون" value={participants.length} hint="نشطون" href="/admin/participants" />
-        <Stat label="تقارير هذا الأسبوع" value={`${submitted.size}/${participants.length}`} hint={weekNo >= 0 && weekNo <= 12 ? `الموعد ${formatDateTime(reportDueDate(weekNo))}` : "خارج أسابيع التقارير"} href={`/admin/reports?week=${Math.max(0, Math.min(12, weekNo))}`} />
+        <Stat label="تقارير هذا الأسبوع" value={`${submitted.size}/${participants.length}`} hint={weekNo >= 0 && weekNo <= 12 ? `الموعد ${formatDateTime(await reportDueDate(weekNo))}` : "خارج أسابيع التقارير"} href={`/admin/reports?week=${Math.max(0, Math.min(12, weekNo))}`} />
         <Stat label="معايشة بانتظار الاعتماد" value={pendingField} hint="سجل" href="/admin/field" />
         <Stat label="تسليمات غير مقيّمة" value={ungraded} hint="مهمة" href="/admin/tasks" />
       </div>

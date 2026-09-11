@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getCompetencies } from "./content";
+import { getCompetencies, programExpectations } from "./content";
 
 /**
  * بطاقة الكفاءات: تحوّل شواهد المنصة إلى نسبة تحقّق لكل كفاءة من الكفاءات الثماني،
@@ -15,15 +15,13 @@ export type CompetencyAttainment = {
   signals: Signal[];
 };
 
-const EXPECTED_CARDS = 60;
-const EXPECTED_FIELD_HOURS = 12;
 const EXPECTED_TADABBUR = 3;
-const EXPECTED_REPORTS = 12;
 const EXPECTED_HABIT_DAYS = 28;
 
 const pct = (v: number, m: number) => (m > 0 ? Math.min(1, v / m) : 0);
 
 export async function computeCompetencies(userId: string): Promise<CompetencyAttainment[]> {
+  const expected = await programExpectations();
   const [cards, fieldLogs, attempts, tadabbur, reports, activities, evals, plan, habitLogs, reflections, submissions] = await Promise.all([
     db.readingCard.count({ where: { userId } }),
     db.fieldLog.findMany({ where: { userId, approvedAt: { not: null } }, select: { hours: true } }),
@@ -52,8 +50,8 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
 
   const extra: Record<string, Signal[]> = {
     educational: [
-      { label: "بطاقات القراءة", value: cards, max: EXPECTED_CARDS },
-      { label: "ساعات المعايشة المعتمدة", value: Math.round(fieldHours * 10) / 10, max: EXPECTED_FIELD_HOURS },
+      { label: "بطاقات القراءة", value: cards, max: expected.cards },
+      { label: "ساعات المعايشة المعتمدة", value: Math.round(fieldHours * 10) / 10, max: expected.fieldHours },
     ],
     sharia: [
       { label: "متوسط الاختبارات", value: Math.round(quizAvg * 100), max: 100 },
@@ -65,7 +63,7 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
       { label: "الأنشطة القيادية", value: activities, max: 1 },
       { label: "تقييم الأقران", value: Math.round(peerAvg * 10) / 10, max: 5 },
     ],
-    technical: [{ label: "التقارير الأسبوعية الرقمية", value: reports, max: EXPECTED_REPORTS }],
+    technical: [{ label: "التقارير الأسبوعية الرقمية", value: reports, max: expected.reports }],
     administrative: [],
     self: [
       { label: "أيام متتبع العادات", value: habitLogs, max: EXPECTED_HABIT_DAYS },

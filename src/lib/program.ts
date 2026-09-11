@@ -415,8 +415,6 @@ export const BOOKS = [
   { order: 5, title: "قراءة حرة لمراجع مشروع التخرج", author: "—", pages: 0, weeks: "11 – 12", circle: "—", availability: "بحسب المشروع" },
 ];
 
-export const BOOK_TITLES = BOOKS.filter((b) => b.pages > 0).map((b) => b.title);
-
 export const READING_NOTE =
   "يُنصح بقراءة مقدمة كل كتاب ومدخله قبل الورد الأول لاستيعاب فكرته العامة، كما في خطة «نقرأ لنربي».";
 

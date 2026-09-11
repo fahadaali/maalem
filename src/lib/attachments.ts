@@ -12,3 +12,14 @@ export async function withFiles<T extends { id: string }>(logs: T[]): Promise<(T
   const rows = await db.attachment.findMany({ where: { kind: "FIELD", refId: { in: logs.map((l) => l.id) } }, orderBy: { createdAt: "asc" } });
   return logs.map((l) => ({ ...l, files: rows.filter((r) => r.refId === l.id).map((a) => ({ id: a.id, name: a.name, size: a.size, url: `/api/files/${a.key}` })) }));
 }
+
+/** مرفقات سجل واحد مفهرسةً بصاحبها — تسليمات المهمة الواحدة لعدة مشاركين */
+export async function attachmentsByUser(kind: string, refId: string): Promise<Map<string, AttachmentItem[]>> {
+  const rows = await db.attachment.findMany({ where: { kind, refId }, orderBy: { createdAt: "asc" } });
+  const map = new Map<string, AttachmentItem[]>();
+  for (const a of rows) {
+    const item = { id: a.id, name: a.name, size: a.size, url: `/api/files/${a.key}` };
+    map.set(a.userId, [...(map.get(a.userId) ?? []), item]);
+  }
+  return map;
+}

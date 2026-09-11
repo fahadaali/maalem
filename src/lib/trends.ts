@@ -1,13 +1,6 @@
 import { db } from "./db";
 import { participantsWhere } from "./cohort";
-import { getActiveWeeks, currentWeekNumber } from "./weeks";
-import { programStart } from "./dates";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function weekOf(date: Date): number {
-  return Math.floor((date.getTime() - programStart.getTime()) / (7 * DAY_MS));
-}
+import { getActiveWeeks, currentWeekNumber, weekResolver } from "./weeks";
 
 function pct(part: number, whole: number) {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
@@ -53,6 +46,7 @@ export async function buildTrends(): Promise<Trends> {
   ]);
 
   const n = people.length;
+  const weekOf = weekResolver(weekRows);
   const label = (w: { number: number }) => String(w.number);
   const mark = (w: { number: number }) => w.number === now;
 
