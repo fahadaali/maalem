@@ -29,4 +29,7 @@ m.setAttribute("content",dark?C.dark:C.light);
    يُسأل عن الوضع القياسي وعن علم iOS القديم معاً، فبعض إصدارات iOS لا تجيب الأول. */
 var sa=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||window.navigator.standalone===true;
 if(sa)document.documentElement.setAttribute("data-standalone","1");
+/* لحظة ظهور شاشة الإقلاع تقريباً: هذا النص يسبق رسم الجسم بأجزاء من الثانية.
+   تُقاس منها أقل مدة تبقى فيها ظاهرة، فلا تومض وتختفي إن تأخّر تحميل الوثيقة. */
+window.__maalemBoot=Date.now();
 }catch(e){}})();`;
