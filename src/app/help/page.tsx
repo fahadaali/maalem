@@ -74,6 +74,10 @@ export default function HelpPage() {
           <p className="text-sm">
             راسل مدير المشروع مباشرة. وإن كان الأمر عطلاً في المنصة نفسها فاذكر ما كنت تفعله، والصفحة التي ظهر فيها، ووقت حدوثه.
           </p>
+          <p className="text-sm mt-3">
+            ولتشخيص عطل يخصّ جهازك — كشاشة الإقلاع أو الإشعارات — افتح{" "}
+            <Link href="/help/device" className="underline">تشخيص الجهاز</Link> من داخل التطبيق المثبَّت وأرفق صورة للشاشة.
+          </p>
         </Card>
       </main>
     </>
