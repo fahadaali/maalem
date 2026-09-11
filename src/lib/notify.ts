@@ -26,9 +26,20 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload, opt
   const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
   if (subs.length > 0) {
     const v = await getVapid();
-    const message = JSON.stringify(payload);
+    /**
+     * عدد غير المقروء لكل مستخدم يُحسب هنا ويُرسل مع الإشعار، فيضع النظام الرقم
+     * على أيقونة التطبيق والتطبيق مغلق — استعلام واحد لكل المستقبلين لا لكل جهاز.
+     */
+    const targets = [...new Set(subs.map((s) => s.userId))];
+    const grouped = await db.notification.groupBy({
+      by: ["userId"],
+      where: { userId: { in: targets }, readAt: null },
+      _count: { _all: true },
+    });
+    const unread = new Map(grouped.map((g) => [g.userId, g._count._all]));
     await Promise.all(
       subs.map(async (s) => {
+        const message = JSON.stringify({ ...payload, count: unread.get(s.userId) ?? 1 });
         try {
           await sendPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, message, v, { ttl: 86400 });
           pushed++;

@@ -5,6 +5,7 @@ import PwaRegistrar from "@/components/PwaRegistrar";
 import ThemeScript from "@/components/ThemeScript";
 import StartupImages from "@/components/StartupImages";
 import StaleAssetGuard from "@/components/StaleAssetGuard";
+import BootSplash from "@/components/BootSplash";
 
 export const metadata: Metadata = {
   title: { default: "معالم التربية", template: "%s — معالم التربية" },
@@ -35,7 +36,17 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ar" dir="rtl" className={`${thmanyahSans.variable} ${thmanyahDisplay.variable}`}>
       <head><ThemeScript /><StartupImages /></head>
       <body className="antialiased">
+        {/*
+          شاشة الإقلاع مرسومة من الخادم وأولَ عنصر في الصفحة: تظهر مع أول رسم،
+          لا بعد تحميل جافاسكربت وتفاعل الواجهة — وإلا وصلت بعد أن يظهر المحتوى.
+        */}
+        <div id="boot" aria-hidden="true" suppressHydrationWarning>
+          <div className="boot-mark">معالم التربية</div>
+          <span className="boot-rule" />
+          <div className="boot-sub">برنامج تأهيل المشرفين التربويين الجدد</div>
+        </div>
         {children}
+        <BootSplash />
         <StaleAssetGuard />
         <PwaRegistrar />
       </body>

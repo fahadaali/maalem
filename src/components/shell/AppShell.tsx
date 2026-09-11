@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { Bell, LogOut } from "lucide-react";
 import { NavLink } from "./NavLink";
 import WarmTabs from "./WarmTabs";
+import AppBadge from "@/components/AppBadge";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
@@ -81,6 +82,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
           ))}
         </nav>
       </div>
+      <AppBadge count={unread} />
       <WarmTabs hrefs={tabs.filter((i) => i.href !== base).map((i) => i.href)} />
     </div>
   );

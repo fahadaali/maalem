@@ -17,7 +17,8 @@ const DEVICES = [
   [320, 568, 2], [375, 667, 2], [375, 812, 3], [390, 844, 3], [393, 852, 3],
   [402, 874, 3], [414, 736, 3], [414, 896, 2], [414, 896, 3], [428, 926, 3],
   [430, 932, 3], [440, 956, 3], [744, 1133, 2], [768, 1024, 2], [810, 1080, 2],
-  [820, 1180, 2], [834, 1112, 2], [834, 1194, 2], [1024, 1366, 2],
+  [820, 1180, 2], [834, 1112, 2], [834, 1194, 2], [834, 1210, 2], [1024, 1366, 2],
+  [1032, 1376, 2],
 ];
 
 const font = readFileSync("src/app/fonts/ThmanyahSerifDisplay-Bold.woff2").toString("base64");
@@ -40,18 +41,22 @@ const browser = await chromium.launch();
 mkdirSync("public/splash", { recursive: true });
 const out = [];
 let bytes = 0;
-for (const [w, h, s] of DEVICES) {
-  for (const dark of [false, true]) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: s });
-    const p = await ctx.newPage();
-    await p.setContent(html(w, h, dark), { waitUntil: "load" });
-    await p.evaluate(() => document.fonts.ready);
-    const name = `${w}x${h}-${s}x${dark ? "-dark" : ""}.png`;
-    const buf = await p.screenshot({ type: "png" });
-    writeFileSync(`public/splash/${name}`, buf);
-    bytes += buf.length;
-    await ctx.close();
-    out.push({ w, h, s, dark, name });
+// الوضعان الرأسي والأفقي: iOS لا يعرض شيئاً إن لم يطابق الاتجاه أيضاً
+for (const [dw, dh, s] of DEVICES) {
+  for (const o of ["portrait", "landscape"]) {
+    const [w, h] = o === "portrait" ? [dw, dh] : [dh, dw];
+    for (const dark of [false, true]) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: s });
+      const p = await ctx.newPage();
+      await p.setContent(html(w, h, dark), { waitUntil: "load" });
+      await p.evaluate(() => document.fonts.ready);
+      const name = `${w}x${h}-${s}x${dark ? "-dark" : ""}.png`;
+      const buf = await p.screenshot({ type: "png" });
+      writeFileSync(`public/splash/${name}`, buf);
+      bytes += buf.length;
+      await ctx.close();
+      out.push({ w: dw, h: dh, s, o, dark, name });
+    }
   }
 }
 await browser.close();

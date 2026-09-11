@@ -187,3 +187,66 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/*
+  شاشة الإقلاع داخل الوثيقة.
+
+  النظام يعرض شاشته قبل أن يصل أول بايت، وهذه تلتقط ما بعده: من أول رسم حتى
+  تجهز الواجهة. لا تظهر إلا في التطبيق المثبَّت (display-mode: standalone)،
+  فلا يراها من يتصفح من المتصفح.
+
+  تُزال بنص الإقلاع متى جهز التطبيق، ولها مخرج بالـ CSS وحده عند تعطّل النص
+  فلا تبقى حاجبة للواجهة بحال.
+*/
+#boot {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  color: var(--ink);
+  animation: boot-out 0.45s ease 2.4s forwards;
+}
+@media (display-mode: standalone) { #boot { display: flex; } }
+/* بعض إصدارات iOS لا تجيب استعلام display-mode، فيضبط نص الإقلاع هذه السمة */
+html[data-standalone] #boot { display: flex; }
+@media print { #boot { display: none !important; } }
+#boot.boot-done { animation: boot-out 0.35s ease forwards; }
+
+.boot-mark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.75rem, 11vw, 2.75rem);
+  line-height: 1.3;
+  opacity: 0;
+  animation: boot-rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) 0.03s forwards;
+}
+.boot-rule {
+  height: 2px;
+  width: 0;
+  background: currentColor;
+  border-radius: 2px;
+  opacity: 0.85;
+  margin: 0.9rem 0 0.75rem;
+  animation: boot-draw 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) 0.22s forwards;
+}
+.boot-sub {
+  font-size: 0.82rem;
+  color: var(--muted);
+  opacity: 0;
+  animation: boot-fade 0.4s ease 0.38s forwards;
+}
+
+@keyframes boot-rise { from { opacity: 0; transform: translateY(0.7rem); } to { opacity: 1; transform: none; } }
+@keyframes boot-draw { to { width: min(22vw, 7rem); } }
+@keyframes boot-fade { to { opacity: 1; } }
+@keyframes boot-out { to { opacity: 0; visibility: hidden; } }
+
+/* من يطلب تقليل الحركة يرى الشعار ساكناً، لا متحركاً */
+@media (prefers-reduced-motion: reduce) {
+  .boot-mark, .boot-sub { opacity: 1; animation: none; }
+  .boot-rule { width: min(22vw, 7rem); animation: none; }
+}

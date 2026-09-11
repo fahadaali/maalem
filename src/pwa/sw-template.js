@@ -33,6 +33,7 @@ self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "SKIP_WAITING") self.skipWaiting();
   if (data.type === "GET_VERSION") event.ports[0]?.postMessage(VERSION);
+  if (data.type === "SET_BADGE") event.waitUntil(setBadge(data.count));
 });
 
 self.addEventListener("fetch", (event) => {
@@ -88,6 +89,17 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+/** رقم الإشعارات غير المقروءة على أيقونة التطبيق في الشاشة الرئيسة */
+async function setBadge(count) {
+  try {
+    if (typeof count !== "number" || !self.navigator || !("setAppBadge" in self.navigator)) return;
+    if (count > 0) await self.navigator.setAppBadge(count);
+    else await self.navigator.clearAppBadge();
+  } catch {
+    // الشارة غير مدعومة على هذا النظام
+  }
+}
+
 self.addEventListener("push", (event) => {
   let data = { title: "معالم التربية", body: "", url: "/app/notifications" };
   try {
@@ -96,15 +108,19 @@ self.addEventListener("push", (event) => {
     if (event.data) data.body = event.data.text();
   }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/badge-96.png",
-      dir: "rtl",
-      lang: "ar",
-      data: { url: data.url },
-      tag: data.tag || undefined,
-    }),
+    (async () => {
+      // الرقم يصل مع الإشعار محسوباً في الخادم، فيظهر على الأيقونة والتطبيق مغلق
+      await setBadge(data.count);
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/badge-96.png",
+        dir: "rtl",
+        lang: "ar",
+        data: { url: data.url },
+        tag: data.tag || undefined,
+      });
+    })(),
   );
 });
 

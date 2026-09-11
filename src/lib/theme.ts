@@ -22,4 +22,8 @@ for(var i=0;i<metas.length;i++){if(metas[i].hasAttribute("media"))metas[i].remov
 var m=document.querySelector('meta[name="theme-color"]:not([media])');
 if(!m){m=document.createElement("meta");m.setAttribute("name","theme-color");document.head.appendChild(m)}
 m.setAttribute("content",dark?C.dark:C.light);
+/* التطبيق المثبَّت: يُعلَّم قبل أول رسم لتظهر شاشة الإقلاع معه لا بعده.
+   يُسأل عن الوضع القياسي وعن علم iOS القديم معاً، فبعض إصدارات iOS لا تجيب الأول. */
+var sa=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||window.navigator.standalone===true;
+if(sa)document.documentElement.setAttribute("data-standalone","1");
 }catch(e){}})();`;
