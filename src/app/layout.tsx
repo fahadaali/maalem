@@ -4,6 +4,7 @@ import { thmanyahDisplay, thmanyahSans } from "./fonts";
 import PwaRegistrar from "@/components/PwaRegistrar";
 import ThemeScript from "@/components/ThemeScript";
 import { THEME_COLORS } from "@/lib/theme";
+import { bootStyle } from "@/lib/boot-style";
 import StartupImages from "@/components/StartupImages";
 import StaleAssetGuard from "@/components/StaleAssetGuard";
 import BootSplash from "@/components/BootSplash";
@@ -42,6 +43,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           React خطأ ترطيب ويعيد رسم الصفحة كلها.
         */}
         <meta name="theme-color" content={THEME_COLORS.light} suppressHydrationWarning />
+        {/*
+          تنسيق شاشة الإقلاع ومعه خط الشعار، مُدرَجاً لا مرتبطاً: المتصفح لا
+          يرسم شيئاً حتى يصل ملف التنسيق، وتلك رحلةٌ كاملة بعد وصول الوثيقة
+          كانت تمدّ الشاشة السوداء إلى ما بعدها.
+        */}
+        <style dangerouslySetInnerHTML={{ __html: bootStyle }} />
         <ThemeScript />
         <StartupImages />
       </head>
@@ -55,6 +62,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <span className="boot-rule" />
           <div className="boot-sub">برنامج تأهيل المشرفين التربويين الجدد</div>
         </div>
+        {/*
+          لا يُوضع هنا حدُّ تعليق (Suspense) حول المحتوى وإن كان يُعجّل إرسال
+          الهيكل ثمانمئة جزء من الثانية: قيس ذلك، فأعاد خللاً تُفرَّغ به الصفحة
+          بعد كل إجراء يُعيد التوجيه — الخادم يرسلها كاملة والمتصفح يُفرغها
+          عند الترطيب. وهو نفسه الخلل الذي سبّبه loading.tsx من قبل.
+        */}
         {children}
         <BootSplash />
         <StaleAssetGuard />
