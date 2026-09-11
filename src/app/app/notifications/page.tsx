@@ -1,6 +1,6 @@
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, Card } from "@/components/ui";
 import NotificationsList from "@/components/NotificationsList";
 import { markAllRead } from "../actions";
 import PushToggle from "@/components/PushToggle";
@@ -25,7 +25,7 @@ export default async function NotificationsPage() {
           )
         }
       />
-      <div className="mb-4"><PushToggle compact publicKey={await vapidPublicKey()} /></div>
+      <div className="mb-4"><Card title="إشعارات هذا الجهاز"><PushToggle publicKey={await vapidPublicKey()} /></Card></div>
       <NotificationsList items={items} />
     </>
   );

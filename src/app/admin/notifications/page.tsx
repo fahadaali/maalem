@@ -4,9 +4,10 @@ import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import NotificationsList from "@/components/NotificationsList";
+import PushToggle from "@/components/PushToggle";
 import { markAdminRead, sendNotification } from "../actions";
 import { currentWeek } from "@/lib/weeks";
-import { pushEnabled } from "@/lib/notify";
+import { pushEnabled, vapidPublicKey } from "@/lib/notify";
 import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "الإشعارات" };
@@ -32,6 +33,14 @@ export default async function AdminNotificationsPage({ searchParams }: { searchP
     <>
       <PageHeader title="الإشعارات" subtitle={`إشعارات الدفع ${(await pushEnabled()) ? "مفعّلة" : "غير متاحة (تعمل الإشعارات داخل المنصة فقط)"} · ${subs} جهاز مشترك`} />
       <FormMessage ok={ok} err={err} />
+      {/*
+        إشعارات الدفع على جهاز المدير نفسه: بدونها لا يصله إشعار ولا شارة على
+        الأيقونة. وهي هنا بصورتها الكاملة لا المختصرة، ففيها حالة الجهاز وزر
+        إشعار تجريبي يتحقق به من وصولها فعلاً.
+      */}
+      <div className="mb-4">
+        <Card title="إشعارات هذا الجهاز"><PushToggle publicKey={await vapidPublicKey()} /></Card>
+      </div>
       <div className="grid md:grid-cols-2 gap-4 items-start">
         <Card title="إرسال إشعار">
           <form action={sendNotification}>
