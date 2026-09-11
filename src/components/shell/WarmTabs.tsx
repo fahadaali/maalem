@@ -11,9 +11,19 @@ type Conn = { saveData?: boolean; effectiveType?: string };
  * متزامنة، كلٌّ منها عشرات الاستعلامات، فينقطع بثّ أحدها ويصل إلى المتصفح
  * ناقصاً فيرمي «Connection closed». والتتابع يبقي طلباً واحداً في الطريق.
  */
-export default function WarmTabs({ hrefs }: { hrefs: string[] }) {
+export default function WarmTabs({ hrefs, home }: { hrefs: string[]; home?: string }) {
   const router = useRouter();
   const key = hrefs.join("|");
+
+  /** لوحة هذا المستخدم، تقرؤها صفحة المدخل فتقصدها رأساً بلا تحويل من الخادم */
+  useEffect(() => {
+    if (!home) return;
+    try {
+      localStorage.setItem("maalem-home", home);
+    } catch {
+      // لا تخزين متاح
+    }
+  }, [home]);
   useEffect(() => {
     const conn = (navigator as Navigator & { connection?: Conn }).connection;
     // احترام توفير البيانات والشبكات البطيئة: لا تسخين أصلاً

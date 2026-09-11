@@ -8,11 +8,20 @@ const CACHE = `maalem-${VERSION}`;
  */
 const STATIC_CACHE = "maalem-static";
 const OFFLINE_URL = "/offline.html";
-const PRECACHE = [OFFLINE_URL, "/manifest.webmanifest", "/icons/icon-192.png"];
+/**
+ * مدخل التطبيق المثبَّت: صفحة ساكنة تُخزَّن على الجهاز فتُرسم مع أول لحظة، ثم
+ * تنتقل إلى لوحة المستخدم. بها تُستبدل الشاشة السوداء التي كانت تمتد حتى تصل
+ * صفحة التطبيق من الخادم.
+ */
+const BOOT_URL = "/boot"; // يُقدَّم من public/boot.html وتُسقط الخدمةُ الامتداد
+const PRECACHE = [OFFLINE_URL, BOOT_URL, "/manifest.webmanifest", "/icons/icon-192.png"];
 
 // لا نستدعي skipWaiting هنا: ينتظر الإصدار الجديد حتى يوافق المستخدم من داخل التطبيق
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)));
+  // كل ملف على حدة: addAll يسقط كله إن تعذّر واحد، فلا يُثبَّت العامل أصلاً
+  event.waitUntil(
+    caches.open(CACHE).then((c) => Promise.all(PRECACHE.map((u) => c.add(u).catch(() => {})))),
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -63,6 +72,23 @@ self.addEventListener("fetch", (event) => {
           if (fallback) return fallback;
           throw e;
         }
+      })(),
+    );
+    return;
+  }
+
+  // مدخل التطبيق: من المخزون أولاً بلا انتظار شبكة — وهو ساكن لا يقدُم
+  if (url.pathname === BOOT_URL || url.pathname === "/boot.html") {
+    event.respondWith(
+      (async () => {
+        const hit = await caches.match(BOOT_URL);
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(BOOT_URL, copy));
+        }
+        return res;
       })(),
     );
     return;

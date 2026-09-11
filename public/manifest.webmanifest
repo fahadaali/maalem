@@ -4,7 +4,7 @@
   "description": "منصة برنامج «معالم التربية» لتأهيل المشرفين التربويين الجدد",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/app?source=pwa",
+  "start_url": "/boot?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

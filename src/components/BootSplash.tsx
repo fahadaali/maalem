@@ -19,8 +19,19 @@ export default function BootSplash() {
   useEffect(() => {
     const el = document.getElementById("boot");
     if (!el) return;
-    const shownAt = (window as Window & { __maalemBoot?: number }).__maalemBoot ?? Date.now();
-    const wait = Math.max(0, MIN_VISIBLE - (Date.now() - shownAt));
+    /**
+     * إن كانت الشاشة قد ظهرت في صفحة المدخل قبل لحظات فالمدة تُحسب من ظهورها
+     * هناك: الحركة تكتمل مرة واحدة متصلة، ولا تُعاد ولا تُقطع.
+     */
+    let from = 0;
+    try {
+      from = Number(sessionStorage.getItem("maalem-boot-at") ?? 0);
+      if (from) sessionStorage.removeItem("maalem-boot-at");
+    } catch {
+      // لا تخزين متاح
+    }
+    if (!from || Date.now() - from > 15_000) from = (window as Window & { __maalemBoot?: number }).__maalemBoot ?? Date.now();
+    const wait = Math.max(0, MIN_VISIBLE - (Date.now() - from));
     const hide = window.setTimeout(() => el.classList.add("boot-done"), wait);
     return () => window.clearTimeout(hide);
   }, []);

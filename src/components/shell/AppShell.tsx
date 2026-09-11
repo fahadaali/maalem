@@ -89,7 +89,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
         </nav>
       </div>
       <AppBadge count={unread} />
-      <WarmTabs hrefs={tabs.filter((i) => i.href !== base).map((i) => i.href)} />
+      <WarmTabs hrefs={tabs.filter((i) => i.href !== base).map((i) => i.href)} home={base} />
     </div>
   );
 }
