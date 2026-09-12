@@ -26,7 +26,7 @@ export default async function HabitsPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <PageHeader title="متتبع العادات" subtitle="كفاءة فقه النفس: حدّد ثلاث عادات تبنيها ووثّق التزامك بها 4 أسابيع. تشمل أيضاً جلسات النشاط البدني (8 جلسات)." />
+      <PageHeader title="متتبع العادات" subtitle="كفاءة فقه النفس: حدّد ثلاث عادات على الأقل (حتى خمس) تبنيها ووثّق التزامك بها 4 أسابيع. تشمل أيضاً جلسات النشاط البدني (8 جلسات)." />
       <FormMessage ok={ok} err={err} />
       {habits.length < 5 && (
         <Card className="mb-4">

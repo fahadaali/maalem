@@ -1,4 +1,4 @@
-import { requireParticipantView } from "@/lib/auth";
+import { isPreview, requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Progress, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -8,6 +8,7 @@ import { formatShort, todayKey } from "@/lib/dates";
 import { MENTOR_EVAL_CRITERIA } from "@/lib/program";
 import { Trash2 } from "lucide-react";
 import Attachments from "@/components/Attachments";
+import { programExpectations } from "@/lib/content";
 
 export const metadata = { title: "المعايشة الميدانية" };
 
@@ -20,13 +21,14 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
     db.mentorEvaluation.findMany({ where: { userId: user.id }, orderBy: { period: "asc" } }),
   ]);
   const attRows = await db.attachment.findMany({ where: { kind: "FIELD", userId: user.id }, orderBy: { createdAt: "asc" } });
+  const [expected, preview] = await Promise.all([programExpectations(), isPreview()]);
   const approved = logs.filter((l) => l.approvedAt).reduce((s, l) => s + l.hours, 0);
   const pending = logs.filter((l) => !l.approvedAt).reduce((s, l) => s + l.hours, 0);
   const last = logs[0];
 
   return (
     <>
-      <PageHeader title="سجل المعايشة الميدانية" subtitle="ساعة أسبوعياً على الأقل مع مشرف خبير أو مجموعة تربوية، من الأسبوع 3 إلى الأسبوع 12 (12 ساعة موثقة). يعتمد المشرف المرافق أو مدير المشروع كل سجل." />
+      <PageHeader title="سجل المعايشة الميدانية" subtitle={`ساعة أسبوعياً على الأقل مع مشرف خبير أو مجموعة تربوية، من الأسبوع 3 إلى الأسبوع 12 (${expected.fieldHours} ساعة موثقة). يعتمد المشرف المرافق أو مدير المشروع كل سجل.`} />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-[1fr_320px] gap-4 items-start">
         <Card title="تسجيل معايشة">
@@ -53,8 +55,8 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
           </form>
         </Card>
         <Card title="الساعات">
-          <Progress label="ساعات معتمدة" value={approved} max={12} />
-          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من 12{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
+          <Progress label="ساعات معتمدة" value={approved} max={expected.fieldHours} />
+          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من {expected.fieldHours}{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
         </Card>
       </div>
 
@@ -90,7 +92,7 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
                   {l.approvedAt ? <Badge tone="ink">معتمد</Badge> : <Badge>بانتظار الاعتماد</Badge>}
                 </div>
                 <div className="text-sm mt-1">{l.note}</div>
-                <div className="mt-2"><Attachments kind="FIELD" refId={l.id} initial={attRows.filter((r) => r.refId === l.id).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly={!!l.approvedAt} /></div>
+                <div className="mt-2"><Attachments kind="FIELD" refId={l.id} initial={attRows.filter((r) => r.refId === l.id).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly={!!l.approvedAt || preview} /></div>
               </div>
               {!l.approvedAt && (
                 <form action={deleteFieldLog}>

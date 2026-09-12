@@ -81,6 +81,11 @@ export function reportDueFrom(saturday: string): Date {
   return new Date(keyToDate(saturday).getTime() + 5 * DAY_MS + 22 * 60 * 60 * 1000);
 }
 
+/** قيمة حقل datetime-local بتوقيت الرياض (YYYY-MM-DDTHH:MM) */
+export function toLocalInput(d: Date): string {
+  return fmt("sv-SE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d).replace(" ", "T");
+}
+
 export function daysUntil(d: Date, now: Date = new Date()): number {
   return Math.ceil((d.getTime() - now.getTime()) / DAY_MS);
 }

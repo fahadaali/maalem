@@ -5,6 +5,7 @@ import FormMessage from "@/components/FormMessage";
 import FieldLogReview from "@/components/FieldLogReview";
 import MentorEvalForm from "@/components/MentorEvalForm";
 import { withFiles } from "@/lib/attachments";
+import { programExpectations } from "@/lib/content";
 
 export const metadata = { title: "المشرف المرافق" };
 
@@ -12,14 +13,15 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
   const me = await requireRole("MENTOR");
   const { ok, err } = await searchParams;
   const where = { user: { mentorId: me.id } };
-  const [mentees, pending, approved] = await Promise.all([
+  const [mentees, pending, approved, expected] = await Promise.all([
     db.user.findMany({ where: { mentorId: me.id, active: true }, include: { fieldLogs: true, mentorEvaluations: true }, orderBy: { name: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: null, ...where }, include: { user: true }, orderBy: { date: "asc" } }),
     db.fieldLog.findMany({ where: { approvedAt: { not: null }, ...where }, include: { user: true }, orderBy: { approvedAt: "desc" }, take: 15 }),
+    programExpectations(),
   ]);
   return (
     <>
-      <PageHeader title="المعايشة الميدانية — مجموعتي" subtitle="اعتمد سجلات المعايشة الأسبوعية للمشاركين المرافقين لك. المطلوب 12 ساعة موثقة لكل مشارك من الأسبوع 3 إلى 12." />
+      <PageHeader title="المعايشة الميدانية — مجموعتي" subtitle={`اعتمد سجلات المعايشة الأسبوعية للمشاركين المرافقين لك. المطلوب ${expected.fieldHours} ساعة موثقة لكل مشارك من الأسبوع 3 إلى 12.`} />
       <FormMessage ok={ok} err={err} />
       {mentees.length === 0 ? <Empty>لم يُربط بك مشاركون بعد. يعيّنهم مدير المشروع.</Empty> : (
         <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
@@ -28,7 +30,7 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
             return (
               <Card key={m.id}>
                 <div className="font-medium mb-2">{m.name}</div>
-                <Progress value={hours} max={12} label={`${hours} من 12 ساعة`} />
+                <Progress value={hours} max={expected.fieldHours} label={`${hours} من ${expected.fieldHours} ساعة`} />
               </Card>
             );
           })}

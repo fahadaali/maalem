@@ -14,14 +14,37 @@ const OFFLINE_URL = "/offline.html";
  * صفحة التطبيق من الخادم.
  */
 const BOOT_URL = "/boot"; // يُقدَّم من public/boot.html وتُسقط الخدمةُ الامتداد
-const PRECACHE = [OFFLINE_URL, BOOT_URL, "/manifest.webmanifest", "/icons/icon-192.png"];
+const PRECACHE = [OFFLINE_URL, BOOT_URL, "/icons/icon-192.png"];
+/** أقصى ما يُحتفظ به من الأصول الثابتة، فلا يتضخّم المخزون نشرةً بعد نشرة */
+const STATIC_LIMIT = 200;
+
+/** صفحة عدم اتصال احتياطية إن لم تكن المخزّنة موجودة، فلا يُرَدّ على التنقّل بلا شيء */
+const OFFLINE_FALLBACK = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>لا يوجد اتصال</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:2rem;background:#fff;color:#111}@media(prefers-color-scheme:dark){body{background:#0f0f0f;color:#f2f2f2}}</style></head><body><main><h1>لا يوجد اتصال بالإنترنت</h1><p>أعد المحاولة عند عودة الاتصال.</p></main></body></html>`;
+
+/**
+ * التخزين المسبق: يُجلب كل ملف ويُخزَّن رداً نظيفاً غير محوَّل. على الاستضافة
+ * يُحوَّل «offline.html» إلى «offline» بلا امتداد، والمتصفح يرفض أن يُجاب طلبُ
+ * تنقّل بردٍّ محوَّل من المخزون فتظهر صفحة خطأ المتصفح بدل صفحة عدم الاتصال.
+ */
+async function precache() {
+  const c = await caches.open(CACHE);
+  await Promise.all(
+    PRECACHE.map(async (u) => {
+      try {
+        const res = await fetch(u, { redirect: "follow", cache: "no-cache" });
+        if (!res.ok) return;
+        const body = await res.arrayBuffer();
+        await c.put(u, new Response(body, { status: 200, headers: { "content-type": res.headers.get("content-type") || "text/html; charset=utf-8" } }));
+      } catch {
+        // يُعاد المسعى عند التفعيل أو عند طلب الصفحة
+      }
+    }),
+  );
+}
 
 // لا نستدعي skipWaiting هنا: ينتظر الإصدار الجديد حتى يوافق المستخدم من داخل التطبيق
 self.addEventListener("install", (event) => {
-  // كل ملف على حدة: addAll يسقط كله إن تعذّر واحد، فلا يُثبَّت العامل أصلاً
-  event.waitUntil(
-    caches.open(CACHE).then((c) => Promise.all(PRECACHE.map((u) => c.add(u).catch(() => {})))),
-  );
+  event.waitUntil(precache());
 });
 
 self.addEventListener("activate", (event) => {
@@ -31,18 +54,41 @@ self.addEventListener("activate", (event) => {
       // المفتوحة على الإصدار السابق قد تطلب منه رقعةً بعد النشر
       const keys = await caches.keys();
       await Promise.all(keys.filter((k) => k !== CACHE && k !== STATIC_CACHE).map((k) => caches.delete(k)));
+      // ما مُسح من المخزون المسبق — بتحديث أو إصلاح عميق — يُعاد جلبه هنا
+      await precache();
+      await pruneStatic();
       if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
       await self.clients.claim();
     })(),
   );
 });
 
-// رسائل من الصفحة: تطبيق التحديث فوراً، أو الاستعلام عن الإصدار
+/** يُبقي أحدث الأصول الثابتة فقط: مفاتيح المخزون بترتيب إدخالها، فتُحذف الأقدم */
+async function pruneStatic() {
+  try {
+    const c = await caches.open(STATIC_CACHE);
+    const keys = await c.keys();
+    if (keys.length <= STATIC_LIMIT) return;
+    await Promise.all(keys.slice(0, keys.length - STATIC_LIMIT).map((k) => c.delete(k)));
+  } catch {
+    // المخزون غير متاح
+  }
+}
+
+// رسائل من الصفحة: تطبيق التحديث فوراً، أو إعادة التخزين المسبق بعد إصلاح عميق مسح المخزون
 self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "SKIP_WAITING") self.skipWaiting();
-  if (data.type === "GET_VERSION") event.ports[0]?.postMessage(VERSION);
+  if (data.type === "PRECACHE") event.waitUntil(precache());
 });
+
+/** مفتاح تخزين الصفحة بلا معاملات التعافي والمصدر، فلا يُخزَّن كل طلب إعادة تحميل نسخةً مستقلة */
+function pageKey(url) {
+  const u = new URL(url);
+  u.searchParams.delete("_r");
+  u.searchParams.delete("source");
+  return u.toString();
+}
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
@@ -94,20 +140,28 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // الصفحات: الشبكة أولاً حتى لا يُعرض محتوى قديم، ثم المخزون، ثم صفحة عدم الاتصال
+  // الصفحات: الشبكة أولاً حتى لا يُعرض محتوى قديم، ثم المخزون، ثم صفحة عدم الاتصال.
+  // واجهات البرمجة — التصدير والملفات — لا تُخزَّن: بياناتٌ خاصة تُجلب من الشبكة وحدها.
   if (req.mode === "navigate") {
+    if (url.pathname.startsWith("/api/")) return;
     event.respondWith(
       (async () => {
+        const key = pageKey(req.url);
         try {
           const preload = await event.preloadResponse;
           const res = preload || (await fetch(req));
-          if (res.ok) {
+          const cc = (res.headers.get("cache-control") || "").toLowerCase();
+          if (res.ok && !/no-store|private/.test(cc)) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
+            caches.open(CACHE).then((c) => c.put(key, copy));
           }
           return res;
         } catch {
-          return (await caches.match(req)) || (await caches.match(OFFLINE_URL));
+          return (
+            (await caches.match(key)) ||
+            (await caches.match(OFFLINE_URL)) ||
+            new Response(OFFLINE_FALLBACK, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } })
+          );
         }
       })(),
     );
@@ -126,7 +180,8 @@ async function setBadge(count) {
 }
 
 self.addEventListener("push", (event) => {
-  let data = { title: "معالم التربية", body: "", url: "/app/notifications" };
+  // الوجهة الافتراضية صفحة الإشعارات المشتركة التي تحوّل كل دور إلى صفحته
+  let data = { title: "معالم التربية", body: "", url: "/notifications" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {
@@ -151,13 +206,18 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/app/notifications";
+  const url = (event.notification.data && event.notification.data.url) || "/notifications";
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (list) => {
       for (const client of list) {
         if ("focus" in client) {
-          client.navigate(url);
-          return client.focus();
+          // نافذة لا يتحكم بها العامل قد ترفض الانتقال، فتُفتح نافذة بدلها
+          try {
+            const moved = "navigate" in client ? await client.navigate(url) : null;
+            return (moved || client).focus();
+          } catch {
+            break;
+          }
         }
       }
       return self.clients.openWindow(url);

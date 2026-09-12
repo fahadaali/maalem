@@ -16,7 +16,8 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="${THEME_COLORS.light}">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="${THEME_COLORS.light}">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="${THEME_COLORS.dark}">
 <title>معالم التربية</title>
 <style>html,body{margin:0;height:100%;background:${THEME_COLORS.light}}
 @media (prefers-color-scheme:dark){html,body{background:${THEME_COLORS.dark}}}
@@ -25,7 +26,7 @@ ${bootStyle}</style>
 var t=null;try{t=localStorage.getItem(${JSON.stringify(THEME_KEY)})}catch(e){}
 if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);
 document.documentElement.style.background=t==="dark"?${JSON.stringify(THEME_COLORS.dark)}:${JSON.stringify(THEME_COLORS.light)};
-var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?${JSON.stringify(THEME_COLORS.dark)}:${JSON.stringify(THEME_COLORS.light)})}
+var ms=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].setAttribute("content",t==="dark"?${JSON.stringify(THEME_COLORS.dark)}:${JSON.stringify(THEME_COLORS.light)})}}
 }catch(e){}})();</script>
 </head>
 <body>

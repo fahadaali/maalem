@@ -36,7 +36,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const needsDiagnostic = user.role === "PARTICIPANT" && !diagnostics.some((d) => d.stage === "PRE");
   const needsPostDiagnostic = user.role === "PARTICIPANT" && weekNo >= 12 && diagnostics.some((d) => d.stage === "PRE") && !diagnostics.some((d) => d.stage === "POST");
 
-  const routine = weekNo < 0 || weekNo > 13 ? undefined : PARTICIPANT_ROUTINE.find((r) => (wd === 6 && r.day === "السبت") || (wd >= 0 && wd <= 4 && r.day === "الأحد – الخميس") || (wd === 5 && r.day === "الجمعة"));
+  // يوما الثلاثاء والخميس لهما مهمتان خاصتان في الروتين، فيُبحث عنهما قبل نطاق «الأحد – الخميس»
+  const routineDay = wd === 6 ? "السبت" : wd === 2 ? "الثلاثاء" : wd === 4 ? "الخميس" : wd === 5 ? "الجمعة" : "الأحد – الخميس";
+  const routine = weekNo < 0 || weekNo > 13 ? undefined : PARTICIPANT_ROUTINE.find((r) => r.day === routineDay) ?? PARTICIPANT_ROUTINE.find((r) => r.day === "الأحد – الخميس");
   const isReadingDay = wd >= 0 && wd <= 4;
   const due = weekNo >= 0 && weekNo <= 12 ? await reportDueDate(weekNo) : null;
 

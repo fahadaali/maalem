@@ -59,7 +59,7 @@ async function vapidAuthorization(endpoint: string, publicKey: string, privateKe
 export async function encryptPayload(p256dh: string, auth: string, payload: Uint8Array): Promise<Uint8Array> {
   const uaPublic = b64urlDecode(p256dh);
   const authSecret = b64urlDecode(auth);
-  if (uaPublic.length !== 65 || authSecret.length !== 16) throw new Error("مفاتيح الاشتراك غير صالحة");
+  if (uaPublic.length !== 65 || authSecret.length !== 16) throw new PushError(0, "invalid-keys");
 
   const asPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", asPair.publicKey));
@@ -88,9 +88,13 @@ export class PushError extends Error {
   statusCode: number;
   body: string;
   constructor(statusCode: number, body: string) {
-    super(`push failed: ${statusCode}`);
+    super(`push failed: ${statusCode}${body === "invalid-keys" ? " (invalid subscription keys)" : ""}`);
     this.statusCode = statusCode;
     this.body = body;
+  }
+  /** اشتراك لا سبيل إلى إيصال شيء إليه بعد الآن: انتهى، أو مفاتيحه تالفة */
+  get dead(): boolean {
+    return this.statusCode === 404 || this.statusCode === 410 || this.body === "invalid-keys";
   }
 }
 
@@ -104,7 +108,6 @@ export async function sendPush(sub: PushSub, payload: string, vapid: VapidDetail
       Authorization: authorization,
       "Content-Encoding": "aes128gcm",
       "Content-Type": "application/octet-stream",
-      "Content-Length": String(body.length),
       TTL: String(opts.ttl ?? 86400),
       Urgency: opts.urgency ?? "normal",
     },

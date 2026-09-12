@@ -6,16 +6,11 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { deleteMinutes, saveMinutes } from "../actions";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
-import { cn } from "@/lib/utils";
+import { cn, MINUTES_LABELS } from "@/lib/utils";
+import { todayKey } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "محاضر اللقاءات" };
-
-export const MINUTES_LABELS: Record<string, string> = {
-  INPERSON: "اللقاء الحضوري (السبت)",
-  REMOTE: "حلقة النقاش عن بُعد (الثلاثاء)",
-  MONTHLY: "اللقاء الشهري مع خبير",
-};
 
 export default async function MinutesPage({ searchParams }: { searchParams: Promise<{ week?: string; ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
@@ -57,7 +52,7 @@ export default async function MinutesPage({ searchParams }: { searchParams: Prom
                 <div className="grid md:grid-cols-3 gap-3">
                   <div className="field">
                     <label className="label">التاريخ</label>
-                    <input type="date" name="date" className="input" defaultValue={(m?.date ?? new Date()).toISOString().slice(0, 10)} />
+                    <input type="date" name="date" className="input" defaultValue={m ? todayKey(m.date) : todayKey()} />
                   </div>
                   <div className="field">
                     <label className="label">العنوان</label>

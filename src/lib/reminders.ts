@@ -39,14 +39,18 @@ export async function reminderRecipients(r: Target): Promise<string[]> {
   }
 }
 
-/** يرسل تذكيراً ويختمه بوقت إرساله، فلا يُرسل مرتين */
+/**
+ * يرسل تذكيراً ويختمه بوقت إرساله، فلا يُرسل مرتين.
+ * الختم يسبق الإرسال ويُشترط أن يكون التذكير غير مختوم: استدعاءان متزامنان
+ * — من المجدول وزر الإرسال الفوري مثلاً — كانا يلتقطان الصف نفسه فيصل مرتين.
+ */
 export async function dispatchReminder(r: { id: string; title: string; body: string; url: string | null; channels: string } & Target) {
+  const claimed = await db.reminder.updateMany({ where: { id: r.id, sentAt: null }, data: { sentAt: new Date() } });
+  if (claimed.count !== 1) return { inApp: 0, pushed: 0, emailed: 0 };
   const recipients = await reminderRecipients(r);
-  const res = await notifyUsers(
+  return notifyUsers(
     recipients,
     { title: r.title, body: r.body, url: r.url ?? undefined },
     { email: r.channels === "PUSH_EMAIL" ? "always" : "fallback" },
   );
-  await db.reminder.update({ where: { id: r.id }, data: { sentAt: new Date() } });
-  return res;
 }

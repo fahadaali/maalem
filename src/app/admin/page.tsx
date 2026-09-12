@@ -6,8 +6,7 @@ import { dayName, formatHijri, formatGregorian, weekdayIndex, formatDateTime } f
 import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
 import FormMessage from "@/components/FormMessage";
-import { activeCohort } from "@/lib/cohort";
-import { cohortWhere, participantsWhere } from "@/lib/cohort";
+import { activeCohort, cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "لوحة مدير المشروع" };
 
@@ -22,8 +21,8 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 
   const [participants, reportsThisWeek, pendingField, pendingProjects, ungraded, unpublishedQuizzes, checklist, recent] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), select: { id: true, name: true } }),
-    weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findMany({ where: { week: weekNo }, select: { userId: true, reviewedAt: true } }) : [],
-    db.fieldLog.count({ where: { approvedAt: null } }),
+    weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findMany({ where: { week: weekNo, user: await participantsWhere() }, select: { userId: true, reviewedAt: true } }) : [],
+    db.fieldLog.count({ where: { approvedAt: null, user: await participantsWhere() } }),
     db.graduationProject.count({ where: { status: "PROPOSED", user: await participantsWhere() } }),
     db.submission.count({ where: { gradedAt: null, user: await participantsWhere() } }),
     db.quiz.count({ where: { published: false, ...(await cohortWhere()) } }),

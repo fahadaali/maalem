@@ -27,7 +27,12 @@ export default function PushToggle({ compact, publicKey }: { compact?: boolean; 
         return setState(ios && !standalone ? "ios-not-installed" : "unsupported");
       }
       if (Notification.permission === "denied") return setState("denied");
-      const reg = await navigator.serviceWorker.ready;
+      // إن لم يُثبَّت عامل الخدمة — سياق غير آمن أو تثبيت فاشل — لا يبقى الزر على «جارٍ التحقق» بلا نهاية
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (!reg) return setState("unsupported");
       const sub = await reg.pushManager.getSubscription();
       setState(sub ? "on" : "off");
     })();

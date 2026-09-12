@@ -44,21 +44,24 @@ function riyadh(base: Date, offsetDays: number, hhmm: string) {
 }
 
 function escapeText(s: string) {
-  return s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
-/** طيّ السطور إلى 75 ثمانية كما يوجب RFC 5545 */
+/**
+ * طيّ السطور إلى 75 ثمانية كما يوجب RFC 5545. العدّ بالثمانيات لا بالحروف:
+ * الحرف العربي ثمانيتان، فالعدّ بالحروف كان يُخرج سطوراً تتجاوز الحد فيرفضها بعض التقويمات.
+ */
+const octets = (s: string) => new TextEncoder().encode(s).length;
 function fold(line: string) {
-  const bytes = [...line];
-  if (bytes.length <= 74) return line;
+  if (octets(line) <= 75) return line;
   const parts: string[] = [];
   let cur = "";
-  for (const ch of bytes) {
-    if (cur.length >= 70) { parts.push(cur); cur = " "; }
+  for (const ch of line) {
+    if (octets(cur + ch) > (parts.length ? 74 : 75)) { parts.push(cur); cur = ""; }
     cur += ch;
   }
   parts.push(cur);
-  return parts.join("\r\n");
+  return parts.map((p, i) => (i ? " " + p : p)).join("\r\n");
 }
 
 type Event = { uid: string; start: Date; minutes: number; summary: string; description?: string; location?: string; url?: string };

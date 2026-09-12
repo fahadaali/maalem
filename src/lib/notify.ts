@@ -23,6 +23,8 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload, opt
     data: userIds.map((userId) => ({ userId, title: payload.title, body: payload.body, url: payload.url ?? null })),
   });
   let pushed = 0;
+  /** من وصله إشعار دفع فعلاً على جهاز واحد على الأقل — البريد الاحتياطي لمن سواه */
+  const delivered = new Set<string>();
   const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
   if (subs.length > 0) {
     const v = await getVapid();
@@ -43,8 +45,9 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload, opt
         try {
           await sendPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, message, v, { ttl: 86400 });
           pushed++;
+          delivered.add(s.userId);
         } catch (e) {
-          if (e instanceof PushError && (e.statusCode === 404 || e.statusCode === 410)) {
+          if (e instanceof PushError && e.dead) {
             await db.pushSubscription.delete({ where: { id: s.id } }).catch(() => {});
           } else {
             console.warn("push failed", e instanceof PushError ? e.statusCode : (e as Error).message);
@@ -56,8 +59,8 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload, opt
   const mode: EmailMode = opts.email ?? "fallback";
   let emailed = 0;
   if (mode !== "never") {
-    const withPush = new Set(subs.map((s) => s.userId));
-    const targets = mode === "always" ? userIds : userIds.filter((id) => !withPush.has(id));
+    // الاحتياط لمن لم يصله دفعٌ فعلاً، لا لمن لا اشتراك له فقط: اشتراك انتهى للتو أو فشل لا يُغني عن البريد
+    const targets = mode === "always" ? userIds : userIds.filter((id) => !delivered.has(id));
     if (targets.length) {
       const users = await db.user.findMany({
         where: { id: { in: targets }, active: true, emailOptIn: true, NOT: { email: null } },

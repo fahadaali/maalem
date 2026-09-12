@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { createSession, destroySession, requireUser, type Role } from "@/lib/auth";
+import { createSession, destroySession, isPreview, requireUser, type Role } from "@/lib/auth";
 import { safeDestination } from "@/lib/roles";
 import { str } from "@/lib/utils";
 
@@ -24,12 +24,26 @@ export async function logout() {
   redirect("/login");
 }
 
+/** وجهة العودة من حقل مخفي: داخل مناطق المنصة فقط */
+function safeBack(raw: string, fallback: string): string {
+  return /^\/(admin|mentor|app)(\/|\?|$)/.test(raw) ? raw : fallback;
+}
+
+/**
+ * الإعدادات المشتركة تُعرض في وضع المعاينة أيضاً، والمعاينة للقراءة فقط:
+ * لا يغيّر مدير المشروع كلمة مروره ولا بريده ولا رابط تقويمه وهو يتصفّح بصفة مشارك.
+ */
+async function writable(back: string): Promise<void> {
+  if (await isPreview()) redirect(back + "?err=" + encodeURIComponent("وضع المعاينة للقراءة فقط — لم يُحفظ أي تغيير"));
+}
+
 export async function changePassword(formData: FormData) {
   const user = await requireUser();
   const current = str(formData.get("current"));
   const next = str(formData.get("next"));
   const confirm = str(formData.get("confirm"));
-  const back = str(formData.get("back")) || "/app/settings";
+  const back = safeBack(str(formData.get("back")), "/app/settings");
+  await writable(back);
   if (next.length < 6) redirect(back + "?err=" + encodeURIComponent("كلمة المرور الجديدة يجب أن تكون 6 أحرف فأكثر"));
   if (next !== confirm) redirect(back + "?err=" + encodeURIComponent("كلمتا المرور غير متطابقتين"));
   const row = await db.user.findUnique({ where: { id: user.id } });
@@ -43,7 +57,8 @@ export async function updateContactPrefs(formData: FormData) {
   const user = await requireUser();
   const email = str(formData.get("email")).trim();
   const optIn = str(formData.get("emailOptIn")) === "on";
-  const back = str(formData.get("back")) || "/app/settings";
+  const back = safeBack(str(formData.get("back")), "/app/settings");
+  await writable(back);
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     redirect(back + "?err=" + encodeURIComponent("البريد الإلكتروني غير صحيح"));
   }
@@ -54,7 +69,8 @@ export async function updateContactPrefs(formData: FormData) {
 /** رابط اشتراك التقويم: يُولَّد عند الطلب، وإعادة توليده تُبطل الرابط السابق */
 export async function refreshCalendarLink(formData: FormData) {
   const user = await requireUser();
-  const back = str(formData.get("back")) || "/app/settings";
+  const back = safeBack(str(formData.get("back")), "/app/settings");
+  await writable(back);
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   await db.user.update({ where: { id: user.id }, data: { calendarToken: token } });

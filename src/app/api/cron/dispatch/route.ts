@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { dispatchReminder } from "@/lib/reminders";
 import { getCronSecret } from "@/lib/secrets";
+import { ensureSchema } from "@/lib/setup";
 
 /**
  * إرسال التذكيرات المخصصة التي حان موعدها. تُستدعى كل ساعة:
@@ -11,6 +12,8 @@ import { getCronSecret } from "@/lib/secrets";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") ?? req.headers.get("authorization")?.replace("Bearer ", "");
+  // المجدول لا يمرّ بالجلسة التي تطبّق الترحيلات، فتُضمن هنا قبل لمس جداول قد تكون جديدة
+  await ensureSchema();
   if (!key || key !== (await getCronSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const now = new Date();

@@ -32,7 +32,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <PageHeader title="سجل الحضور" subtitle="اللقاء الحضوري (السبت) وحلقة النقاش عن بُعد (الثلاثاء). الحد الأدنى: 85% حضوري و80% عن بُعد. ورصد المشاركة أداة قياس في الخطة: يدخل في درجة الحضور، والمشاركة في الحلقة تدخل في درجة الورد القرائي." />
+      <PageHeader title="سجل الحضور" subtitle="اللقاء الحضوري (السبت) وحلقة النقاش عن بُعد (الثلاثاء). الحد الأدنى في الخطة: 85% للقاء الحضوري و80% لحلقة النقاش. ورصد المشاركة أداة قياس في الخطة: يدخل في درجة الحضور، والمشاركة في الحلقة تدخل في درجة الورد القرائي." />
       <FormMessage ok={sp.ok} err={sp.err} />
       <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
         {weeks.filter((w) => w.number <= 13).map((w) => (

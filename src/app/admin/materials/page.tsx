@@ -7,19 +7,13 @@ import Attachments from "@/components/Attachments";
 import { deleteMaterial, saveMaterial } from "../actions";
 import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
+import { MATERIAL_KIND_LABELS } from "@/lib/utils";
 
 export const metadata = { title: "مكتبة المواد" };
 
-export const MATERIAL_KIND_LABELS: Record<string, string> = {
-  BOOK: "كتاب",
-  TEMPLATE: "قالب",
-  GUIDE: "دليل",
-  LINK: "رابط",
-};
-
 export default async function AdminMaterialsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const [books, competencies] = await Promise.all([getBooks(), getCompetencies()]);
   await requireRole("ADMIN");
+  const [books, competencies] = await Promise.all([getBooks(), getCompetencies()]);
   const { ok, err } = await searchParams;
   const [materials, files, weeks] = await Promise.all([
     db.material.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),

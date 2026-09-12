@@ -18,8 +18,9 @@ export default {
   fetch: nextApp.fetch,
   async scheduled(event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
     const base = env.APP_URL || "https://maalem.local";
-    // الجدول اليومي يشغّل تذكيرات البرنامج الثابتة، والجدول الساعي يرسل التذكيرات المخصصة في مواعيدها
-    const paths = event.cron === "0 4 * * *" ? ["/api/cron/reminders", "/api/cron/dispatch"] : ["/api/cron/dispatch"];
+    // الجدول اليومي يشغّل تذكيرات البرنامج الثابتة، والجدول الساعي يرسل التذكيرات المخصصة في مواعيدها.
+    // الساعة الرابعة يطابقها الجدولان معاً، فلا يُرسل اليوميُّ المخصصةَ كي لا تُرسل مرتين.
+    const paths = event.cron === "0 4 * * *" ? ["/api/cron/reminders"] : ["/api/cron/dispatch"];
     ctx.waitUntil(
       (async () => {
         const key = await cronSecret(env);

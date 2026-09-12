@@ -32,7 +32,7 @@ export default async function CharterPage({ searchParams }: { searchParams: Prom
         <form action={acceptCharter}>
           <ol className="space-y-3 mb-5">
             {(await getCharter()).map((item, i) => (
-              <li key={item} className="flex items-start gap-3 text-sm">
+              <li key={i} className="flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"
                   id={`item_${i}`}

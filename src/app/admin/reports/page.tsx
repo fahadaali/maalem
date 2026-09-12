@@ -20,7 +20,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   const activeWeeks = await getActiveWeeks();
   const [participants, reports] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } }),
-    db.weeklyReport.findMany({ where: { week }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
+    db.weeklyReport.findMany({ where: { week, user: await participantsWhere() }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
   ]);
   const byUser = new Map(reports.map((r) => [r.userId, r]));
   const due = await reportDueDate(week);

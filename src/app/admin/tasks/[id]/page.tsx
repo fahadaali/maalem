@@ -5,7 +5,8 @@ import { PageHeader, Card, BackLink, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { deleteAssignment, gradeSubmission, updateAssignment } from "../../actions";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, toLocalInput } from "@/lib/dates";
+import { extensionsFor } from "@/lib/deadlines";
 import { getActiveWeeks } from "@/lib/weeks";
 import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { getCompetencies } from "@/lib/content";
@@ -14,10 +15,6 @@ import { attachmentsByUser } from "@/lib/attachments";
 import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "تقييم مهمة" };
-
-function toLocalInput(d: Date) {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d).replace(" ", "T");
-}
 
 export default async function AdminTaskDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
@@ -29,6 +26,8 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
 
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
   const filesByUser = await attachmentsByUser("SUBMISSION", a.id);
+  // التأجيلات المعتمدة تمدّ موعد أصحابها، فلا يُرصد تسليمهم متأخراً
+  const extensions = await extensionsFor(a.id);
   const submittedIds = new Set(a.submissions.map((s) => s.userId));
   const missing = participants.filter((p) => !submittedIds.has(p.id));
 
@@ -42,11 +41,12 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
       {a.submissions.length === 0 ? <Empty>لا تسليمات بعد.</Empty> : (
         <div className="space-y-4">
           {a.submissions.map((s) => {
-            const late = s.submittedAt > a.dueAt;
+            const dueFor = extensions.get(s.userId) ?? a.dueAt;
+            const late = s.submittedAt > dueFor;
             const total = s.gradedAt ? (s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0) : null;
             const defaults: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: late ? (s.punctuality ?? 2) : (s.punctuality ?? 3) };
             return (
-              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{late && <Badge>متأخر</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
+              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{extensions.has(s.userId) && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
                 <div className="text-xs text-muted mb-1">سُلّم {formatDateTime(s.submittedAt)}</div>
                 <div className="text-sm whitespace-pre-wrap mb-2">{s.content}</div>
                 {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}

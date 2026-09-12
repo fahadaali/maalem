@@ -6,16 +6,18 @@ import { SNAPSHOT_LABELS, type Snapshot, buildSnapshot } from "@/lib/snapshot";
 import { formatGregorian, formatHijri } from "@/lib/dates";
 import { parseJSON } from "@/lib/utils";
 import PrintButton from "@/components/PrintButton";
+import { activeCohort, cohortWhere } from "@/lib/cohort";
 
 export const metadata = { title: "تقارير الجهة — طباعة" };
 
 export default async function PrintReportsPage({ searchParams }: { searchParams: Promise<{ kind?: string; period?: string }> }) {
   await requireRole("ADMIN");
   const sp = await searchParams;
-  const where = sp.kind ? { kind: sp.kind === "FINAL" ? "FINAL" : "MONTHLY", ...(sp.period ? { period: sp.period } : {}) } : {};
-  const [reports, live] = await Promise.all([
+  const where = { ...(await cohortWhere()), ...(sp.kind ? { kind: sp.kind === "FINAL" ? "FINAL" : "MONTHLY", ...(sp.period ? { period: sp.period } : {}) } : {}) };
+  const [reports, live, cohort] = await Promise.all([
     db.programReport.findMany({ where, orderBy: [{ kind: "asc" }, { period: "asc" }] }),
     buildSnapshot(),
+    activeCohort(),
   ]);
   const now = new Date();
 
@@ -27,7 +29,7 @@ export default async function PrintReportsPage({ searchParams }: { searchParams:
       </div>
       <header className="text-center mb-6 border-b border-line pb-4">
         <h1 className="text-2xl">{PROGRAM.name}</h1>
-        <p className="text-sm text-muted">{PROGRAM.subtitle} — {PROGRAM.cohort}</p>
+        <p className="text-sm text-muted">{PROGRAM.subtitle} — {cohort?.name ?? PROGRAM.cohort}</p>
         <p className="text-xs text-muted mt-1">حُرِّر في {formatHijri(now)} الموافق {formatGregorian(now)}</p>
       </header>
       {reports.length === 0 ? (

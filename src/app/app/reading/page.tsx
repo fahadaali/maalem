@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { addReadingCard, deleteReadingCard } from "../actions";
 import { READING_NOTE } from "@/lib/program";
-import { getBookTitles, bookProgress } from "@/lib/content";
+import { getBookTitles, bookProgress, programExpectations } from "@/lib/content";
 import { dayName, formatShort, todayKey } from "@/lib/dates";
 import { currentWeek } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
@@ -20,6 +20,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
   const total = await db.readingCard.count({ where: { userId: user.id } });
   const week = await currentWeek();
   const progress = await bookProgress(user.id);
+  const expected = await programExpectations();
   const last = cards[0];
 
   return (
@@ -94,8 +95,8 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
         </Card>
         <div className="space-y-4">
           <Card title="تقدمك">
-            <Progress label="بطاقات القراءة" value={total} max={60} />
-            <div className="text-xs text-muted mt-2">{total} بطاقة من 60 (5 بطاقات × 12 أسبوعاً)</div>
+            <Progress label="بطاقات القراءة" value={total} max={expected.cards} />
+            <div className="text-xs text-muted mt-2">{total} بطاقة من {expected.cards} (5 بطاقات × {expected.weeks} أسبوعاً)</div>
           </Card>
           <div className="card card-muted text-xs text-muted">{READING_NOTE}</div>
         </div>

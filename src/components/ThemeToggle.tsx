@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
 import { THEME_COLORS, THEME_KEY as KEY } from "@/lib/theme";
 
@@ -27,6 +27,8 @@ function apply(theme: Theme) {
 
 export default function ThemeToggle({ compact }: { compact?: boolean }) {
   const [theme, setTheme] = useState<Theme>("system");
+  /** السمة الحالية لمستمع تغيّر النظام، فلا يبقى على قيمة لحظة التركيب */
+  const current = useRef<Theme>("system");
 
   useEffect(() => {
     let saved: Theme = "system";
@@ -36,16 +38,18 @@ export default function ThemeToggle({ compact }: { compact?: boolean }) {
     } catch {
       // التخزين المحلي معطّل — تبقى السمة على النظام
     }
+    current.current = saved;
     setTheme(saved);
     apply(saved);
     // من اختار «حسب الجهاز» يتبع تغيّر تفضيل النظام أثناء الاستعمال
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => { if (saved === "system") syncStatusBar(mq.matches); };
+    const onChange = () => { if (current.current === "system") syncStatusBar(mq.matches); };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
   const pick = (t: Theme) => {
+    current.current = t;
     setTheme(t);
     apply(t);
     try {

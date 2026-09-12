@@ -1,14 +1,14 @@
 import Link from "@/components/Link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Bell, LogOut } from "lucide-react";
+import { Bell } from "lucide-react";
 import { NavLink } from "./NavLink";
 import WarmTabs from "./WarmTabs";
 import AppBadge from "@/components/AppBadge";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
-import { logout } from "@/app/(auth)/actions";
+import LogoutButton from "@/components/LogoutButton";
 
 /** `short` تسمية مختصرة لشريط تبويبات الجوال حيث لا يتسع النص الطويل */
 export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string };
@@ -43,11 +43,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
         <div className="border-t border-line pt-3 mt-3 text-sm">
           <div className="font-medium">{user.name}</div>
           <div className="text-muted text-xs">{ROLE_LABELS[user.role]}</div>
-          <form action={logout} className="mt-2">
-            <button className="btn btn-ghost btn-sm">
-              <LogOut size={14} /> تسجيل الخروج
-            </button>
-          </form>
+          <LogoutButton />
         </div>
       </aside>
 
@@ -58,7 +54,7 @@ export default async function AppShell({ user, items, children, base }: { user: 
           مع h-14 وحدها كان محتوى الترويسة ينضغط بمقدار شريط حالة الجهاز فيبدو مقصوصاً.
         */}
         <header
-          className="sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between"
+          className="app-shell-header sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between"
           style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
         >
           <Link href={base} className="display text-lg font-bold md:hidden">
