@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveReminder, deleteReminder, sendReminderNow } from "../actions";
 import { formatDateTime, todayKey } from "@/lib/dates";
-import { participantsWhere } from "@/lib/cohort";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
 import { emailEnabled } from "@/lib/email";
 import { REMINDER_AUDIENCES as AUDIENCE_LABEL } from "@/lib/reminders";
 
@@ -15,7 +15,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
   await requireRole("ADMIN");
   const { ok, err } = await searchParams;
   const [reminders, people, mailOn] = await Promise.all([
-    db.reminder.findMany({ orderBy: [{ sentAt: "asc" }, { sendAt: "asc" }] }),
+    db.reminder.findMany({ where: await cohortWhere(), orderBy: [{ sentAt: "asc" }, { sendAt: "asc" }] }),
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     emailEnabled(),
   ]);

@@ -96,6 +96,10 @@ h1, h2, h3, .display {
   transition: border-color 0.15s;
 }
 .input:focus, .textarea:focus, .select:focus { border-color: var(--ink); }
+/* على شاشات اللمس لا يقل خط الحقول عن 16 بكسل، وإلا كبّر سفاري الصفحة عند التركيز ولم يُعدها */
+@media (pointer: coarse) {
+  .input, .textarea, .select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: max(16px, 1em); }
+}
 .textarea { min-height: 6rem; resize: vertical; }
 .label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 0.3rem; font-weight: 500; }
 .field { margin-bottom: 1rem; }
@@ -120,6 +124,8 @@ h1, h2, h3, .display {
 .badge { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.78rem; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--paper); white-space: nowrap; }
 .badge-ink { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .badge-soft { background: var(--paper-3); border-color: transparent; }
+/* شارة نصّها طويل — كعناوين المراجع — تلتفّ ولا تدفع الصفحة إلى تمرير أفقي على الجوال */
+.badge-wrap { white-space: normal; text-align: start; max-width: 100%; border-radius: 12px; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-card); }
 .table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 100%; }
@@ -152,6 +158,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 
 @media print {
   .no-print { display: none !important; }
+  /* هيكل التطبيق — الشريط الجانبي والترويسة وشريط التبويبات — لا يُطبع مع الصفحة */
+  .shell-side, .shell-tabs, .app-shell-header { display: none !important; }
+  .app-main { padding: 0 !important; max-width: none !important; }
   /* الطباعة على ورق أبيض دائماً، ولو كانت الشاشة ليلية */
   :root {
     --ink: #111111; --ink-2: #3d3d3d; --muted: #737373;
@@ -162,18 +171,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 }
 
 /* وضع المعاينة: الواجهة تُعرض ولا تُعدَّل */
-.preview-readonly .input,
-.preview-readonly .textarea,
-.preview-readonly .select,
-.preview-readonly input,
-.preview-readonly textarea,
-.preview-readonly select {
+.preview-readonly form:not([data-preview-ok]) .input,
+.preview-readonly form:not([data-preview-ok]) .textarea,
+.preview-readonly form:not([data-preview-ok]) .select,
+.preview-readonly form:not([data-preview-ok]) input,
+.preview-readonly form:not([data-preview-ok]) textarea,
+.preview-readonly form:not([data-preview-ok]) select {
   pointer-events: none;
   background: var(--paper-2);
   color: var(--muted);
 }
-.preview-readonly form button[type="submit"],
-.preview-readonly form .btn {
+.preview-readonly form:not([data-preview-ok]) button[type="submit"],
+.preview-readonly form:not([data-preview-ok]) .btn {
   pointer-events: none;
   opacity: 0.45;
 }
@@ -211,7 +220,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 */
 .shell-side { display: none; }
 .shell-tabs { display: flex; }
+/* شريط التحديث يجلس فوق شريط التبويبات على الجوال، لا عليه */
+.update-banner { bottom: calc(3.4rem + env(safe-area-inset-bottom)); }
 @media (min-width: 768px) and (min-height: 600px) {
   .shell-side { display: flex; }
   .shell-tabs { display: none; }
+  .update-banner { bottom: env(safe-area-inset-bottom); }
 }

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Stat } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
 import { PORTFOLIO_NOTE } from "@/lib/program";
-import { getContinuous } from "@/lib/content";
+import { getContinuous, programExpectations } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
@@ -16,7 +16,7 @@ export const metadata = { title: "ملف الإنجاز" };
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
-  const [g, plan, reflections, tadabbur, habits, feedback, me, fg] = await Promise.all([
+  const [g, plan, reflections, tadabbur, habits, feedback, me, fg, expected] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),
     db.reflection.count({ where: { userId: user.id } }),
@@ -25,6 +25,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     db.feedbackSession.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
     db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } }),
     db.finalGrade.findUnique({ where: { userId: user.id } }),
+    programExpectations(),
   ]);
   const finalTotal = fg ? Math.max(0, Math.min(100, Math.round((fg.computed + fg.adjustment) * 10) / 10)) : null;
   const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
@@ -32,7 +33,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   const items = [
     { label: "خطة التعلم الشخصية", value: plan ? "مسلّمة" : "لم تُسلَّم", href: "/app/plan" },
     { label: "بطاقات القراءة", value: `${g.stats.cards} / ${g.stats.expectedCards}`, href: "/app/reading" },
-    { label: "التقارير الأسبوعية", value: `${g.stats.reportsSubmitted} / 13`, href: "/app/reports" },
+    { label: "التقارير الأسبوعية", value: `${g.stats.reportsSubmitted} / ${expected.reports}`, href: "/app/reports" },
     { label: "المهام المسلّمة", value: `${g.stats.submitted} / ${g.stats.assignments}`, href: "/app/tasks" },
     { label: "الاختبارات", value: `${g.stats.quizCount} اختبار · متوسط ${g.stats.quizAvgPct}%`, href: "/app/quizzes" },
     { label: "سجل المعايشة", value: `${g.stats.fieldHours} ساعة معتمدة`, href: "/app/field" },
@@ -52,15 +53,15 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       />
       <FormMessage ok={ok} err={err} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label={finalTotal != null ? "المجموع المعتمد" : "المجموع"} value={finalTotal ?? g.total} hint={finalTotal != null ? "درجة نهائية معتمدة" : "من 100 · تقديري"} />
-        <Stat label="التقييم المستمر" value={g.continuous} hint="من 70" />
-        <Stat label="مشروع التخرج" value={g.project} hint="من 30" />
+        <Stat label={finalTotal != null ? "المجموع المعتمد" : "المجموع"} value={finalTotal ?? g.total} hint={finalTotal != null ? "درجة نهائية معتمدة" : `من ${g.maxes.continuous + g.maxes.project} · تقديري`} />
+        <Stat label="التقييم المستمر" value={g.continuous} hint={`من ${g.maxes.continuous}`} />
+        <Stat label="مشروع التخرج" value={g.project} hint={`من ${g.maxes.project}`} />
         <Stat label="المستوى الحالي" value={g.level} hint={g.certificate} />
       </div>
       <Card title="تفصيل التقييم المستمر" className="mb-4">
         <div className="space-y-3">
           {(await getContinuous()).map((c) => (
-            <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key]} max={c.points} />
+            <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key] ?? 0} max={c.points} />
           ))}
         </div>
         <p className="text-xs text-muted mt-3">الدرجات تقديرية وتُحدَّث آلياً مع كل تسليم واعتماد؛ الدرجة النهائية تُعتمد من مدير المشروع في الأسبوع 13.</p>

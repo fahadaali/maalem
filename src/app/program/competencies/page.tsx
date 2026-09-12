@@ -42,7 +42,7 @@ export default async function CompetenciesPage() {
                       <dt className="text-xs text-muted">المراجع</dt>
                       <dd className="flex flex-wrap gap-1 mt-1">
                         {it.references.map((r) => (
-                          <span key={r} className="badge badge-soft">{r}</span>
+                          <span key={r} className="badge badge-soft badge-wrap">{r}</span>
                         ))}
                       </dd>
                     </div>

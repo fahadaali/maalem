@@ -12,6 +12,18 @@ export async function schemaReady(): Promise<boolean> {
   }
 }
 
+/** جدول أنشأه آخر ملف ترحيل: وجوده يعني أن المخطط على أحدث صورة */
+const BASELINE_SENTINEL = "ExcuseRequest";
+
+async function tableExists(name: string): Promise<boolean> {
+  try {
+    const rows = await db.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name='${name}'`);
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * يطبّق ملفات الترحيل غير المطبّقة عبر اتصال Prisma (يعمل على D1 وSQLite)،
  * ويسجّلها في جدول d1_migrations ليتوافق مع wrangler.
@@ -21,6 +33,20 @@ export async function applyMigrations(): Promise<string[]> {
   await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY, name TEXT UNIQUE, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
   const applied = new Set((await db.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM d1_migrations`)).map((r) => r.name));
   const done: string[] = [];
+  /**
+   * قاعدة أُنشئت بـ prisma db push (المسار المحلي في README): جداولها كاملة على
+   * آخر صورة للمخطط، لكن لا سجل لها في d1_migrations. تنفيذ الترحيلات عليها
+   * يفشل من أول تعليمة — بل قد يُتلفها لأن بعضها يعيد بناء الجداول — فكان الإقلاع
+   * يفشل في كل طلب ولا تُبذر بيانات الخطة أبداً. فتُسجَّل الترحيلات كلها كمطبَّقة
+   * دون تنفيذ، بشرط وجود آخر ما أضافته الترحيلات فعلاً.
+   */
+  if (applied.size === 0 && (await schemaReady()) && (await tableExists(BASELINE_SENTINEL))) {
+    for (const m of MIGRATIONS) {
+      await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);
+      applied.add(m.name);
+    }
+    console.log("migrations baselined:", MIGRATIONS.length);
+  }
   for (const m of MIGRATIONS) {
     if (applied.has(m.name)) continue;
     const statements = m.sql

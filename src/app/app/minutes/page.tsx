@@ -1,7 +1,7 @@
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty, Badge } from "@/components/ui";
-import { MINUTES_LABELS } from "@/app/admin/minutes/page";
+import { MINUTES_LABELS } from "@/lib/utils";
 import { formatShort } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
 

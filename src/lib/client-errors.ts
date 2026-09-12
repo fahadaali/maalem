@@ -16,22 +16,32 @@ const WINDOW_MS = 5 * 60_000;
 
 type Attempts = { at: number; n: number };
 
+/**
+ * عدّ في الذاكرة حين يُحجب التخزين — بعض المتصفحات المضمّنة وحظر ملفات الارتباط —
+ * وإلا بدا كل عطل أول عطل فأُعيد التحميل بلا نهاية.
+ */
+const memory: Attempts = { at: 0, n: 0 };
+
 function read(): Attempts {
   try {
     const raw = sessionStorage.getItem(GUARD);
     const v = raw ? (JSON.parse(raw) as Attempts) : null;
     if (v && Date.now() - v.at < WINDOW_MS) return v;
+    return { at: Date.now(), n: 0 };
   } catch {
     // لا تخزين متاح
   }
+  if (Date.now() - memory.at < WINDOW_MS) return memory;
   return { at: Date.now(), n: 0 };
 }
 
 function bump(n: number) {
+  memory.at = Date.now();
+  memory.n = n;
   try {
     sessionStorage.setItem(GUARD, JSON.stringify({ at: Date.now(), n }));
   } catch {
-    // لا تخزين متاح: تمضي المحاولة دون عدّ
+    // لا تخزين متاح: يُكتفى بعدّ الذاكرة
   }
 }
 
@@ -51,6 +61,8 @@ export async function clearAppCaches(): Promise<void> {
   try {
     const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
     await Promise.all(regs.map((r) => r.update().catch(() => {})));
+    // يُعاد التخزين المسبق لصفحة عدم الاتصال والمدخل، فقد مُسحا مع المخزون
+    navigator.serviceWorker?.controller?.postMessage({ type: "PRECACHE" });
   } catch {
     // عامل الخدمة غير متاح
   }

@@ -9,6 +9,8 @@ import { issueCertificate, revokeCertificate } from "../actions";
 import { computeGradesFor } from "@/lib/grades";
 import { formatShort } from "@/lib/dates";
 import { participantsWhere } from "@/lib/cohort";
+import { finalTotalOf, getCompletionLevels, levelOf } from "@/lib/content";
+import { activeCohort } from "@/lib/cohort";
 
 export const metadata = { title: "وثائق الإتمام" };
 
@@ -18,6 +20,13 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, include: { certificate: true } });
   const grades = await computeGradesFor(participants.map((p) => p.id));
   const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((x) => x.id) } } });
+  const levels = await getCompletionLevels();
+  const cohort = await activeCohort();
+  // النصوص من مستويات الإتمام القابلة للتعديل، لا من أرقام ثابتة قد تخالفها
+  const passing = levels.filter((l) => l.min > 0).map((l) => l.min);
+  const minPass = passing.length ? Math.min(...passing) : 60;
+  const conditional = [...levels].sort((a, b) => a.min - b.min).find((l) => l.min === minPass);
+  const above = [...levels].sort((a, b) => a.min - b.min).find((l) => l.min > minPass);
 
   if (sp.print) {
     const issued = participants.filter((p) => p.certificate);
@@ -26,7 +35,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
         <div className="no-print mb-4 flex gap-2"><PrintButton label="طباعة الوثائق" /></div>
         {issued.length === 0 ? <Empty>لا وثائق صادرة.</Empty> : issued.map((p, i) => (
           <div key={p.id} className={i > 0 ? "mt-10 break-before-page" : ""}>
-            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} kind={p.certificate!.kind} />
+            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} kind={p.certificate!.kind} cohort={cohort?.name} max={grades[i]?.maxes.continuous + grades[i]?.maxes.project} />
           </div>
         ))}
       </div>
@@ -37,7 +46,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
     <>
       <PageHeader
         title="وثائق الإتمام"
-        subtitle="تُصدر في الحفل الختامي من الدرجة المعتمدة إن وُجدت. من نال 60 فأكثر يُمنح وثيقة إتمام، ومن دونها يُمنح إفادة حضور تلقائياً."
+        subtitle={`تُصدر في الحفل الختامي من الدرجة المعتمدة إن وُجدت. من نال ${minPass} فأكثر يُمنح وثيقة إتمام، ومن دونها يُمنح إفادة حضور تلقائياً.`}
         actions={<a href="/admin/certificates?print=1" className="btn btn-secondary btn-sm">طباعة الصادر</a>}
       />
       <FormMessage ok={sp.ok} err={sp.err} />
@@ -55,9 +64,9 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
                 return (
                   <tr key={p.id}>
                     <td className="font-medium whitespace-nowrap">{p.name}</td>
-                    <td>{f ? Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10)) : g.total}</td>
+                    <td>{f ? finalTotalOf(f) : g.total}</td>
                     <td>{f ? <Badge tone="ink">معتمدة</Badge> : <Badge tone="soft">غير معتمدة</Badge>}</td>
-                    <td>{g.level}</td>
+                    <td>{f ? levelOf(levels, finalTotalOf(f)).level : g.level}</td>
                     <td className="whitespace-nowrap">
                       {c ? <><Badge tone="ink">{c.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"}</Badge><div className="text-xs text-muted mt-1" dir="ltr">{c.serial}</div><div className="text-xs text-muted">{formatShort(c.issuedAt)}</div></> : <Badge tone="soft">لم تصدر</Badge>}
                     </td>
@@ -85,7 +94,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
       )}
       <Card title="تنبيه" className="mt-4">
         <p className="text-sm text-muted">
-          «مُتم بشرط» (60–74) تُمنح وثيقته بعد استكمال المهام الناقصة خلال 4 أسابيع، و«غير مُتم» (أقل من 60) يُمنح إفادة حضور لا وثيقة إتمام.
+          {conditional ? `«${conditional.level}» (${conditional.min}${above ? `–${above.min - 1}` : " فأكثر"}): ${conditional.certificate}` : ""} ومن نال أقل من {minPass} يُمنح إفادة حضور لا وثيقة إتمام.
         </p>
       </Card>
     </>

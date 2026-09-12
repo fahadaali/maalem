@@ -7,10 +7,12 @@ export type Hit = { group: string; title: string; snippet?: string; href: string
 
 const cut = (s: string | null | undefined, n = 140) => (s ? (s.length > n ? `${s.slice(0, n)}…` : s) : undefined);
 const like = (q: string) => ({ contains: q });
+/** يُسقط التشكيل والتطويل من عبارة البحث، فـ«التّربية» تجد «التربية» */
+const clean = (q: string) => q.trim().replace(/[\u064B-\u0652\u0670\u0640]/g, "");
 
 /** بحث مدير المشروع: يشمل الأشخاص وكل ما سجّلوه في الدفعة النشطة */
 export async function searchAdmin(q: string): Promise<Hit[]> {
-  const term = q.trim();
+  const term = clean(q);
   if (term.length < 2) return [];
   const scope = await cohortWhere();
   const ids = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
@@ -19,7 +21,8 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
   );
 
   const [users, materials, minutes, guests, reports, cards, assignments, quizzes, bank, comps, fieldLogs, excuses, projects] = await Promise.all([
-    db.user.findMany({ where: { OR: [{ name: like(term) }, { username: like(term) }, { phone: like(term) }, { email: like(term) }] }, take: 10 }),
+    // أشخاص الدفعة النشطة ومديرو المشروع فقط، لا مستخدمو الدفعات الأخرى
+    db.user.findMany({ where: { AND: [{ OR: [scope, { role: "ADMIN" }] }, { OR: [{ name: like(term) }, { username: like(term) }, { phone: like(term) }, { email: like(term) }] }] }, take: 10 }),
     db.material.findMany({ where: { OR: [{ title: like(term) }, { author: like(term) }, { description: like(term) }] }, take: 10 }),
     db.sessionMinutes.findMany({ where: { ...scope, OR: [{ title: like(term) }, { minutes: like(term) }, { decisions: like(term) }, { guestName: like(term) }] }, take: 10 }),
     db.guest.findMany({ where: { ...scope, OR: [{ name: like(term) }, { topic: like(term) }, { notes: like(term) }] }, take: 10 }),
@@ -39,7 +42,7 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
   );
 
   const hits: Hit[] = [];
-  for (const u of users) hits.push({ group: "الأشخاص", title: u.name, meta: `${ROLE_LABELS[u.role] ?? u.role} · ${u.username}`, href: `/admin/participants/${u.id}` });
+  for (const u of users) hits.push({ group: "الأشخاص", title: u.name, meta: `${ROLE_LABELS[u.role] ?? u.role} · ${u.username}${u.active ? "" : " · موقوف"}`, href: `/admin/participants/${u.id}` });
   for (const m of materials) hits.push({ group: "مكتبة المواد", title: m.title, snippet: cut(m.description), meta: m.author ?? undefined, href: "/admin/materials" });
   for (const m of minutes) hits.push({ group: "محاضر اللقاءات", title: m.title ?? `محضر الأسبوع ${m.week}`, snippet: cut(m.minutes), href: "/admin/minutes" });
   for (const g of guests) hits.push({ group: "الخبراء والضيوف", title: g.name, snippet: cut(g.topic), href: "/admin/guests" });
@@ -58,7 +61,7 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
 
 /** بحث المشارك: محتوى البرنامج المتاح له، وسجلاته هو دون سجلات غيره */
 export async function searchParticipant(userId: string, q: string): Promise<Hit[]> {
-  const term = q.trim();
+  const term = clean(q);
   if (term.length < 2) return [];
   const scope = await cohortWhere();
 

@@ -7,11 +7,7 @@ import FormMessage from "@/components/FormMessage";
 import { Badge } from "@/components/ui";
 import { approveFinalGrade, reopenFinalGrade } from "../actions";
 import { formatShort } from "@/lib/dates";
-import { getCompletionLevels, getContinuous, type Level } from "@/lib/content";
-
-function levelName(levels: Level[], total: number) {
-  return (levels.find((l) => total >= l.min) ?? levels[levels.length - 1]).level;
-}
+import { finalTotalOf, getCompletionLevels, getContinuous, levelOf } from "@/lib/content";
 import PrintButton from "@/components/PrintButton";
 import { participantsWhere } from "@/lib/cohort";
 
@@ -26,7 +22,6 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
   const grades = await computeGradesFor(participants.map((p) => p.id));
   const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } });
   const finalOf = (id: string) => finals.find((f) => f.userId === id);
-  const finalTotal = (f: { computed: number; adjustment: number }) => Math.max(0, Math.min(100, Math.round((f.computed + f.adjustment) * 10) / 10));
   return (
     <>
       <FormMessage ok={ok} err={err} />
@@ -51,8 +46,8 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
                   {continuous.map((c) => <td key={c.key} className="text-center">{parts[c.key]}</td>)}
                   <td className="text-center">{g.continuous}</td><td className="text-center">{g.project}</td>
                   <td className="text-center">{g.total}</td>
-                  <td className="text-center font-bold">{f ? finalTotal(f) : "—"}</td>
-                  <td>{f ? levelName(levels, finalTotal(f)) : g.level}</td>
+                  <td className="text-center font-bold">{f ? finalTotalOf(f) : "—"}</td>
+                  <td>{f ? levelOf(levels, finalTotalOf(f)).level : g.level}</td>
                   <td className="no-print">
                     {f ? (
                       <div className="flex flex-col gap-1 items-start">

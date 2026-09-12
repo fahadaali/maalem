@@ -90,9 +90,18 @@ export const getCompetencies = cache(async (): Promise<Competency[]> => {
   return COMPETENCIES;
 });
 
-export async function levelForTotal(total: number): Promise<Level> {
-  const levels = await getCompletionLevels();
+/** المستوى المطابق لمجموع، من قائمة مستويات مرتّبة تنازلياً بحدّها الأدنى */
+export function levelOf(levels: Level[], total: number): Level {
   return levels.find((l) => total >= l.min) ?? levels[levels.length - 1];
+}
+
+export async function levelForTotal(total: number): Promise<Level> {
+  return levelOf(await getCompletionLevels(), total);
+}
+
+/** المجموع النهائي المعتمد: المحتسَب مع التعديل، محصوراً في مدى الدرجة */
+export function finalTotalOf(f: { computed: number; adjustment: number }, max = 100): number {
+  return Math.max(0, Math.min(max, Math.round((f.computed + f.adjustment) * 10) / 10));
 }
 
 export type BookProgress = Book & { furthestPage: number; cards: number; percent: number; lastDate: Date | null };

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { cohortWhere } from "@/lib/cohort";
 import { PageHeader, Card, BackLink, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
@@ -15,11 +16,11 @@ export default async function QuizPage({ params, searchParams }: { params: Promi
   const user = await requireParticipantView();
   const { id } = await params;
   const { err } = await searchParams;
-  const quiz = await db.quiz.findUnique({ where: { id }, include: { questions: { orderBy: { order: "asc" } }, attempts: { where: { userId: user.id } } } });
+  const quiz = await db.quiz.findFirst({ where: { id, ...(await cohortWhere()) }, include: { questions: { orderBy: { order: "asc" } }, attempts: { where: { userId: user.id } } } });
   if (!quiz || !quiz.published) notFound();
   const attempt = quiz.attempts[0];
   const answers = attempt ? parseJSON<(number | string)[]>(attempt.answers, []) : [];
-  const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : 0;
+  const pct = attempt && attempt.total > 0 ? Math.round((attempt.score / attempt.total) * 100) : 0;
 
   return (
     <>

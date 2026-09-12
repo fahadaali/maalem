@@ -8,8 +8,8 @@ import { participantsWhere } from "@/lib/cohort";
 export const metadata = { title: "التقييم التشخيصي" };
 
 export default async function AdminDiagnosticPage() {
-  const competencies = await getCompetencies();
   await requireRole("ADMIN");
+  const competencies = await getCompetencies();
   const [participants, rows] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.diagnostic.findMany(),

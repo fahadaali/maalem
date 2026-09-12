@@ -62,6 +62,9 @@ type Rows = {
   mentorEvals: { regularity: number; engagement: number; application: number; conduct: number; growth: number }[];
 };
 
+/** الحضور: حاضر = 1، متأخر = 0.5، معذور = لا يُحتسب، غائب = 0 — قاعدة واحدة للدرجات والاتجاهات معاً */
+export const attendanceWeight = (status: string): number => (status === "PRESENT" ? 1 : status === "LATE" ? 0.5 : 0);
+
 /** الحساب نفسه — دالة نقية لا تمسّ قاعدة البيانات، فتُستعمل للمفرد وللدفعة معاً */
 function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: AssessmentRow[], levels: Level[], expected: Expectations): GradeBreakdown {
   const { attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals } = rows;
@@ -71,8 +74,7 @@ function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: Assess
   /** متوسط تقدير من 1..5 محوَّلاً إلى نسبة 0..1 */
   const rate = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length / 5 : null);
 
-  // الحضور: حاضر = 1، متأخر = 0.5، معذور = لا يُحتسب، غائب = 0
-  const score = (s: string) => (s === "PRESENT" ? 1 : s === "LATE" ? 0.5 : 0);
+  const score = attendanceWeight;
   const counted = attendance.filter((a) => a.status !== "EXCUSED");
   const inPerson = counted.filter((a) => a.type === "INPERSON");
   const remote = counted.filter((a) => a.type === "REMOTE");

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import Attachments from "@/components/Attachments";
 import { READING_NOTE } from "@/lib/program";
-import { MATERIAL_KIND_LABELS } from "@/app/admin/materials/page";
+import { MATERIAL_KIND_LABELS } from "@/lib/utils";
 
 export const metadata = { title: "مكتبة المواد" };
 

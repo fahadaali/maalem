@@ -38,7 +38,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
   ]);
   const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : 0);
   return {
-    week,
+    week: Math.max(0, Math.min(14, week)),
     participants: participants.length,
     attendanceAvg: avg(grades.map((g) => g.stats.attendancePct)),
     readingCards: cards,

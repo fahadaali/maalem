@@ -31,7 +31,7 @@ export default async function SchedulePage() {
               <div className="flex flex-wrap gap-2 mt-3 items-center text-sm">
                 {w.meetingPlace && <span className="badge badge-soft">المكان: {w.meetingPlace}</span>}
                 {w.remoteUrl && <a href={w.remoteUrl} target="_blank" rel="noopener" className="badge badge-ink">رابط حلقة النقاش</a>}
-                {w.note && <span className="badge">{w.note}</span>}
+                {w.note && <span className="badge badge-wrap">{w.note}</span>}
               </div>
             )}
           </Card>

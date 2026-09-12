@@ -19,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     headers: {
       "content-type": "text/calendar; charset=utf-8",
       "content-disposition": 'inline; filename="maalem.ics"',
-      "cache-control": "public, max-age=3600",
+      "cache-control": "private, max-age=3600",
     },
   });
 }

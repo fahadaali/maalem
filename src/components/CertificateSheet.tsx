@@ -2,7 +2,7 @@ import { PROGRAM } from "@/lib/program";
 import { formatGregorian, formatHijri } from "@/lib/dates";
 
 /** وثيقة الإتمام كما تُطبع */
-export default function CertificateSheet({ name, level, total, serial, issuedAt, note, kind = "COMPLETION" }: { name: string; level: string; total: number; serial: string; issuedAt: Date; note?: string | null; kind?: string }) {
+export default function CertificateSheet({ name, level, total, serial, issuedAt, note, kind = "COMPLETION", cohort, max = 100 }: { name: string; level: string; total: number; serial: string; issuedAt: Date; note?: string | null; kind?: string; cohort?: string | null; max?: number }) {
   const isCompletion = kind === "COMPLETION";
   return (
     <div className="border-4 border-ink rounded-2xl p-10 text-center max-w-3xl mx-auto bg-paper">
@@ -14,7 +14,7 @@ export default function CertificateSheet({ name, level, total, serial, issuedAt,
       <p className="text-base leading-8">
         {isCompletion ? "قد أتمّ متطلبات برنامج" : "قد التحق ببرنامج"} «{PROGRAM.name}» لتأهيل المشرفين التربويين الجدد،
         <br />
-        {PROGRAM.cohort}، بمجموع <span className="font-bold">{total}</span> من 100، وبتقدير <span className="font-bold">{level}</span>.
+        {cohort ?? PROGRAM.cohort}، بمجموع <span className="font-bold">{total}</span> من {max}، وبتقدير <span className="font-bold">{level}</span>.
         {!isCompletion && <><br /><span className="text-sm text-muted">وله إعادة البرنامج في الدفعة التالية.</span></>}
       </p>
       {note && <p className="text-sm text-muted mt-4">{note}</p>}

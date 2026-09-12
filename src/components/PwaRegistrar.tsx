@@ -23,8 +23,14 @@ export default function PwaRegistrar() {
     if (!sw) return;
     let reg: ServiceWorkerRegistration | undefined;
 
+    /**
+     * يُعاد التحميل عند تبدّل المتحكم فقط إن كان هناك متحكم أصلاً: أول تثبيت
+     * للعامل يستولي على الصفحة (claim) فيُطلق الحدث نفسه، فكانت صفحة الدخول
+     * تُعاد وهي تُكتب، وشاشة الإقلاع تُعاد على كل جهاز في أول فتح.
+     */
+    const hadController = !!sw.controller;
     const onControllerChange = () => {
-      if (reloading.current) return;
+      if (!hadController || reloading.current) return;
       reloading.current = true;
       window.location.reload();
     };
@@ -65,11 +71,11 @@ export default function PwaRegistrar() {
   const applyUpdate = useCallback(async () => {
     if (!waiting) return;
     setUpdating(true);
-    // حذف كل المخزون قبل التبديل، ليأتي كل شيء من الإصدار الجديد
-    try {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    } catch {}
+    /**
+     * لا يُمسح المخزون من هنا: الإصدار الجديد خزّن صفحاته المسبقة أثناء تثبيته،
+     * ومسحُها كان يتركه بلا صفحة عدم اتصال ولا مدخل. تفعيله يحذف مخزون الإصدار
+     * السابق بنفسه، ويُبقي الأصول الثابتة لأن أسماءها تحمل بصمة محتواها.
+     */
     waiting.postMessage({ type: "SKIP_WAITING" });
     // احتياط لو لم يصل حدث تبديل المتحكم
     window.setTimeout(() => {
@@ -83,11 +89,7 @@ export default function PwaRegistrar() {
   if (!waiting || dismissed) return null;
 
   return (
-    <div
-      role="status"
-      className="fixed inset-x-0 bottom-0 z-50 p-3 no-print"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
-    >
+    <div role="status" className="update-banner fixed inset-x-0 z-50 p-3 no-print">
       <div className="mx-auto max-w-md card border-ink flex items-center gap-3 shadow-lg">
         <RefreshCw size={18} className={updating ? "animate-spin shrink-0" : "shrink-0"} />
         <div className="flex-1 text-sm">

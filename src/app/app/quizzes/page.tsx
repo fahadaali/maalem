@@ -22,7 +22,7 @@ export default async function QuizzesPage() {
         <div className="space-y-2">
           {quizzes.map((q) => {
             const a = q.attempts[0];
-            const pct = a ? Math.round((a.score / a.total) * 100) : null;
+            const pct = a && a.total > 0 ? Math.round((a.score / a.total) * 100) : a ? 0 : null;
             return (
               <Link key={q.id} href={`/app/quizzes/${q.id}`} className="card flex items-center justify-between gap-3 hover:bg-paper-2">
                 <div>

@@ -5,16 +5,12 @@ import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createAssignment } from "../actions";
-import { formatShort } from "@/lib/dates";
+import { formatShort, toLocalInput } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { getCompetencies } from "@/lib/content";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "المهام والتقييم" };
-
-function toLocalInput(d: Date) {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d).replace(" ", "T");
-}
 
 export default async function AdminTasksPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");

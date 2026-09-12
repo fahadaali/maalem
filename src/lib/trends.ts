@@ -1,9 +1,11 @@
 import { db } from "./db";
 import { participantsWhere } from "./cohort";
 import { getActiveWeeks, currentWeekNumber, weekResolver } from "./weeks";
+import { attendanceWeight } from "./grades";
 
+/** نسبة مئوية محصورة في 100: بطاقات الأسبوع الافتتاحي مثلاً تزيد على المتوقع فلا تتجاوز الرسم */
 function pct(part: number, whole: number) {
-  return whole > 0 ? Math.round((part / whole) * 100) : 0;
+  return whole > 0 ? Math.min(100, Math.round((part / whole) * 100)) : 0;
 }
 
 export type WeekPoint = { label: string; value: number; note?: string; emphasis?: boolean };
@@ -59,10 +61,11 @@ export async function buildTrends(): Promise<Trends> {
   for (const w of weeks) {
     const rows = attendance.filter((a) => a.week === w.number);
     const counted = rows.filter((a) => a.status !== "EXCUSED");
-    const present = counted.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+    // قاعدة الاحتساب نفسها التي في كشف الدرجات: المتأخر نصف حضور
+    const present = counted.reduce((s, a) => s + attendanceWeight(a.status), 0);
     attendancePoints.push({
       label: label(w), value: pct(present, counted.length), emphasis: mark(w),
-      note: counted.length ? `${present} من ${counted.length} تسجيلاً` : "لم يُرصد الحضور",
+      note: counted.length ? `${Math.round(present)} من ${counted.length} تسجيلاً` : "لم يُرصد الحضور",
     });
 
     const scores = rows.map((a) => a.participation).filter((v): v is number => typeof v === "number");
@@ -95,7 +98,7 @@ export async function buildTrends(): Promise<Trends> {
   const perParticipant = people
     .map((p) => {
       const rows = attendance.filter((a) => a.userId === p.id && a.status !== "EXCUSED");
-      const present = rows.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+      const present = rows.reduce((s, a) => s + attendanceWeight(a.status), 0);
       const rep = reports.filter((r) => r.userId === p.id).length;
       const crd = cards.filter((c) => c.userId === p.id).length;
       return {
@@ -119,8 +122,8 @@ export async function buildTrends(): Promise<Trends> {
     participation: participationPoints,
     perParticipant,
     totals: {
-      attendance: pct(countedAll.filter((a) => a.status === "PRESENT" || a.status === "LATE").length, countedAll.length),
-      reports: pct(reports.length, n * weeks.filter((w) => w.number <= 12).length),
+      attendance: pct(countedAll.reduce((s, a) => s + attendanceWeight(a.status), 0), countedAll.length),
+      reports: pct(reports.length, n * weeks.filter((w) => w.number >= 0 && w.number <= 12).length),
       cards: pct(cards.length, n * expectedCards),
       field: Math.round(fieldLogs.reduce((s, f) => s + f.hours, 0) * 10) / 10,
     },

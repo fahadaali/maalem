@@ -15,3 +15,4 @@ export const EXCUSE_STATUS: Record<string, string> = {
 export function isExcuseKind(v: string): v is ExcuseKind {
   return v in EXCUSE_KINDS;
 }
+

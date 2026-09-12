@@ -15,6 +15,19 @@ export const ATTENDANCE_LABELS: Record<string, string> = {
   ABSENT: "غائب",
 };
 
+export const MATERIAL_KIND_LABELS: Record<string, string> = {
+  BOOK: "كتاب",
+  TEMPLATE: "قالب",
+  GUIDE: "دليل",
+  LINK: "رابط",
+};
+
+export const MINUTES_LABELS: Record<string, string> = {
+  INPERSON: "اللقاء الحضوري (السبت)",
+  REMOTE: "حلقة النقاش عن بُعد (الثلاثاء)",
+  MONTHLY: "اللقاء الشهري مع خبير",
+};
+
 export const PROJECT_STATUS_LABELS: Record<string, string> = {
   PROPOSED: "مقترح — بانتظار الاعتماد",
   APPROVED: "معتمد",

@@ -10,7 +10,7 @@ import "./globals.css";
  */
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   return (
-    <html lang="ar" dir="rtl">
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }} /></head>
       <body className="antialiased">
         <ErrorScreen error={error} bare />

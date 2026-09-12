@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { computeGrades } from "@/lib/grades";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { PROGRAM } from "@/lib/program";
+import { activeCohort } from "@/lib/cohort";
 import { getContinuous, getProjectRubric } from "@/lib/content";
 import { formatGregorian, formatHijri, formatShort } from "@/lib/dates";
 import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
@@ -12,7 +13,7 @@ import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
  * إلا بعد أن يسلّم المشارك ملفه بنفسه.
  */
 export default async function PortfolioSheet({ userId, includePrivate }: { userId: string; includePrivate: boolean }) {
-  const [continuous, rubric] = await Promise.all([getContinuous(), getProjectRubric()]);
+  const [continuous, rubric, cohort] = await Promise.all([getContinuous(), getProjectRubric(), activeCohort()]);
   const [u, grades, comps] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
@@ -51,7 +52,7 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
       <header className="text-center border-b border-line pb-4 mb-6">
         <h1 className="text-2xl">ملف الإنجاز</h1>
         <p className="text-sm">{u.name}</p>
-        <p className="text-xs text-muted">{PROGRAM.name} — {PROGRAM.cohort}</p>
+        <p className="text-xs text-muted">{PROGRAM.name} — {cohort?.name ?? PROGRAM.cohort}</p>
         <p className="text-xs text-muted mt-1">حُرِّر في {formatHijri(now)} الموافق {formatGregorian(now)}</p>
       </header>
 
@@ -63,7 +64,7 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         <div className="table-wrap"><table className="table"><tbody>
           {continuous.map((c) => {
             const parts: Record<string, number> = { attendance: grades.attendance, reading: grades.reading, quizzes: grades.quizzes, tasks: grades.tasks, field: grades.field, leadership: grades.leadership };
-            return <tr key={c.key}><td>{c.label}</td><td>{parts[c.key]} / {c.points}</td></tr>;
+            return <tr key={c.key}><td>{c.label}</td><td>{parts[c.key] ?? 0} / {c.points}</td></tr>;
           })}
           <tr><td className="font-medium">التقييم المستمر</td><td className="font-medium">{grades.continuous} / {grades.maxes.continuous}</td></tr>
           <tr><td className="font-medium">مشروع التخرج</td><td className="font-medium">{grades.project} / {grades.maxes.project}</td></tr>

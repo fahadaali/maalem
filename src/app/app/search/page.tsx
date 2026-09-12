@@ -12,7 +12,7 @@ export default async function ParticipantSearchPage({ searchParams }: { searchPa
   return (
     <>
       <PageHeader title="البحث" subtitle="محتوى البرنامج المتاح لك، وسجلاتك أنت: بطاقاتك، وتقاريرك، وتأملاتك، ومعايشتك. لا تظهر لك سجلات غيرك." />
-      <form className="flex gap-2 mb-4" action="/app/search">
+      <form className="flex gap-2 mb-4" action="/app/search" data-preview-ok>
         <input name="q" className="input" defaultValue={q} placeholder="اكتب ما تبحث عنه…" autoFocus aria-label="نص البحث" />
         <button className="btn" type="submit">بحث</button>
       </form>

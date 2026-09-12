@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, isPreview } from "@/lib/auth";
 import { deleteObject, getObject } from "@/lib/storage";
 
 async function authorize(keyParts: string[]) {
@@ -15,7 +15,7 @@ async function authorize(keyParts: string[]) {
     allowed = owner?.mentorId === user.id;
   }
   if (!allowed) allowed = att.kind === "MATERIAL"; // مواد المكتبة متاحة لكل من دخل المنصة
-  if (!allowed && user.role === "PARTICIPANT") allowed = att.kind === "PROJECT" || att.kind === "OTHER";
+  // ما عدا ذلك — ملفات المشاريع والشواهد — لصاحبها ومشرفه ومدير المشروع وحدهم
   return allowed ? { status: 200 as const, att, user } : { status: 403 as const };
 }
 
@@ -31,6 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ key: st
       "Content-Type": obj.contentType ?? auth.att.contentType,
       "Content-Disposition": `inline; filename*=UTF-8''${filename}`,
       "Cache-Control": "private, max-age=0",
+      "X-Content-Type-Options": "nosniff",
       ...(obj.size ? { "Content-Length": String(obj.size) } : {}),
     },
   });
@@ -41,6 +42,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ key:
   const auth = await authorize(key);
   if (auth.status !== 200) return NextResponse.json({ error: "غير مصرح" }, { status: auth.status });
   if (auth.user.role !== "ADMIN" && auth.att.userId !== auth.user.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (auth.user.role === "ADMIN" && (await isPreview())) return NextResponse.json({ error: "وضع المعاينة للقراءة فقط" }, { status: 403 });
   await deleteObject(auth.att.key);
   await db.attachment.delete({ where: { id: auth.att.id } });
   return NextResponse.json({ ok: true });

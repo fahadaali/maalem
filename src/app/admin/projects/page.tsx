@@ -7,20 +7,20 @@ import { judgeProject, updateProjectAdmin } from "../actions";
 import { getProjectRubric } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
-import { db as _db } from "@/lib/db";
 import { participantsWhere } from "@/lib/cohort";
 
 export const metadata = { title: "مشاريع التخرج" };
 
 export default async function AdminProjectsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
-  const rubric = await getProjectRubric();
   await requireRole("ADMIN");
+  const rubric = await getProjectRubric();
+  const projectMax = rubric.reduce((s, r) => s + r.points, 0);
   const { ok, err } = await searchParams;
   const [projects, participants] = await Promise.all([
-    db.graduationProject.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } }),
+    db.graduationProject.findMany({ where: { user: await participantsWhere() }, include: { user: true }, orderBy: { createdAt: "asc" } }),
     db.user.findMany({ where: await participantsWhere(), select: { id: true, name: true } }),
   ]);
-  const attRows = await _db.attachment.findMany({ where: { kind: "PROJECT" }, orderBy: { createdAt: "asc" } });
+  const attRows = await db.attachment.findMany({ where: { kind: "PROJECT", userId: { in: projects.map((p) => p.userId) } }, orderBy: { createdAt: "asc" } });
   const withProject = new Set(projects.map((p) => p.userId));
   const missing = participants.filter((p) => !withProject.has(p.id));
 
@@ -35,7 +35,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
             const scores: Record<string, number | null> = { clarity: p.clarity, grounding: p.grounding, design: p.design, integration: p.integration, presentation: p.presentation };
             const total = Object.values(scores).reduce((a, b) => (a ?? 0) + (b ?? 0), 0);
             return (
-              <Card key={p.id} title={p.user.name} action={<Badge tone={p.status === "JUDGED" ? "ink" : "default"}>{PROJECT_STATUS_LABELS[p.status]}{p.status === "JUDGED" ? ` · ${total}/30` : ""}</Badge>}>
+              <Card key={p.id} title={p.user.name} action={<Badge tone={p.status === "JUDGED" ? "ink" : "default"}>{PROJECT_STATUS_LABELS[p.status]}{p.status === "JUDGED" ? ` · ${total}/${projectMax}` : ""}</Badge>}>
                 <div className="font-medium">{p.topic}</div>
                 {p.problem && <div className="text-sm text-muted whitespace-pre-wrap mt-1">{p.problem}</div>}
                 <div className="flex flex-wrap gap-3 text-sm mt-2">
@@ -60,11 +60,11 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   </form>
                   <form action={judgeProject}>
                     <input type="hidden" name="id" value={p.id} />
-                    <div className="text-sm font-medium mb-2">التحكيم (30)</div>
+                    <div className="text-sm font-medium mb-2">التحكيم ({projectMax})</div>
                     {rubric.map((r) => (
                       <div key={r.key} className="flex items-center gap-2 mb-2 text-sm">
                         <label className="flex-1">{r.label} <span className="text-muted">/{r.points}</span></label>
-                        <input type="number" name={r.key} min={0} max={r.points} step={0.5} className="input w-20" defaultValue={scores[r.key] ?? ""} required inputMode="decimal" />
+                        <input type="number" name={r.key} min={0} max={r.points} step={1} className="input w-20" defaultValue={scores[r.key] ?? ""} required inputMode="numeric" />
                       </div>
                     ))}
                     <div className="field"><textarea name="judgeNote" className="textarea" rows={2} placeholder="ملاحظات لجنة التحكيم" defaultValue={p.judgeNote ?? ""} /></div>

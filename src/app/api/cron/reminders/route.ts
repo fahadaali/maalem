@@ -5,6 +5,7 @@ import { todayKey, weekdayIndex } from "@/lib/dates";
 import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
 import { getCronSecret } from "@/lib/secrets";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
+import { ensureSchema } from "@/lib/setup";
 
 /**
  * نقطة التذكيرات المجدولة. تُستدعى مرة يومياً (مثلاً 07:00 بتوقيت الرياض) من مجدول خارجي:
@@ -15,6 +16,7 @@ import { cohortWhere, participantsWhere } from "@/lib/cohort";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") ?? req.headers.get("authorization")?.replace("Bearer ", "");
+  await ensureSchema();
   const expected = await getCronSecret();
   if (!key || key !== expected) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -57,7 +59,7 @@ export async function GET(req: Request) {
     }
     if (wd === 4 && weekNo <= 12) {
       await once("thursday", async () => {
-        const done = await db.weeklyReport.findMany({ where: { week: weekNo }, select: { userId: true } });
+        const done = await db.weeklyReport.findMany({ where: { week: weekNo, userId: { in: participants } }, select: { userId: true } });
         const doneSet = new Set(done.map((d) => d.userId));
         const pending = participants.filter((p) => !doneSet.has(p));
         await notifyUsers(pending, { title: "تسليم التقرير الأسبوعي اليوم", body: "موعد التسليم قبل الساعة العاشرة مساءً.", url: `/app/reports/${weekNo}` });
@@ -74,7 +76,7 @@ export async function GET(req: Request) {
       await once("reading", async () => {
         const start = new Date(`${today}T00:00:00+03:00`);
         const end = new Date(`${today}T23:59:59+03:00`);
-        const cards = await db.readingCard.findMany({ where: { date: { gte: start, lte: end } }, select: { userId: true } });
+        const cards = await db.readingCard.findMany({ where: { date: { gte: start, lte: end }, userId: { in: participants } }, select: { userId: true } });
         const has = new Set(cards.map((c) => c.userId));
         await notifyUsers(participants.filter((p) => !has.has(p)), { title: "بطاقة القراءة اليومية", body: "10 صفحات اليوم — سجّل أهم فائدة وسؤالك للحلقة.", url: "/app/reading" });
       });

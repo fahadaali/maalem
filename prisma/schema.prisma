@@ -689,7 +689,7 @@ model ExcuseRequest {
   id           String    @id @default(cuid())
   userId       String
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind         String // ABSENCE | EXTENSION
+  kind         String // ABSENCE_INPERSON | ABSENCE_REMOTE | EXTENSION
   week         Int?
   assignmentId String?
   reason       String

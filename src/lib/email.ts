@@ -49,7 +49,7 @@ export async function emailEnabled(): Promise<boolean> {
 }
 
 function htmlBody(title: string, body: string, url?: string) {
-  const link = url ? `<p style="margin:24px 0 0"><a href="${url}" style="background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">فتح المنصة</a></p>` : "";
+  const link = url ? `<p style="margin:24px 0 0"><a href="${escapeHtml(url)}" style="background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">فتح المنصة</a></p>` : "";
   return `<!doctype html><html lang="ar" dir="rtl"><body style="margin:0;background:#f6f6f6;font-family:Tahoma,Arial,sans-serif;color:#111">
 <div style="max-width:560px;margin:0 auto;padding:28px 22px;background:#fff">
 <div style="font-size:12px;color:#737373;margin-bottom:14px">معالم التربية</div>

@@ -3,9 +3,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { homeFor } from "@/lib/roles";
-import { isPreview, requireRole, requireUser } from "@/lib/auth";
+import { isPreview, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
+import { cohortWhere, participantsWhere } from "@/lib/cohort";
+import { currentWeekNumber } from "@/lib/weeks";
+import { removeAttachments } from "@/lib/attachments";
 import { num, str } from "@/lib/utils";
 import { SURVEY_QUESTIONS } from "@/lib/program";
 import { getCharter, getCompetencies } from "@/lib/content";
@@ -39,8 +42,13 @@ export async function addReadingCard(formData: FormData) {
   const benefit = str(formData.get("benefit"));
   const question = str(formData.get("question"));
   if (!book || !benefit) fail("/app/reading", "الكتاب وأهم فائدة حقلان إلزاميان");
-  if (toPage < fromPage) fail("/app/reading", "رقم الصفحة الأخيرة يجب ألا يقل عن الأولى");
-  await db.readingCard.create({ data: { userId: user.id, date: keyToDate(dateKey), book, fromPage, toPage, benefit, question: question || null } });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail("/app/reading", "تاريخ غير صحيح");
+  if (dateKey > todayKey()) fail("/app/reading", "لا تُسجَّل بطاقة ليوم لم يأتِ بعد");
+  if (fromPage < 1 || toPage < fromPage) fail("/app/reading", "أرقام الصفحات: تبدأ من 1 ولا تقل الأخيرة عن الأولى");
+  // بطاقة واحدة لكل يوم قراءة كما تنص الخطة، فلا تُضخَّم درجة الورد بتكرار بطاقات اليوم الواحد
+  const date = keyToDate(dateKey);
+  if (await db.readingCard.findFirst({ where: { userId: user.id, date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — احذفها إن أردت تعديلها");
+  await db.readingCard.create({ data: { userId: user.id, date, book, fromPage, toPage, benefit, question: question || null } });
   revalidatePath("/app");
   ok("/app/reading", "تم حفظ بطاقة القراءة");
 }
@@ -57,7 +65,7 @@ export async function saveWeeklyReport(formData: FormData) {
   const user = await participant();
   const week = num(formData.get("week"), -1);
   const path = `/app/reports/${week}`;
-  if (week < 0 || week > 13) fail("/app/reports", "أسبوع غير صحيح");
+  if (week < 0 || week > 12) fail("/app/reports", "أسبوع غير صحيح");
   const data = {
     reading: str(formData.get("reading")),
     benefits: str(formData.get("benefits")),
@@ -85,13 +93,18 @@ export async function saveWeeklyReport(formData: FormData) {
 export async function submitQuiz(formData: FormData) {
   const user = await participant();
   const quizId = str(formData.get("quizId"));
-  const quiz = await db.quiz.findUnique({ where: { id: quizId }, include: { questions: { orderBy: { order: "asc" } } } });
+  const quiz = await db.quiz.findFirst({ where: { id: quizId, ...(await cohortWhere()) }, include: { questions: { orderBy: { order: "asc" } } } });
   if (!quiz || !quiz.published) fail("/app/quizzes", "الاختبار غير متاح");
+  if (quiz.questions.length === 0) fail(`/app/quizzes/${quizId}`, "هذا الاختبار بلا أسئلة بعد");
   const existing = await db.quizAttempt.findUnique({ where: { quizId_userId: { quizId, userId: user.id } } });
   if (existing) fail(`/app/quizzes/${quizId}`, "سبق أن أديت هذا الاختبار");
   const answers = quiz.questions.map((q) => (q.kind === "SHORT" ? str(formData.get(`q_${q.id}`)) : num(formData.get(`q_${q.id}`), -1)));
   const score = quiz.questions.reduce((s, q, i) => s + (isCorrect(q, answers[i]) ? 1 : 0), 0);
-  await db.quizAttempt.create({ data: { quizId, userId: user.id, score, total: quiz.questions.length, answers: JSON.stringify(answers) } });
+  // ضغطتان متتاليتان على زر التسليم: الثانية تصطدم بقيد التفرّد فتُعامل كمحاولة سابقة لا كعطل
+  await db.quizAttempt.create({ data: { quizId, userId: user.id, score, total: quiz.questions.length, answers: JSON.stringify(answers) } }).catch((e: { code?: string }) => {
+    if (e?.code === "P2002") fail(`/app/quizzes/${quizId}`, "سبق أن أديت هذا الاختبار");
+    throw e;
+  });
   revalidatePath("/app");
   redirect(`/app/quizzes/${quizId}`);
 }
@@ -105,7 +118,7 @@ export async function submitAssignment(formData: FormData) {
   const path = `/app/tasks/${assignmentId}`;
   if (!content) fail(path, "اكتب وصف ما أنجزته");
   if (link && !/^https?:\/\//i.test(link)) fail(path, "الرابط يجب أن يبدأ بـ http أو https");
-  const assignment = await db.assignment.findUnique({ where: { id: assignmentId } });
+  const assignment = await db.assignment.findFirst({ where: { id: assignmentId, ...(await cohortWhere()) } });
   if (!assignment) fail("/app/tasks", "المهمة غير موجودة");
   const existing = await db.submission.findUnique({ where: { assignmentId_userId: { assignmentId, userId: user.id } } });
   if (existing?.gradedAt) fail(path, "تم تقييم هذه المهمة ولا يمكن تعديلها");
@@ -130,8 +143,10 @@ export async function addFieldLog(formData: FormData) {
   if (!mentorName || !note) fail("/app/field", "اسم المشرف المرافق والملاحظة حقلان إلزاميان");
   await db.fieldLog.create({ data: { userId: user.id, date: keyToDate(dateKey), hours, mentorName, note } });
   const me = await db.user.findUnique({ where: { id: user.id }, select: { mentorId: true } });
-  const targets = await db.user.findMany({ where: { OR: [{ role: "ADMIN" }, ...(me?.mentorId ? [{ id: me.mentorId }] : [])], active: true }, select: { id: true } });
-  await notifyUsers(targets.map((t) => t.id), { title: "سجل معايشة جديد", body: `${user.name} وثّق ${hours} ساعة معايشة بانتظار الاعتماد`, url: "/admin/field" });
+  const body = `${user.name} وثّق ${hours} ساعة معايشة بانتظار الاعتماد`;
+  await notifyAdmins({ title: "سجل معايشة جديد", body, url: "/admin/field" });
+  // المشرف المرافق يعتمد من لوحته هو؛ رابط منطقة الإدارة كان يُعاد توجيهه عنها
+  if (me?.mentorId) await notifyUsers([me.mentorId], { title: "سجل معايشة جديد", body, url: "/mentor" });
   revalidatePath("/app");
   ok("/app/field", "تم تسجيل المعايشة وبانتظار اعتمادها");
 }
@@ -139,7 +154,8 @@ export async function addFieldLog(formData: FormData) {
 export async function deleteFieldLog(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
-  await db.fieldLog.deleteMany({ where: { id, userId: user.id, approvedAt: null } });
+  const { count } = await db.fieldLog.deleteMany({ where: { id, userId: user.id, approvedAt: null } });
+  if (count) await removeAttachments("FIELD", id);
   revalidatePath("/app/field");
 }
 
@@ -151,7 +167,6 @@ export async function addLeadershipActivity(formData: FormData) {
   const report = str(formData.get("report"));
   if (!title) fail("/app/leadership", "اكتب عنوان النشاط");
   await db.leadershipActivity.create({ data: { userId: user.id, title, date: keyToDate(dateKey), report: report || null } });
-  const { participantsWhere } = await import("@/lib/cohort");
   const peers = await db.user.findMany({ where: { ...(await participantsWhere()), id: { not: user.id } }, select: { id: true } });
   await notifyUsers(peers.map((p) => p.id), { title: "تقييم أقران مطلوب", body: `${user.name} قاد نشاطاً: ${title}. شارك بتقييمك.`, url: "/app/leadership" });
   revalidatePath("/app");
@@ -169,7 +184,8 @@ export async function updateLeadershipReport(formData: FormData) {
 export async function submitPeerEvaluation(formData: FormData) {
   const user = await participant();
   const activityId = str(formData.get("activityId"));
-  const activity = await db.leadershipActivity.findUnique({ where: { id: activityId } });
+  // نشاط زميل في الدفعة نفسها فقط، لا نشاط مشارك موقوف أو من دفعة أخرى
+  const activity = await db.leadershipActivity.findFirst({ where: { id: activityId, user: await participantsWhere() } });
   if (!activity || activity.userId === user.id) fail("/app/leadership", "لا يمكن تقييم هذا النشاط");
   const vals = ["c1", "c2", "c3", "c4", "c5"].map((k) => num(formData.get(k)));
   if (vals.some((v) => v < 1 || v > 5)) fail("/app/leadership", "قيّم كل معيار من 1 إلى 5");
@@ -187,8 +203,10 @@ export async function saveProject(formData: FormData) {
   const user = await participant();
   const topic = str(formData.get("topic"));
   const problem = str(formData.get("problem"));
-  const draftLink = str(formData.get("draftLink"));
-  const finalLink = str(formData.get("finalLink"));
+  // حقلا الروابط لا يظهران إلا بعد اعتماد الموضوع، فلا يُمحى رابط محفوظ حين يُحفظ نموذج بلا حقل له
+  const existingRow = await db.graduationProject.findUnique({ where: { userId: user.id }, select: { draftLink: true, finalLink: true } });
+  const draftLink = formData.has("draftLink") ? str(formData.get("draftLink")) : (existingRow?.draftLink ?? "");
+  const finalLink = formData.has("finalLink") ? str(formData.get("finalLink")) : (existingRow?.finalLink ?? "");
   if (!topic) fail("/app/project", "اكتب موضوع المشروع");
   for (const l of [draftLink, finalLink]) if (l && !/^https?:\/\//i.test(l)) fail("/app/project", "الروابط يجب أن تبدأ بـ http أو https");
   const existing = await db.graduationProject.findUnique({ where: { userId: user.id } });
@@ -272,6 +290,7 @@ export async function toggleHabit(formData: FormData) {
   const user = await participant();
   const habitId = str(formData.get("habitId"));
   const date = str(formData.get("date")) || todayKey();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
   const habit = await db.habit.findFirst({ where: { id: habitId, userId: user.id } });
   if (!habit) return;
   const existing = await db.habitLog.findUnique({ where: { habitId_date: { habitId, date } } });
@@ -288,9 +307,10 @@ export async function deleteHabit(formData: FormData) {
 
 // ——— الإشعارات ———
 export async function markAllRead(formData: FormData) {
-  const user = await requireRole("PARTICIPANT", "ADMIN", "MENTOR");
+  const user = await participant();
   await db.notification.updateMany({ where: { userId: user.id, readAt: null }, data: { readAt: new Date() } });
-  const back = str(formData.get("back")) || "/app/notifications";
+  const raw = str(formData.get("back"));
+  const back = raw.startsWith("/app/") || raw === "/app" ? raw : "/app/notifications";
   revalidatePath(back);
   redirect(back);
 }
@@ -302,6 +322,8 @@ export async function acceptCharter(formData: FormData) {
   const agreed = (await getCharter()).every((_, i) => formData.get(`item_${i}`) === "on");
   if (!agreed) fail("/app/charter", "أقرّ ببنود الميثاق كلها قبل التوقيع");
   if (name.length < 4) fail("/app/charter", "اكتب اسمك الثلاثي كما هو في السجل");
+  const signed = await db.user.findUnique({ where: { id: user.id }, select: { charterAcceptedAt: true } });
+  if (signed?.charterAcceptedAt) fail("/app/charter", "وقّعت الميثاق من قبل");
   await db.user.update({ where: { id: user.id }, data: { charterAcceptedAt: new Date(), charterName: name } });
   await notifyAdmins({ title: "توقيع ميثاق المشاركة", body: `${user.name} وقّع ميثاق المشاركة`, url: "/admin/participants" });
   revalidatePath("/app");
@@ -319,9 +341,14 @@ export async function saveDiagnostic(formData: FormData) {
     scores[c.slug] = v;
   }
   const notes = str(formData.get("notes"));
+  // التقييم البعدي لا يُقبل قبل أسبوعه، والواجهة وحدها لا تكفي شرطاً
+  if (stage === "POST" && (await currentWeekNumber()) < 12) fail("/app/diagnostic", "التقييم البعدي يُفتح في الأسبوع 12");
   const existing = await db.diagnostic.findUnique({ where: { userId_stage: { userId: user.id, stage } } });
   if (existing) fail("/app/diagnostic", "سبق أن عبّأت هذا التقييم");
-  await db.diagnostic.create({ data: { userId: user.id, stage, scores: JSON.stringify(scores), notes: notes || null } });
+  await db.diagnostic.create({ data: { userId: user.id, stage, scores: JSON.stringify(scores), notes: notes || null } }).catch((e: { code?: string }) => {
+    if (e?.code === "P2002") fail("/app/diagnostic", "سبق أن عبّأت هذا التقييم");
+    throw e;
+  });
   await notifyAdmins({ title: stage === "PRE" ? "تقييم تشخيصي قبلي" : "تقييم تشخيصي بعدي", body: `${user.name} عبّأ التقييم`, url: "/admin/diagnostic" });
   revalidatePath("/app");
   ok("/app/diagnostic", "تم حفظ التقييم التشخيصي");
@@ -350,6 +377,8 @@ export async function submitSurvey(formData: FormData) {
 // ——— تسليم ملف الإنجاز النهائي ———
 export async function submitPortfolio() {
   const user = await participant();
+  const me = await db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } });
+  if (me?.portfolioSubmittedAt) fail("/app/portfolio", "سلّمت ملف الإنجاز من قبل");
   await db.user.update({ where: { id: user.id }, data: { portfolioSubmittedAt: new Date() } });
   await notifyAdmins({ title: "تسليم ملف الإنجاز", body: `${user.name} سلّم ملف إنجازه النهائي`, url: "/admin/participants" });
   revalidatePath("/app/portfolio");
@@ -371,7 +400,7 @@ export async function requestExcuse(formData: FormData) {
   if (kind === "EXTENSION") {
     assignmentId = str(formData.get("assignmentId")) || null;
     if (!assignmentId) fail("/app/excuses", "اختر المهمة المطلوب تأجيلها");
-    const a = await db.assignment.findUnique({ where: { id: assignmentId }, select: { id: true } });
+    const a = await db.assignment.findFirst({ where: { id: assignmentId, ...(await cohortWhere()) }, select: { id: true } });
     if (!a) fail("/app/excuses", "المهمة غير موجودة");
     const until = str(formData.get("until"));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) fail("/app/excuses", "حدد التاريخ المطلوب التأجيل إليه");

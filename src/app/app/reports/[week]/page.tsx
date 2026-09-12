@@ -22,7 +22,10 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
     db.quizAttempt.findMany({ where: { userId: user.id, quiz: { week } }, include: { quiz: true } }),
     db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 5 }),
   ]);
-  const suggestedReading = cards.length ? `${cards[cards.length - 1].book} ص ${Math.min(...cards.map((c) => c.fromPage))}–${Math.max(...cards.map((c) => c.toPage))}` : info.reading;
+  // نطاق الصفحات من بطاقات الكتاب الأخير وحده، فلا يُخلط كتابان في سطر واحد
+  const latestBook = cards[0]?.book;
+  const ofBook = cards.filter((c) => c.book === latestBook);
+  const suggestedReading = ofBook.length ? `${latestBook} ص ${Math.min(...ofBook.map((c) => c.fromPage))}–${Math.max(...ofBook.map((c) => c.toPage))}` : info.reading;
   const suggestedQuiz = quizzes.map((q) => `${q.quiz.title}: ${q.score}/${q.total}`).join("، ");
 
   return (

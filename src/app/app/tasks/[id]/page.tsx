@@ -9,6 +9,8 @@ import { formatDateTime } from "@/lib/dates";
 import { TASK_RUBRIC } from "@/lib/program";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
+import { cohortWhere } from "@/lib/cohort";
+import { extensionsFor } from "@/lib/deadlines";
 
 export const metadata = { title: "مهمة" };
 
@@ -16,9 +18,12 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   const user = await requireParticipantView();
   const { id } = await params;
   const { ok, err } = await searchParams;
-  const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { where: { userId: user.id } } } });
+  const a = await db.assignment.findFirst({ where: { id, ...(await cohortWhere()) }, include: { submissions: { where: { userId: user.id } } } });
   if (!a) notFound();
   const s = a.submissions[0];
+  // تأجيل معتمد يمدّ موعد التسليم لصاحبه
+  const dueAt = (await extensionsFor(a.id, [user.id])).get(user.id) ?? a.dueAt;
+  const extended = dueAt.getTime() !== a.dueAt.getTime();
   const files = await listAttachments({ kind: "SUBMISSION", refId: a.id, userId: user.id });
   const graded = !!s?.gradedAt;
   const scores = graded ? { completeness: s!.completeness, referencing: s!.referencing, application: s!.application, punctuality: s!.punctuality } : null;
@@ -27,7 +32,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   return (
     <>
       <BackLink href="/app/tasks">المهام</BackLink>
-      <PageHeader title={a.title} subtitle={`الأسبوع ${a.week} · موعد التسليم ${formatDateTime(a.dueAt)}${a.competency ? ` · ${a.competency}` : ""}`} />
+      <PageHeader title={a.title} subtitle={`الأسبوع ${a.week} · موعد التسليم ${formatDateTime(dueAt)}${extended ? " (مُدَّد لك)" : ""}${a.competency ? ` · ${a.competency}` : ""}`} />
       <FormMessage ok={ok} err={err} />
       {a.description && <div className="card card-muted text-sm mb-4 whitespace-pre-wrap">{a.description}</div>}
       {graded && (

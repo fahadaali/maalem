@@ -1,6 +1,8 @@
 import { db } from "./db";
 import { ATTENDANCE_LABELS } from "./utils";
 import { EXCUSE_KINDS } from "./excuses";
+import { getWeeks } from "./weeks";
+import { keyToDate } from "./dates";
 
 export type Entry = { at: Date; kind: string; title: string; detail?: string; href?: string };
 
@@ -27,6 +29,8 @@ export async function buildTimeline(userId: string, limit = 200): Promise<Entry[
       db.mentorEvaluation.findMany({ where: { userId }, include: { mentor: { select: { name: true } } } }),
     ]);
 
+  // الحضور يُؤرَّخ بيوم اللقاء من جدول الدفعة: السبت للحضوري، والثلاثاء للحلقة
+  const weekStart = new Map((await getWeeks()).map((w) => [w.number, keyToDate(w.gregorian)]));
   const e: Entry[] = [];
   if (user) {
     e.push({ at: user.createdAt, kind: "الحساب", title: "أُضيف إلى الدفعة" });
@@ -35,7 +39,9 @@ export async function buildTimeline(userId: string, limit = 200): Promise<Entry[
     if (user.portfolioSubmittedAt) e.push({ at: user.portfolioSubmittedAt, kind: "ملف الإنجاز", title: "سلّم ملف الإنجاز" });
   }
   for (const a of attendance) {
-    e.push({ at: new Date(0), kind: "الحضور", title: `الأسبوع ${a.week} — ${a.type === "INPERSON" ? "اللقاء الحضوري" : "حلقة النقاش"}: ${ATTENDANCE_LABELS[a.status] ?? a.status}`, detail: a.note ?? undefined });
+    const start = weekStart.get(a.week);
+    if (!start) continue;
+    e.push({ at: new Date(start.getTime() + (a.type === "INPERSON" ? 0 : 3) * 86400000), kind: "الحضور", title: `الأسبوع ${a.week} — ${a.type === "INPERSON" ? "اللقاء الحضوري" : "حلقة النقاش"}: ${ATTENDANCE_LABELS[a.status] ?? a.status}`, detail: a.note ?? undefined });
   }
   for (const c of cards) e.push({ at: c.createdAt, kind: "القراءة", title: `بطاقة قراءة — ${c.book}`, detail: `الصفحات ${c.fromPage}–${c.toPage}`, href: "/app/reading" });
   for (const r of reports) e.push({ at: r.submittedAt, kind: "التقرير الأسبوعي", title: `سلّم تقرير الأسبوع ${r.week}`, detail: r.reviewedAt ? "روجِع" : "بانتظار المراجعة" });

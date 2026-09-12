@@ -25,7 +25,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
   const me = await requireRole("MENTOR");
   const sp = await searchParams;
   const parsed = Number(sp.week);
-  const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(12, await currentWeekNumber()));
+  const week = sp.week != null && sp.week !== "" && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(12, await currentWeekNumber()));
   const [weeks, mentees] = await Promise.all([
     getActiveWeeks(),
     db.user.findMany({ where: { mentorId: me.id, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),

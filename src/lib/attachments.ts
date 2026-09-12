@@ -23,3 +23,14 @@ export async function attachmentsByUser(kind: string, refId: string): Promise<Ma
   }
   return map;
 }
+
+/** يحذف مرفقات سجل — الصفوف وملفاتها معاً — فلا تبقى ملفات يتيمة بعد حذف السجل الذي تتبعه */
+export async function removeAttachments(kind: string, refId: string): Promise<number> {
+  const { deleteObject } = await import("./storage");
+  const rows = await db.attachment.findMany({ where: { kind, refId }, select: { id: true, key: true } });
+  for (const f of rows) {
+    await deleteObject(f.key).catch(() => {});
+    await db.attachment.deleteMany({ where: { id: f.id } });
+  }
+  return rows.length;
+}

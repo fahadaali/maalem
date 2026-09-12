@@ -6,21 +6,21 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { notifyUsers, notifyRole } from "@/lib/notify";
 import { num, str } from "@/lib/utils";
-import { keyToDate } from "@/lib/dates";
+import { formatHijri, keyToDate, todayKey } from "@/lib/dates";
 import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
 import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
 import { deleteObject } from "@/lib/storage";
-import { computeGrades } from "@/lib/grades";
-import { levelFor } from "@/lib/grades";
+import { computeGrades, levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
 import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
-import { getCompletionLevels } from "@/lib/content";
+import { getCompletionLevels, getProjectRubric } from "@/lib/content";
 import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
 import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
+import { removeAttachments } from "@/lib/attachments";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -29,6 +29,17 @@ function fail(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(msg)}`);
 }
 const admin = () => requireRole("ADMIN");
+
+/** وجهة العودة من حقل مخفي: تُقبل داخل مناطق المنصة فقط، لا رابطاً خارجياً */
+function safeBack(raw: string, fallback: string): string {
+  return /^\/(admin|mentor|app)(\/|\?|$)/.test(raw) ? raw : fallback;
+}
+
+/** الترتيب التالي لسؤال في اختبار: بعد أعلى ترتيب قائم، فلا يتكرر الترتيب بعد حذف سؤال من الوسط */
+async function nextQuestionOrder(quizId: string): Promise<number> {
+  const last = await db.question.findFirst({ where: { quizId }, orderBy: { order: "desc" }, select: { order: true } });
+  return (last?.order ?? 0) + 1;
+}
 
 // ——— المستخدمون ———
 export async function createUser(formData: FormData) {
@@ -49,7 +60,7 @@ export async function createUser(formData: FormData) {
 }
 
 export async function updateUser(formData: FormData) {
-  await admin();
+  const me = await admin();
   const id = str(formData.get("id"));
   const path = `/admin/participants/${id}`;
   const name = str(formData.get("name"));
@@ -62,6 +73,9 @@ export async function updateUser(formData: FormData) {
   if (!name) fail(path, "الاسم إلزامي");
   if (!["ADMIN", "PARTICIPANT", "MENTOR"].includes(role)) fail(path, "دور غير صحيح");
   if (password && password.length < 6) fail(path, "كلمة المرور الجديدة 6 أحرف فأكثر");
+  // لا يُقفل مدير المشروع حسابه بنفسه: تغيير دوره أو تعطيله يُخرجه فوراً ولا يعود
+  if (id === me.id && (role !== "ADMIN" || !active)) fail(path, "لا يمكنك تغيير دور حسابك أو تعطيله وأنت مسجّل به");
+  if (!(await db.user.findUnique({ where: { id }, select: { id: true } }))) fail("/admin/participants", "المستخدم غير موجود");
   await db.user.update({
     where: { id },
     data: { name, phone: phone || null, email: email || null, role, mentorId: mentorId === id ? null : mentorId, active, ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}) },
@@ -119,6 +133,7 @@ export async function reviewReport(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
   const feedback = str(formData.get("feedback"));
+  if (!(await db.weeklyReport.findUnique({ where: { id }, select: { id: true } }))) fail("/admin/reports", "التقرير غير موجود");
   const r = await db.weeklyReport.update({ where: { id }, data: { feedback: feedback || null, reviewedAt: new Date() } });
   if (feedback) await notifyUsers([r.userId], { title: `تغذية راجعة على تقرير الأسبوع ${r.week}`, body: feedback.slice(0, 120), url: `/app/reports/${r.week}` });
   ok(`/admin/reports?week=${r.week}`, "تم حفظ المراجعة");
@@ -154,7 +169,10 @@ export async function updateAssignment(formData: FormData) {
 
 export async function deleteAssignment(formData: FormData) {
   await admin();
-  await db.assignment.delete({ where: { id: str(formData.get("id")) } });
+  const id = str(formData.get("id"));
+  // مرفقات التسليمات لا يحذفها تسلسل القاعدة، فتُحذف هنا مع ملفاتها
+  await removeAttachments("SUBMISSION", id);
+  await db.assignment.deleteMany({ where: { id } });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تم حذف المهمة");
 }
@@ -203,10 +221,13 @@ function readQuestion(formData: FormData, path: string) {
     if (correctIndex !== 0 && correctIndex !== 1) fail(path, "حدد: صواب أم خطأ");
     return { kind, text, options: JSON.stringify(TRUE_FALSE_OPTIONS), correctIndex, answers: null, explanation };
   }
-  const options = [0, 1, 2, 3].map((i) => str(formData.get(`opt${i}`))).filter(Boolean);
-  const correctIndex = num(formData.get("correctIndex"), -1);
+  // تُحذف الخيارات الفارغة ويُعاد ربط الإجابة الصحيحة بموضعها الجديد، فلا تنزاح إن تُرك خيار في الوسط فارغاً
+  const raw = [0, 1, 2, 3].map((i) => str(formData.get(`opt${i}`)));
+  const chosen = num(formData.get("correctIndex"), -1);
+  const options = raw.filter(Boolean);
+  const correctIndex = chosen >= 0 && chosen < raw.length && raw[chosen] ? raw.slice(0, chosen).filter(Boolean).length : -1;
   if (options.length < 2) fail(path, "خياران على الأقل");
-  if (correctIndex < 0 || correctIndex >= options.length) fail(path, "حدد الإجابة الصحيحة");
+  if (correctIndex < 0) fail(path, "حدد الإجابة الصحيحة، ولا تكون خياراً فارغاً");
   return { kind, text, options: JSON.stringify(options), correctIndex, answers: null, explanation };
 }
 
@@ -215,7 +236,8 @@ export async function addQuestion(formData: FormData) {
   const quizId = str(formData.get("quizId"));
   const path = `/admin/quizzes/${quizId}`;
   const q = readQuestion(formData, path);
-  const order = (await db.question.count({ where: { quizId } })) + 1;
+  if (!(await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } }))) fail("/admin/quizzes", "الاختبار غير موجود");
+  const order = await nextQuestionOrder(quizId);
   await db.question.create({ data: { quizId, order, ...q } });
   if (str(formData.get("toBank")) === "on") {
     await db.bankQuestion.create({ data: { cohortId: await activeCohortId(), topic: str(formData.get("topic")) || "FIQH", week: str(formData.get("week")) === "" ? null : num(formData.get("week")), ...q } });
@@ -251,9 +273,9 @@ export async function copyFromBank(formData: FormData) {
   const quiz = await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } });
   if (!quiz) fail("/admin/quizzes", "الاختبار غير موجود");
   const rows = await db.bankQuestion.findMany({ where: { id: { in: ids } } });
-  const start = await db.question.count({ where: { quizId } });
+  const start = await nextQuestionOrder(quizId);
   await db.question.createMany({
-    data: rows.map((r, i) => ({ quizId, order: start + i + 1, kind: r.kind, text: r.text, options: r.options, correctIndex: r.correctIndex, answers: r.answers, explanation: r.explanation })),
+    data: rows.map((r, i) => ({ quizId, order: start + i, kind: r.kind, text: r.text, options: r.options, correctIndex: r.correctIndex, answers: r.answers, explanation: r.explanation })),
   });
   revalidatePath(path);
   ok(path, `نُسخ ${rows.length} سؤالاً من البنك`);
@@ -261,7 +283,10 @@ export async function copyFromBank(formData: FormData) {
 
 export async function deleteQuestion(formData: FormData) {
   await admin();
-  const q = await db.question.delete({ where: { id: str(formData.get("id")) } });
+  const id = str(formData.get("id"));
+  const q = await db.question.findUnique({ where: { id }, select: { quizId: true } });
+  if (!q) return;
+  await db.question.deleteMany({ where: { id } });
   revalidatePath(`/admin/quizzes/${q.quizId}`);
 }
 
@@ -279,7 +304,7 @@ export async function publishQuiz(formData: FormData) {
 
 export async function deleteQuiz(formData: FormData) {
   await admin();
-  await db.quiz.delete({ where: { id: str(formData.get("id")) } });
+  await db.quiz.deleteMany({ where: { id: str(formData.get("id")) } });
   revalidatePath("/admin/quizzes");
   ok("/admin/quizzes", "تم حذف الاختبار");
 }
@@ -288,10 +313,11 @@ export async function deleteQuiz(formData: FormData) {
 export async function approveFieldLog(formData: FormData) {
   const me = await requireRole("ADMIN", "MENTOR");
   const id = str(formData.get("id"));
-  const back = str(formData.get("back")) || "/admin/field";
+  const back = safeBack(str(formData.get("back")), me.role === "MENTOR" ? "/mentor" : "/admin/field");
   const log = await db.fieldLog.findUnique({ where: { id }, include: { user: true } });
   if (!log) fail(back, "السجل غير موجود");
   if (me.role === "MENTOR" && log.user.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
+  if (log.approvedAt) fail(back, "اعتُمد هذا السجل من قبل");
   await db.fieldLog.update({ where: { id }, data: { approvedAt: new Date(), approvedBy: me.id } });
   await notifyUsers([log.userId], { title: "اعتماد سجل معايشة", body: `اعتُمدت ${log.hours} ساعة معايشة.`, url: "/app/field" });
   revalidatePath(back);
@@ -301,12 +327,13 @@ export async function approveFieldLog(formData: FormData) {
 export async function rejectFieldLog(formData: FormData) {
   const me = await requireRole("ADMIN", "MENTOR");
   const id = str(formData.get("id"));
-  const back = str(formData.get("back")) || "/admin/field";
+  const back = safeBack(str(formData.get("back")), me.role === "MENTOR" ? "/mentor" : "/admin/field");
   const reason = str(formData.get("reason"));
   const log = await db.fieldLog.findUnique({ where: { id }, include: { user: true } });
   if (!log) fail(back, "السجل غير موجود");
   if (me.role === "MENTOR" && log.user.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
-  await db.fieldLog.delete({ where: { id } });
+  await removeAttachments("FIELD", id);
+  await db.fieldLog.deleteMany({ where: { id } });
   await notifyUsers([log.userId], { title: "لم يُعتمد سجل معايشة", body: reason || `سجل ${log.hours} ساعة لم يُعتمد. راجع المشرف المرافق.`, url: "/app/field" });
   revalidatePath(back);
   redirect(back);
@@ -333,17 +360,22 @@ export async function judgeProject(formData: FormData) {
   const id = str(formData.get("id"));
   const p = await db.graduationProject.findUnique({ where: { id } });
   if (!p) fail("/admin/projects", "المشروع غير موجود");
-  const limits = { clarity: 5, grounding: 7, design: 8, integration: 5, presentation: 5 } as const;
-  const data: Record<string, number> = {};
-  for (const [k, max] of Object.entries(limits)) {
+  // الحدود من سلّم التحكيم القابل للتعديل في «محتوى الوثيقة»، لا من أرقام ثابتة قد تخالفه
+  const rubric = await getProjectRubric();
+  const keys = ["clarity", "grounding", "design", "integration", "presentation"] as const;
+  const data: Record<(typeof keys)[number], number> = { clarity: 0, grounding: 0, design: 0, integration: 0, presentation: 0 };
+  for (const k of keys) {
+    const max = rubric.find((r) => r.key === k)?.points ?? 0;
     const v = num(formData.get(k), -1);
-    if (v < 0 || v > max) fail("/admin/projects", `درجة «${k}» يجب أن تكون بين 0 و${max}`);
+    // الأعمدة صحيحة في القاعدة، فالكسور كانت تُبتر صامتةً ويُبلَّغ المشارك بمجموع يخالف المخزون
+    if (!Number.isInteger(v) || v < 0 || v > max) fail("/admin/projects", `درجة «${rubric.find((r) => r.key === k)?.label ?? k}» عدد صحيح بين 0 و${max}`);
     data[k] = v;
   }
   const judgeNote = str(formData.get("judgeNote"));
   await db.graduationProject.update({ where: { id }, data: { ...data, judgeNote: judgeNote || null, status: "JUDGED" } });
   const total = Object.values(data).reduce((a, b) => a + b, 0);
-  await notifyUsers([p.userId], { title: "نتيجة تحكيم مشروع التخرج", body: `${total} من 30`, url: "/app/project" });
+  const projectMax = rubric.reduce((a, r) => a + r.points, 0);
+  await notifyUsers([p.userId], { title: "نتيجة تحكيم مشروع التخرج", body: `${total} من ${projectMax}`, url: "/app/project" });
   ok("/admin/projects", "تم حفظ التحكيم وإشعار المشارك");
 }
 
@@ -359,7 +391,12 @@ export async function sendNotification(formData: FormData) {
   if (target === "all") ids = (await db.user.findMany({ where: { active: true, OR: [await cohortWhere(), { role: "ADMIN" }] }, select: { id: true } })).map((u) => u.id);
   else if (target === "participants") ids = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
   else if (target === "mentors") ids = (await db.user.findMany({ where: { active: true, role: "MENTOR", ...(await cohortWhere()) }, select: { id: true } })).map((u) => u.id);
-  else if (target.startsWith("user:")) ids = [target.slice(5)];
+  else if (target.startsWith("user:")) {
+    const u = await db.user.findUnique({ where: { id: target.slice(5) }, select: { id: true, active: true } });
+    if (!u || !u.active) fail("/admin/notifications", "المستخدم المقصود غير موجود أو معطَّل");
+    ids = [u.id];
+  }
+  if (!ids.length) fail("/admin/notifications", "لا مستقبلين لهذا الإشعار");
   const r = await notifyUsers(ids, { title, body, url: url || undefined });
   ok("/admin/notifications", `أُرسل الإشعار إلى ${r.inApp} مستخدم (${r.pushed} إشعار دفع)`);
 }
@@ -438,7 +475,7 @@ export async function deleteMaterial(formData: FormData) {
     await deleteObject(f.key).catch(() => {});
     await db.attachment.delete({ where: { id: f.id } }).catch(() => {});
   }
-  await db.material.delete({ where: { id } });
+  await db.material.deleteMany({ where: { id } });
   revalidatePath("/admin/materials");
   ok("/admin/materials", "تم حذف المادة");
 }
@@ -453,6 +490,7 @@ export async function saveWeek(formData: FormData) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gregorian)) fail("/admin/schedule", "تاريخ غير صحيح");
   if (remoteUrl && !/^https?:\/\//i.test(remoteUrl)) fail("/admin/schedule", "رابط الحلقة يجب أن يبدأ بـ http أو https");
   const cohortId = await requireCohortId();
+  if (!(await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true } }))) fail("/admin/schedule", "أسبوع غير موجود");
   await db.programWeek.update({
     where: { cohortId_number: { cohortId, number } },
     data: {
@@ -498,7 +536,7 @@ export async function saveMinutes(formData: FormData) {
   if (week === -99 || !MINUTES_TYPES.has(type)) fail("/admin/minutes", "بيانات غير صحيحة");
   if (!minutes) fail(back, "اكتب نص المحضر");
   const data = {
-    date: keyToDate(str(formData.get("date")) || new Date().toISOString().slice(0, 10)),
+    date: keyToDate(/^\d{4}-\d{2}-\d{2}$/.test(str(formData.get("date"))) ? str(formData.get("date")) : todayKey()),
     title: str(formData.get("title")) || null,
     guestName: str(formData.get("guestName")) || null,
     present: str(formData.get("present")) || null,
@@ -547,7 +585,7 @@ export async function saveGuest(formData: FormData) {
 
 export async function deleteGuest(formData: FormData) {
   await admin();
-  await db.guest.delete({ where: { id: str(formData.get("id")) } });
+  await db.guest.deleteMany({ where: { id: str(formData.get("id")) } });
   revalidatePath("/admin/guests");
   ok("/admin/guests", "تم حذف الضيف");
 }
@@ -559,15 +597,19 @@ export async function saveBudgetEntry(formData: FormData) {
   const item = str(formData.get("item"));
   if (!item) fail("/admin/budget", "اكتب اسم البند");
   const actualRaw = str(formData.get("actual"));
+  const existing = id ? await db.budgetEntry.findUnique({ where: { id } }) : null;
+  if (id && !existing) fail("/admin/budget", "البند غير موجود");
+  const actual = actualRaw === "" ? null : num(formData.get("actual"), 0);
   const data = {
     item,
     basis: str(formData.get("basis")) || null,
     planned: num(formData.get("planned"), 0),
-    actual: actualRaw === "" ? null : num(formData.get("actual"), 0),
+    actual,
     optional: formData.get("optional") === "on",
     note: str(formData.get("note")) || null,
     order: num(formData.get("order"), 0),
-    spentAt: actualRaw === "" ? null : new Date(),
+    // تاريخ الصرف يُثبَّت عند أول تسجيل للمبلغ الفعلي، ولا يُستبدل بكل حفظ لاحق
+    spentAt: actual === null ? null : existing?.spentAt && existing.actual !== null ? existing.spentAt : new Date(),
   };
   if (data.planned < 0 || (data.actual ?? 0) < 0) fail("/admin/budget", "المبالغ لا تكون سالبة");
   if (id) await db.budgetEntry.update({ where: { id }, data });
@@ -578,7 +620,7 @@ export async function saveBudgetEntry(formData: FormData) {
 
 export async function deleteBudgetEntry(formData: FormData) {
   await admin();
-  await db.budgetEntry.delete({ where: { id: str(formData.get("id")) } });
+  await db.budgetEntry.deleteMany({ where: { id: str(formData.get("id")) } });
   revalidatePath("/admin/budget");
   ok("/admin/budget", "تم حذف البند");
 }
@@ -658,14 +700,23 @@ export async function issueCertificate(formData: FormData) {
   const g = await computeGrades(userId);
   const total = final ? Math.max(0, Math.min(100, Math.round((final.computed + final.adjustment) * 10) / 10)) : g.total;
   const lvl = await levelFor(total);
-  const year = new Date().getFullYear();
-  const count = (await db.certificate.count()) + 1;
+  const year = Number(todayKey().slice(0, 4));
   // من نال أقل من أدنى مستويات الإتمام يُمنح إفادة حضور لا وثيقة إتمام
   const levels = await getCompletionLevels();
   const passing = levels.filter((l) => l.min > 0).map((l) => l.min);
   const kind = total >= (passing.length ? Math.min(...passing) : 60) ? "COMPLETION" : "ATTENDANCE";
   const prefix = kind === "COMPLETION" ? "MAALEM" : "MAALEM-ATT";
-  const serial = `${prefix}-${year}-${String(count).padStart(3, "0")}`;
+  /**
+   * الرقم التسلسلي يلي أعلى رقم صادر بهذه البادئة في هذه السنة، لا عدد الوثائق:
+   * العدّ كان يعيد رقماً صادراً بعد سحب أي وثيقة فيصطدم بقيد التفرّد وتسقط الصفحة.
+   */
+  const stem = `${prefix}-${year}-`;
+  const issued = await db.certificate.findMany({ where: { serial: { startsWith: stem } }, select: { serial: true } });
+  const highest = issued.reduce((m, c) => {
+    const n = Number(c.serial.slice(stem.length));
+    return Number.isFinite(n) && /^\d+$/.test(c.serial.slice(stem.length)) ? Math.max(m, n) : m;
+  }, 0);
+  const serial = `${stem}${String(highest + 1).padStart(3, "0")}`;
   await db.certificate.upsert({
     where: { userId },
     create: { userId, kind, serial, level: lvl.level, total, note: str(formData.get("note")) || null },
@@ -697,14 +748,23 @@ export async function createCohort(formData: FormData) {
   if (await db.cohort.findUnique({ where: { name } })) fail("/admin/cohorts", "اسم الدفعة مستخدم من قبل");
   const cohort = await db.cohort.create({ data: { name, startDate } });
   // أسابيع الدفعة الجديدة من الخطة، بمواعيد تبدأ من تاريخ لقائها الافتتاحي
-  const start = new Date(`${startDate}T00:00:00+03:00`).getTime();
+  const start = keyToDate(startDate).getTime();
   const { WEEKS, BUDGET } = await import("@/lib/program");
   await db.programWeek.createMany({
-    data: WEEKS.map((w) => ({
-      cohortId: cohort.id, number: w.number, label: w.label, hijri: w.hijri,
-      gregorian: new Date(start + w.number * 7 * 86400000).toISOString().slice(0, 10),
-      competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
-    })),
+    data: WEEKS.map((w) => {
+      /**
+       * التاريخ بتوقيت الرياض لا بالتوقيت العالمي: منتصف ليل الرياض هو مساء اليوم
+       * السابق عالمياً، فكانت أسابيع الدفعة الجديدة كلها تُسجَّل بيوم مبكر.
+       * والتاريخ الهجري يُحسب من التاريخ الجديد لا يُنسخ من دفعة الخطة.
+       */
+      const day = new Date(start + w.number * 7 * 86400000);
+      return {
+        cohortId: cohort.id, number: w.number, label: w.label,
+        hijri: formatHijri(day, { day: "numeric", month: "long" }),
+        gregorian: todayKey(day),
+        competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+      };
+    }),
   });
   await db.budgetEntry.createMany({
     data: BUDGET.items.map((i, order) => ({ cohortId: cohort.id, item: i.item, basis: i.basis, planned: i.cost, optional: i.optional, note: i.note === "—" ? null : i.note, order })),
@@ -720,6 +780,8 @@ export async function activateCohort(formData: FormData) {
   const id = str(formData.get("id"));
   const target = await db.cohort.findUnique({ where: { id } });
   if (!target) fail("/admin/cohorts", "الدفعة غير موجودة");
+  // الإغلاق له أثر: دفعة مغلقة لا تُفعَّل حتى يُعاد فتحها
+  if (target.closedAt) fail("/admin/cohorts", "الدفعة مغلقة — أعد فتحها أولاً ثم فعّلها");
   await db.cohort.updateMany({ where: { active: true }, data: { active: false } });
   await db.cohort.update({ where: { id }, data: { active: true } });
   // دفعة أُنشئت قبل إتاحة تحرير محتوى الوثيقة قد تكون بلا كتب ولا ميثاق ولا أوزان.
@@ -773,7 +835,6 @@ export async function saveMentorEvaluation(formData: FormData) {
 // ——— التذكيرات المخصصة ———
 export async function saveReminder(formData: FormData) {
   await admin();
-  const id = str(formData.get("id"));
   const title = str(formData.get("title"));
   const body = str(formData.get("body"));
   const url = str(formData.get("url"));
@@ -788,21 +849,16 @@ export async function saveReminder(formData: FormData) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) fail("/admin/reminders", "اختر تاريخ الإرسال ووقته");
   const sendAt = new Date(`${date}T${time}:00+03:00`);
   if (Number.isNaN(sendAt.getTime())) fail("/admin/reminders", "موعد غير صحيح");
-  const data = {
-    title, body, url: url || null, audience,
-    userId: audience === "ONE" ? userId : null,
-    sendAt, channels,
-  };
-  if (id) {
-    const row = await db.reminder.findUnique({ where: { id } });
-    if (!row) fail("/admin/reminders", "التذكير غير موجود");
-    if (row.sentAt) fail("/admin/reminders", "أُرسل هذا التذكير، ولا يُعدَّل بعد إرساله");
-    await db.reminder.update({ where: { id }, data });
-  } else {
-    await db.reminder.create({ data: { ...data, cohortId: await activeCohortId() } });
+  if (url && !/^(https?:\/\/|\/)/i.test(url)) fail("/admin/reminders", "الرابط يبدأ بـ / أو http");
+  if (audience === "ONE") {
+    const u = await db.user.findUnique({ where: { id: userId! }, select: { id: true, active: true } });
+    if (!u || !u.active) fail("/admin/reminders", "المشارك المقصود غير موجود");
   }
+  await db.reminder.create({
+    data: { title, body, url: url || null, audience, userId: audience === "ONE" ? userId : null, sendAt, channels, cohortId: await activeCohortId() },
+  });
   revalidatePath("/admin/reminders");
-  ok("/admin/reminders", id ? "حُدّث التذكير" : "جُدول التذكير");
+  ok("/admin/reminders", "جُدول التذكير");
 }
 
 export async function deleteReminder(formData: FormData) {
@@ -862,8 +918,12 @@ export async function saveScheduleTimes(formData: FormData) {
     [SCHEDULE_KEYS.circleTime, str(formData.get("circleTime")) || SCHEDULE_DEFAULTS.circleTime],
     [SCHEDULE_KEYS.circleMinutes, String(num(formData.get("circleMinutes"), SCHEDULE_DEFAULTS.circleMinutes))],
   ];
+  // يُتحقق من القيم كلها قبل أول كتابة، فلا يُحفظ وقت اللقاء ويُرفض وقت الحلقة
   for (const [k, v] of pairs) {
-    if (k.endsWith("Time") && !/^\d{2}:\d{2}$/.test(v)) fail("/admin/schedule", "صيغة الوقت يجب أن تكون HH:MM");
+    if (k.endsWith("Time") && !/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) fail("/admin/schedule", "صيغة الوقت يجب أن تكون HH:MM");
+    if (k.endsWith("Minutes") && !(Number(v) >= 5 && Number(v) <= 600)) fail("/admin/schedule", "المدة بين 5 و600 دقيقة");
+  }
+  for (const [k, v] of pairs) {
     await db.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } });
   }
   revalidatePath("/admin/schedule");
@@ -958,7 +1018,8 @@ export async function deleteBook(formData: FormData) {
 
 export async function saveCharter(formData: FormData) {
   await admin();
-  const cohortId = await activeCohortId();
+  // الدفعة مضمونة: بلا دفعة نشطة كان الشرط الفارغ يمسح ميثاق كل الدفعات
+  const cohortId = await requireCohortId();
   const items: string[] = [];
   for (const [k, v] of formData.entries()) {
     if (k.startsWith("item_") && typeof v === "string" && v.trim()) items.push(v.trim());
@@ -966,7 +1027,7 @@ export async function saveCharter(formData: FormData) {
   const added = str(formData.get("newItem")).trim();
   if (added) items.push(added);
   if (!items.length) fail("/admin/content", "الميثاق لا يصح بلا بنود");
-  await db.charterItem.deleteMany({ where: cohortId ? { cohortId } : {} });
+  await db.charterItem.deleteMany({ where: { cohortId } });
   await db.charterItem.createMany({ data: items.map((text, order) => ({ cohortId, order, text })) });
   revalidatePath("/admin/content");
   ok("/admin/content", `حُفظ الميثاق (${items.length} بنداً)`);
@@ -1058,6 +1119,7 @@ export async function saveCompetencyItem(formData: FormData) {
     refs: str(formData.get("refs")),
     order: num(formData.get("order"), 0),
   };
+  if (!(await db.competencyDef.findUnique({ where: { id: competencyId }, select: { id: true } }))) fail("/admin/competencies", "الكفاءة غير موجودة");
   if (id) await db.competencyItemRow.update({ where: { id }, data });
   else await db.competencyItemRow.create({ data: { ...data, competencyId } });
   revalidatePath("/admin/competencies");
