@@ -11,7 +11,7 @@ import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
 import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
-import { deleteObject } from "@/lib/storage";
+import { ALLOWED_TYPES, MAX_FILE_BYTES, deleteObject, putObject, safeKey } from "@/lib/storage";
 import { computeGrades, levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
 import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
@@ -440,7 +440,7 @@ export async function endPreview() {
 const MATERIAL_KINDS = new Set(["BOOK", "TEMPLATE", "GUIDE", "LINK"]);
 
 export async function saveMaterial(formData: FormData) {
-  await admin();
+  const user = await admin();
   const id = str(formData.get("id"));
   const title = str(formData.get("title"));
   const kind = str(formData.get("kind"));
@@ -448,6 +448,16 @@ export async function saveMaterial(formData: FormData) {
   if (!title) fail("/admin/materials", "اكتب عنوان المادة");
   if (!MATERIAL_KINDS.has(kind)) fail("/admin/materials", "نوع غير صحيح");
   if (url && !/^https?:\/\//i.test(url)) fail("/admin/materials", "الرابط يجب أن يبدأ بـ http أو https");
+  /**
+   * الملف يُرفع مع النموذج نفسه لا في خطوة تالية: المادة لا معرّف لها قبل حفظها،
+   * وكانت أداة الرفع لا تظهر إلا بعده — فبدت المكتبة وكأنها لا تقبل إلا الروابط.
+   * ويُتحقّق منه قبل أي كتابة في القاعدة، فلا تبقى مادةٌ أُنشئت لملفٍ مرفوض.
+   */
+  const upload = formData.get("file");
+  const file = upload instanceof File && upload.size > 0 ? upload : null;
+  const contentType = file ? file.type || "application/octet-stream" : "";
+  if (file && file.size > MAX_FILE_BYTES) fail("/admin/materials", "حجم الملف يتجاوز 25 ميغابايت");
+  if (file && !ALLOWED_TYPES.has(contentType)) fail("/admin/materials", "نوع الملف غير مسموح");
   const data = {
     title,
     kind,
@@ -458,13 +468,24 @@ export async function saveMaterial(formData: FormData) {
     week: str(formData.get("week")) === "" ? null : num(formData.get("week")),
     order: num(formData.get("order"), 0),
   };
+  let refId = id;
   if (id) await db.material.update({ where: { id }, data });
   else {
     const created = await db.material.create({ data });
-    await notifyRole("PARTICIPANT", { title: "مادة جديدة في المكتبة", body: created.title, url: "/app/materials" });
+    refId = created.id;
   }
+  if (file) {
+    const key = safeKey(user.id, file.name);
+    await putObject(key, await file.arrayBuffer(), contentType);
+    await db.attachment.create({
+      data: { userId: user.id, kind: "MATERIAL", refId, key, name: file.name.slice(0, 200), size: file.size, contentType },
+    });
+  }
+  // الإشعار بعد رفع الملف، فلا يصل المشارك إلى مادة لم يُرفع ملفها بعد
+  if (!id) await notifyRole("PARTICIPANT", { title: "مادة جديدة في المكتبة", body: title, url: "/app/materials" });
   revalidatePath("/admin/materials");
-  ok("/admin/materials", id ? "تم تحديث المادة" : "تمت إضافة المادة وإشعار المشاركين");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", id ? "تم تحديث المادة" : `تمت إضافة المادة${file ? " وملفها" : ""} وإشعار المشاركين`);
 }
 
 export async function deleteMaterial(formData: FormData) {

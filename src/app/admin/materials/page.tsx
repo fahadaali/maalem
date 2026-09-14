@@ -76,7 +76,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
         </div>
         <Card title="إضافة مادة">
           <form action={saveMaterial}>
-            <MaterialFields competencies={competencies} weeks={weeks} />
+            <MaterialFields competencies={competencies} weeks={weeks} withFile />
             <SubmitButton>إضافة وإشعار المشاركين</SubmitButton>
           </form>
           <div className="border-t border-line mt-4 pt-3 text-xs text-muted">
@@ -95,7 +95,8 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
 
 type M = { title: string; kind: string; author: string | null; description: string | null; url: string | null; competency: string | null; week: number | null; order: number };
 
-function MaterialFields({ material, weeks, competencies }: { material?: M; weeks: { number: number; label: string }[]; competencies: { slug: string; name: string }[] }) {
+/** `withFile` لنموذج الإضافة وحده: المادة المحفوظة لها أداة رفع مستقلة في بطاقتها */
+function MaterialFields({ material, weeks, competencies, withFile }: { material?: M; weeks: { number: number; label: string }[]; competencies: { slug: string; name: string }[]; withFile?: boolean }) {
   return (
     <>
       <div className="field">
@@ -150,6 +151,18 @@ function MaterialFields({ material, weeks, competencies }: { material?: M; weeks
           <input type="number" name="order" className="input" defaultValue={material?.order ?? 0} />
         </div>
       </div>
+      {withFile && (
+        <div className="field">
+          <label className="label">ملف المادة (اختياري)</label>
+          <input
+            type="file"
+            name="file"
+            className="input"
+            accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.mp4"
+          />
+          <p className="text-xs text-muted mt-1">PDF أو مستند أو صورة أو صوت أو فيديو، حتى 25 ميغابايت. يمكنك رفع ملفات أخرى للمادة بعد إضافتها.</p>
+        </div>
+      )}
     </>
   );
 }
