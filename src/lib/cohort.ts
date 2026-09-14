@@ -7,7 +7,19 @@ export const activeCohortId = cache(async (): Promise<string | null> => {
   return c?.id ?? null;
 });
 
-export const activeCohort = cache(async () => db.cohort.findFirst({ where: { active: true } }));
+/**
+ * الدفعة النشطة كاملةً — لعرض اسمها. تُردّ بلا شيء إن تعذّرت القراءة، كما تفعل
+ * `getWeeks` و`getBooks` وأخواتها: صفحات وثيقة البرنامج تُبنى ساكنةً وقت البناء
+ * حيث لا قاعدة بيانات أصلاً، فرميُها هنا كان يُسقط البناء كله.
+ */
+export const activeCohort = cache(async () => {
+  try {
+    return await db.cohort.findFirst({ where: { active: true } });
+  } catch {
+    // القاعدة غير مهيأة بعد، أو لا وصول إليها وقت البناء
+    return null;
+  }
+});
 
 /** شرط التصفية بالدفعة النشطة، يُدمج في استعلامات prisma */
 export async function cohortWhere(): Promise<{ cohortId: string } | Record<string, never>> {
