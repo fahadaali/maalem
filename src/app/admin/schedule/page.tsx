@@ -5,6 +5,8 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { notifyWeekChange, saveWeek, saveScheduleTimes } from "../actions";
 import { scheduleTimes } from "@/lib/ics";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/lib/attachments";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 import { SCHEDULE_NOTE } from "@/lib/program";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,8 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
   const selected = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, cur);
   const w = weeks.find((x) => x.number === selected) ?? weeks[0];
   const times = await scheduleTimes();
+  // صورة البطاقة تُنسب إلى صفّ الأسبوع نفسه، فتنفصل بين الدفعات تلقائياً
+  const cardFiles = w?.id ? await listAttachments({ kind: "WEEKCARD", refId: w.id }) : [];
 
   return (
     <>
@@ -94,11 +98,24 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
             </div>
           </div>
           <div className="field">
+            <label className="label">المعايشة الميدانية (ساعة · يوم يختاره المشارك)</label>
+            <textarea name="field" className="textarea" rows={2} defaultValue={w.field} placeholder="اتركه فارغاً في الأسابيع التي لا معايشة فيها" />
+          </div>
+          <div className="field">
             <label className="label">ملاحظة تظهر للمشاركين (تأجيل، تغيير قاعة، ونحوه)</label>
             <input name="note" className="input" defaultValue={w.note ?? ""} />
           </div>
           <SubmitButton>حفظ الأسبوع</SubmitButton>
         </form>
+        {w?.id && (
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="text-sm font-medium mb-1">بطاقة الأسبوع (صورة)</div>
+            <p className="text-xs text-muted mb-2">
+              تظهر للمشارك تحت بطاقة الأسبوع، يفتحها للمشاركة أو الطباعة. المنصة ترسم البطاقة بنفسها من الحقول أعلاه، وهذه الصورة إضافة إليها.
+            </p>
+            <Attachments kind="WEEKCARD" refId={w.id} initial={cardFiles} />
+          </div>
+        )}
         <form action={notifyWeekChange} className="mt-3 border-t border-line pt-3">
           <input type="hidden" name="number" value={w.number} />
           <SubmitButton secondary className="btn-sm">إشعار المشاركين بالتحديث</SubmitButton>

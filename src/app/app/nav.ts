@@ -1,8 +1,9 @@
-import { Home, BookOpen, ClipboardList, FileText, ListChecks, Users, Megaphone, GraduationCap, Target, PenLine, Repeat, FolderOpen, Bell, Settings, Menu, CalendarDays, Library, ScrollText, Gauge, NotebookPen, Target as TargetIcon, BadgeCheck, MessageSquareHeart, CalendarOff, Search, LifeBuoy, History } from "lucide-react";
+import { Home, BookOpen, ClipboardList, FileText, ListChecks, Users, Megaphone, GraduationCap, Target, PenLine, Repeat, FolderOpen, Bell, Settings, Menu, CalendarDays, Library, ScrollText, Gauge, NotebookPen, Target as TargetIcon, BadgeCheck, MessageSquareHeart, CalendarOff, Search, LifeBuoy, History, CalendarRange } from "lucide-react";
 import type { NavItem } from "@/components/shell/AppShell";
 
 export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app", label: "الرئيسية", icon: Home, exact: true, tab: true },
+  { href: "/app/week", label: "بطاقات الأسابيع", icon: CalendarDays },
   { href: "/app/reading", label: "القراءة", icon: BookOpen, tab: true },
   { href: "/app/tasks", label: "المهام", icon: ClipboardList, tab: true },
   { href: "/app/reports", label: "التقارير الأسبوعية", icon: FileText },
@@ -23,7 +24,7 @@ export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app/certificate", label: "وثيقة الإتمام", icon: BadgeCheck },
   { href: "/app/survey", label: "استبانة الرضا", icon: MessageSquareHeart },
   { href: "/app/excuses", label: "الاستئذان والتأجيل", icon: CalendarOff },
-  { href: "/program/schedule", label: "جدول البرنامج", icon: CalendarDays },
+  { href: "/program/schedule", label: "وثيقة الجدول", icon: CalendarRange },
   { href: "/app/notifications", label: "الإشعارات", icon: Bell },
   { href: "/app/search", label: "البحث", icon: Search },
   { href: "/help", label: "المساعدة", icon: LifeBuoy },

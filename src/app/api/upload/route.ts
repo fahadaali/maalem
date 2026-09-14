@@ -3,7 +3,10 @@ import { db } from "@/lib/db";
 import { getSession, isPreview } from "@/lib/auth";
 import { ALLOWED_TYPES, MAX_FILE_BYTES, putObject, safeKey } from "@/lib/storage";
 
-const KINDS = new Set(["SUBMISSION", "PROJECT", "FIELD", "REPORT", "MATERIAL", "OTHER"]);
+const KINDS = new Set(["SUBMISSION", "PROJECT", "FIELD", "REPORT", "MATERIAL", "WEEKCARD", "OTHER"]);
+
+/** أنواع يرفعها مدير المشروع وحده، ويقرؤها كل من دخل المنصة */
+const ADMIN_KINDS = new Set(["MATERIAL", "WEEKCARD"]);
 
 /**
  * السجل المُرفَق إليه يجب أن يكون لصاحب الرفع: معرّفات السجلات لا تُخمَّن، لكن
@@ -37,7 +40,7 @@ export async function POST(req: Request) {
   const refId = form.get("refId") ? String(form.get("refId")) : null;
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "لم يُرفق ملف" }, { status: 400 });
   if (!KINDS.has(kind)) return NextResponse.json({ error: "نوع غير صحيح" }, { status: 400 });
-  if (kind === "MATERIAL" && user.role !== "ADMIN") return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (ADMIN_KINDS.has(kind) && user.role !== "ADMIN") return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   if (!(await ownsRef(user.id, user.role, kind, refId))) return NextResponse.json({ error: "السجل المقصود غير موجود أو ليس لك" }, { status: 403 });
   if (file.size > MAX_FILE_BYTES) return NextResponse.json({ error: "حجم الملف يتجاوز 25 ميغابايت" }, { status: 413 });
   const contentType = file.type || "application/octet-stream";

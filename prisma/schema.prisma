@@ -95,6 +95,8 @@ model ProgramWeek {
   circle       String
   reading      String
   task         String
+  /// المعايشة الميدانية — يومٌ يختاره المشارك (فارغ في الأسابيع التي لا معايشة فيها)
+  field        String   @default("")
   meetingPlace String?
   remoteUrl    String?
   note         String?
