@@ -82,6 +82,7 @@ WebCrypto
 | Deploy command | `npx opennextjs-cloudflare deploy` |
 | Version command | `npx opennextjs-cloudflare upload` |
 | Root directory | `/` |
+| فرع الإنتاج | `main` |
 | إصدار Node | 22 (محدد في `.node-version`) |
 
 تنبيه: `npm run build` وحده لا يكفي — فهو يبني تطبيق
@@ -90,6 +91,8 @@ Next
 
 الشرط الوحيد: أن يطابق حقل `name` في `wrangler.jsonc` اسم العامل المرتبط بالمستودع، وإلا أنشأ النشر عاملاً آخر.
 كل دفعة إلى الفرع المرتبط تبني وتنشر تلقائياً. النشر اليدوي: `npm run cf:deploy`.
+وفرع الإنتاج يُضبط في لوحة Cloudflare لا في المستودع، فتبديل الفرع الافتراضي في
+GitHub وحده لا ينقل النشر إليه.
 
 ### 2) الأسرار — تلقائية
 
