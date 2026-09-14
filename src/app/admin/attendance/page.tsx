@@ -42,7 +42,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <Card title={`الأسبوع ${info.label} · ${info.hijri}`}>
         <div className="text-xs text-muted mb-3">اللقاء: {info.session}</div>
         {week > 0 && (
-          <form action={copyAttendanceFromWeek} className="flex flex-wrap items-end gap-2 mb-3 pb-3 border-b border-line">
+          <form key={week} action={copyAttendanceFromWeek} className="flex flex-wrap items-end gap-2 mb-3 pb-3 border-b border-line">
             <input type="hidden" name="week" value={week} />
             <div>
               <label className="label">نسخ الحضور من أسبوع سابق</label>
@@ -57,7 +57,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
           </form>
         )}
         <AttendanceQuickFill />
-        <form action={saveAttendance} data-attendance>
+        <form key={week} action={saveAttendance} data-attendance>
           <input type="hidden" name="week" value={week} />
           <div className="table-wrap">
             <table className="table">

@@ -55,7 +55,10 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
         ))}
       </div>
       <Card title={`الأسبوع ${w.label}`} action={w.number === cur ? <span className="badge badge-ink">الأسبوع الحالي</span> : undefined}>
-        <form action={saveWeek}>
+        {/* مفتاحٌ بالأسبوع: التنقّل بين الأسابيع من طرف العميل يبقي حقول النموذج
+            مركَّبة، فلا يتبع نصُّ textarea ذو القيمة الأسبوعَ الجديد ويبقى على أول
+            أسبوع رُسم — فيُحفظ محتوى أسبوعٍ في صفّ أسبوعٍ آخر. */}
+        <form key={w.number} action={saveWeek}>
           <input type="hidden" name="number" value={w.number} />
           <div className="grid md:grid-cols-2 gap-3">
             <div className="field">

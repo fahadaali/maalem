@@ -45,7 +45,7 @@ export default async function MinutesPage({ searchParams }: { searchParams: Prom
         {Object.entries(MINUTES_LABELS).map(([type, label]) => {
           const m = of(type);
           return (
-            <Card key={type} title={label} action={m ? <Badge tone="ink">مُدوَّن</Badge> : <Badge tone="soft">لا محضر</Badge>}>
+            <Card key={`${week}-${type}`} title={label} action={m ? <Badge tone="ink">مُدوَّن</Badge> : <Badge tone="soft">لا محضر</Badge>}>
               <form action={saveMinutes}>
                 <input type="hidden" name="week" value={week} />
                 <input type="hidden" name="type" value={type} />
