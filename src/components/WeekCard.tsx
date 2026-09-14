@@ -151,7 +151,7 @@ function rowsFor(w: LiveWeek): Row[] {
 
   const place = w.meetingPlace ? <span className="badge badge-soft mt-2">المكان: {w.meetingPlace}</span> : null;
   const link = w.remoteUrl ? (
-    <a href={w.remoteUrl} target="_blank" rel="noopener" className="btn btn-sm btn-secondary mt-2">
+    <a href={w.remoteUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary mt-2">
       <Video size={14} /> دخول حلقة النقاش
     </a>
   ) : null;

@@ -56,3 +56,12 @@ export function parseJSON<T>(s: string, fallback: T): T {
     return fallback;
   }
 }
+
+/** اسم الموقع وحده: الرابط الخام بـ dir="ltr" داخل صفحة عربية يقطع السطر ويشوّش */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}

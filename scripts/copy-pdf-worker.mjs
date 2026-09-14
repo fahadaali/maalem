@@ -2,7 +2,9 @@
  * ينسخ عامل PDF.js إلى public/ ليُقدَّم أصلاً ثابتاً على حافة Cloudflare.
  * يُنسخ ولا يُستورد: العامل يُحمَّل بمساره من المتصفح (GlobalWorkerOptions.workerSrc)
  * لا عبر الحزم، فلا يحتاج المشروع إعداد bundler خاصاً به.
- * وتُستعمل نسخة legacy لأن الحديثة تشترط Promise.withResolvers فتسقط الأجهزة الأقدم.
+ * وتُستعمل نسخة legacy لأنها وحدها تحمل تعويضات core-js لواجهات لا تعرفها المتصفحات
+ * الأقدم. أما Promise.withResolvers فتستعملها النسختان بلا تعويض، فيُعوَّض عنها في
+ * PdfViewer قبل تحميل الحزمة.
  */
 import { copyFileSync, statSync } from "node:fs";
 

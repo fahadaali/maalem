@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { Download, ExternalLink, X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import Link from "@/components/Link";
-import PdfViewer from "@/components/PdfViewer";
+import PdfViewer from "@/components/PdfViewerLoader";
 import { authorizeAttachment, toItem } from "@/lib/attachments";
 import { homeFor } from "@/lib/auth";
 
@@ -54,11 +54,6 @@ export default async function FilePage({
         <a href={`${item.url}?download=1`} className="btn btn-secondary btn-sm shrink-0">
           <Download size={14} /> <span className="hidden sm:inline">تنزيل</span>
         </a>
-        {!isPdf && !isImage && (
-          <a href={item.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm shrink-0" aria-label="فتح خارج التطبيق">
-            <ExternalLink size={14} />
-          </a>
-        )}
       </header>
 
       {isPdf ? (

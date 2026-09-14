@@ -4,7 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import Attachments from "@/components/Attachments";
 import { READING_NOTE } from "@/lib/program";
-import { MATERIAL_KIND_LABELS } from "@/lib/utils";
+import { MATERIAL_KIND_LABELS, hostOf } from "@/lib/utils";
 import { toItem } from "@/lib/attachments";
 
 export const metadata = { title: "مكتبة المواد" };
@@ -66,13 +66,4 @@ export default async function MaterialsPage() {
       <p className="text-sm text-muted mt-6">{READING_NOTE}</p>
     </>
   );
-}
-
-/** اسم الموقع وحده: الرابط الخام بـ dir="ltr" داخل صفحة عربية يقطع السطر ويشوّش */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
 }

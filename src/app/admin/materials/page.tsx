@@ -8,7 +8,7 @@ import Attachments from "@/components/Attachments";
 import { deleteMaterial, saveMaterial } from "../actions";
 import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
-import { MATERIAL_KIND_LABELS } from "@/lib/utils";
+import { MATERIAL_KIND_LABELS, hostOf } from "@/lib/utils";
 import { toItem } from "@/lib/attachments";
 
 export const metadata = { title: "مكتبة المواد" };
@@ -171,13 +171,4 @@ function MaterialFields({ material, weeks, competencies, withFile }: { material?
       )}
     </>
   );
-}
-
-/** اسم الموقع وحده: الرابط الخام بـ dir="ltr" داخل صفحة عربية يقطع السطر ويشوّش */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
 }

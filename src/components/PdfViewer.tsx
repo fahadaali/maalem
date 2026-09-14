@@ -7,7 +7,7 @@ type PdfPage = {
   getViewport: (o: { scale: number }) => { width: number; height: number };
   render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void>; cancel: () => void };
 };
-type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage> };
+type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
@@ -25,6 +25,7 @@ export default function PdfViewer({ url }: { url: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const docRef = useRef<PdfDoc | null>(null);
   const taskRef = useRef<{ cancel: () => void } | null>(null);
+  const genRef = useRef(0);
   const [pages, setPages] = useState(0);
   const [page, setPage] = useState(1);
   const [scale, setScale] = useState(1);
@@ -34,14 +35,31 @@ export default function PdfViewer({ url }: { url: string }) {
   // تحميل الوثيقة مرة واحدة
   useEffect(() => {
     let dead = false;
+    let task: { promise: Promise<unknown>; destroy: () => Promise<void> } | null = null;
     (async () => {
       try {
+        /**
+         * PDF.js يستعمل Promise.withResolvers في نسختيه الحديثة والقديمة معاً بلا
+         * تعويض، وهي حديثة (سفاري 17.4 وكروم 119). فتُعوَّض هنا قبل تحميله ليعمل
+         * العارض على الأجهزة الأقدم بدل أن يسقط إلى رسالة التعذّر.
+         */
+        const P = Promise as unknown as { withResolvers?: unknown };
+        if (typeof P.withResolvers !== "function") {
+          P.withResolvers = function <T>() {
+            let resolve!: (v: T | PromiseLike<T>) => void;
+            let reject!: (r?: unknown) => void;
+            const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+            return { promise, resolve, reject };
+          };
+        }
         const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
         // العامل ملفٌّ ثابت في public/ ينسخه scripts/copy-pdf-worker.mjs عند البناء
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         // withCredentials: الملف محميٌّ بالجلسة ويُجلب من المنصة نفسها
-        const doc = (await pdfjs.getDocument({ url, withCredentials: true }).promise) as unknown as PdfDoc;
-        if (dead) return;
+        task = pdfjs.getDocument({ url, withCredentials: true }) as unknown as typeof task;
+        const doc = (await task!.promise) as PdfDoc;
+        // خرج المشارك قبل اكتمال التحميل: تُتلف الوثيقة وإلا بقي عاملها حيّاً
+        if (dead) return void doc.destroy();
         docRef.current = doc;
         setPages(doc.numPages);
         setLoading(false);
@@ -54,6 +72,11 @@ export default function PdfViewer({ url }: { url: string }) {
     })();
     return () => {
       dead = true;
+      taskRef.current?.cancel();
+      void docRef.current?.destroy();
+      docRef.current = null;
+      // تحميلٌ لم ينتهِ بعد: يُلغى فلا يبقى عاملٌ يتيم
+      void task?.destroy().catch(() => {});
     };
   }, [url]);
 
@@ -62,9 +85,16 @@ export default function PdfViewer({ url }: { url: string }) {
     const doc = docRef.current;
     const canvas = canvasRef.current;
     if (!doc || !canvas) return;
-    // رسمٌ سابق لم ينته: يُلغى وإلا تراكبت الصفحتان على اللوحة نفسها
-    taskRef.current?.cancel();
+    /**
+     * جِيلٌ لكل رسمة: جلب الصفحة انتظارٌ قد يبدأ خلاله رسمٌ أحدث. فلو أُلغي
+     * السابق قبل الانتظار لتراكبت رسمتان على اللوحة الواحدة، فترمي PDF.js
+     * «Cannot use the same canvas» وتبقى الصفحة بيضاء. فيُلغى بعده، ويُترك
+     * الأقدم إن سبقه أحدث.
+     */
+    const gen = ++genRef.current;
     const p = await doc.getPage(page);
+    if (gen !== genRef.current) return;
+    taskRef.current?.cancel();
     // عرض الحاوية هو المرجع، فالصفحة تملأ الشاشة على الجوال ولا تفيض عنها
     const base = p.getViewport({ scale: 1 });
     const fit = ((canvas.parentElement?.clientWidth ?? base.width) - 16) / base.width;
@@ -87,9 +117,17 @@ export default function PdfViewer({ url }: { url: string }) {
 
   // إعادة الرسم عند دوران الجهاز أو تغيّر عرض النافذة
   useEffect(() => {
-    const onResize = () => void draw();
+    // الدوران وإظهار شريط العنوان في الجوال يطلقان resize مراراً متتابعة
+    let t: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void draw(), 150);
+    };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", onResize);
+    };
   }, [draw]);
 
   if (error) return <p className="p-6 text-center text-sm text-muted">{error}</p>;
