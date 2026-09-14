@@ -10,7 +10,8 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  { ignores: [".open-next/**", ".wrangler/**", ".next/**", "src/lib/schema-sql.ts"] },
+  // ملفات مولَّدة عند البناء: عامل الخدمة وعامل PDF.js ومخطط الترحيلات
+  { ignores: [".open-next/**", ".wrangler/**", ".next/**", "src/lib/schema-sql.ts", "public/sw.js", "public/pdf.worker.min.mjs"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     ignores: [

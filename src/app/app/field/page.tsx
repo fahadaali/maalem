@@ -9,6 +9,7 @@ import { MENTOR_EVAL_CRITERIA } from "@/lib/program";
 import { Trash2 } from "lucide-react";
 import Attachments from "@/components/Attachments";
 import { programExpectations } from "@/lib/content";
+import { toItem } from "@/lib/attachments";
 
 export const metadata = { title: "المعايشة الميدانية" };
 
@@ -92,7 +93,7 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
                   {l.approvedAt ? <Badge tone="ink">معتمد</Badge> : <Badge>بانتظار الاعتماد</Badge>}
                 </div>
                 <div className="text-sm mt-1">{l.note}</div>
-                <div className="mt-2"><Attachments kind="FIELD" refId={l.id} initial={attRows.filter((r) => r.refId === l.id).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly={!!l.approvedAt || preview} /></div>
+                <div className="mt-2"><Attachments kind="FIELD" refId={l.id} initial={attRows.filter((r) => r.refId === l.id).map(toItem)} readOnly={!!l.approvedAt || preview} /></div>
               </div>
               {!l.approvedAt && (
                 <form action={deleteFieldLog}>

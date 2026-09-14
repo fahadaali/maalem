@@ -8,6 +8,7 @@ import { getProjectRubric } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
 import { participantsWhere } from "@/lib/cohort";
+import { toItem } from "@/lib/attachments";
 
 export const metadata = { title: "مشاريع التخرج" };
 
@@ -42,7 +43,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   {p.draftLink && <a href={p.draftLink} target="_blank" rel="noopener" className="underline">المسودة</a>}
                   {p.finalLink && <a href={p.finalLink} target="_blank" rel="noopener" className="underline">النسخة النهائية</a>}
                 </div>
-                <div className="mt-2"><Attachments kind="PROJECT" initial={attRows.filter((r) => r.userId === p.userId).map((r) => ({ id: r.id, name: r.name, size: r.size, url: `/api/files/${r.key}` }))} readOnly /></div>
+                <div className="mt-2"><Attachments kind="PROJECT" initial={attRows.filter((r) => r.userId === p.userId).map(toItem)} readOnly /></div>
                 <div className="grid md:grid-cols-2 gap-4 mt-4 border-t border-line pt-4">
                   <form action={updateProjectAdmin}>
                     <input type="hidden" name="id" value={p.id} />

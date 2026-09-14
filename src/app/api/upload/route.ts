@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession, isPreview } from "@/lib/auth";
 import { ALLOWED_TYPES, MAX_FILE_BYTES, putObject, safeKey } from "@/lib/storage";
+import { toItem } from "@/lib/attachments";
 
 const KINDS = new Set(["SUBMISSION", "PROJECT", "FIELD", "REPORT", "MATERIAL", "WEEKCARD", "OTHER"]);
 
@@ -49,5 +50,5 @@ export async function POST(req: Request) {
   const key = safeKey(user.id, file.name);
   await putObject(key, await file.arrayBuffer(), contentType);
   const att = await db.attachment.create({ data: { userId: user.id, kind, refId, key, name: file.name.slice(0, 200), size: file.size, contentType } });
-  return NextResponse.json({ id: att.id, name: att.name, size: att.size, url: `/api/files/${att.key}` });
+  return NextResponse.json(toItem(att));
 }

@@ -1,16 +1,22 @@
 "use client";
 import { useState } from "react";
-import { Paperclip, Trash2, Upload } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Download, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
 
-export type AttachmentItem = { id: string; name: string; size: number; url: string };
+export type AttachmentItem = { id: string; name: string; size: number; url: string; contentType: string };
 
 function fmt(n: number) {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(n / 1024)} ك.ب`;
 }
 
+/** ما يُعرض داخل المنصة: PDF وصور. ما عداه يُنزَّل ليفتحه تطبيق الجهاز */
+const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/");
+
 /** قائمة مرفقات مع رفع إلى التخزين (R2) وحذف. */
 export default function Attachments({ kind, refId, initial, readOnly, canDelete = true }: { kind: string; refId?: string; initial: AttachmentItem[]; readOnly?: boolean; canDelete?: boolean }) {
   const [items, setItems] = useState(initial);
+  // وجهة الرجوع من العارض: مسار الصفحة التي فُتح منها الملف
+  const here = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,11 +51,25 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
         <ul className="divide-y divide-line mb-2">
           {items.map((it) => (
             <li key={it.id} className="py-1.5 flex items-center gap-2">
-              <Paperclip size={14} className="shrink-0 text-muted" />
-              <a href={it.url} target="_blank" rel="noopener" className="hover:underline truncate flex-1">{it.name}</a>
-              <span className="text-xs text-muted">{fmt(it.size)}</span>
+              {it.contentType === "application/pdf" ? (
+                <FileText size={14} className="shrink-0 text-muted" />
+              ) : it.contentType.startsWith("image/") ? (
+                <ImageIcon size={14} className="shrink-0 text-muted" />
+              ) : (
+                <Paperclip size={14} className="shrink-0 text-muted" />
+              )}
+              {viewable(it.contentType) ? (
+                /* داخل المنصة لا خارجها: التطبيق مثبَّت، و‎_blank يقذف المشارك إلى عارض النظام */
+                <a href={`/file/${it.id}?from=${encodeURIComponent(here)}`} className="hover:underline truncate flex-1">{it.name}</a>
+              ) : (
+                <a href={`${it.url}?download=1`} className="hover:underline truncate flex-1">{it.name}</a>
+              )}
+              <span className="text-xs text-muted whitespace-nowrap">{fmt(it.size)}</span>
+              <a href={`${it.url}?download=1`} className="btn btn-ghost btn-sm shrink-0" aria-label={`تنزيل ${it.name}`}>
+                <Download size={14} />
+              </a>
               {!readOnly && canDelete && (
-                <button type="button" onClick={() => remove(it)} className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button>
+                <button type="button" onClick={() => remove(it)} className="btn btn-ghost btn-sm shrink-0" aria-label="حذف"><Trash2 size={14} /></button>
               )}
             </li>
           ))}
