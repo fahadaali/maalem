@@ -1,12 +1,15 @@
 import Link from "@/components/Link";
 import { Suspense } from "react";
-import { Video } from "lucide-react";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { PageHeader, Card, Badge } from "@/components/ui";
+import { PageHeader, Card } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
+import WeekCard from "@/components/WeekCard";
 import { dayName, formatHijri, formatGregorian, daysUntil, todayKey, weekdayIndex } from "@/lib/dates";
-import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
+import { currentWeekNumber, getWeeks } from "@/lib/weeks";
+import { buildWeekStates } from "@/lib/week-state";
+import { listAttachments } from "@/lib/attachments";
+import { activeCohort } from "@/lib/cohort";
 import ProgressSummary, { ProgressSummarySkeleton } from "@/components/ProgressSummary";
 import { PARTICIPANT_ROUTINE } from "@/lib/program";
 import { cohortWhere } from "@/lib/cohort";
@@ -17,12 +20,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { err, ok: okMsg } = await searchParams;
   const user = await requireParticipantView();
   const now = new Date();
+  const weeks = await getWeeks();
   const weekNo = await currentWeekNumber(now);
-  const week = await getWeekByNumber(weekNo);
+  const week = weeks.find((w) => w.number === weekNo);
   const wd = weekdayIndex(now);
   const today = todayKey(now);
 
-  const [todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics] = await Promise.all([
+  const [todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics, cohort, weekStates, weekFiles] = await Promise.all([
     db.readingCard.findFirst({ where: { userId: user.id, date: { gte: new Date(`${today}T00:00:00+03:00`), lt: new Date(`${today}T23:59:59+03:00`) } } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week: weekNo } } }) : null,
     db.notification.count({ where: { userId: user.id, readAt: null } }),
@@ -31,7 +35,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.assignment.count({ where: { dueAt: { gte: now }, ...(await cohortWhere()) } }),
     db.user.findUnique({ where: { id: user.id }, select: { charterAcceptedAt: true } }),
     db.diagnostic.findMany({ where: { userId: user.id }, select: { stage: true } }),
+    activeCohort(),
+    buildWeekStates(user.id, weeks, now),
+    week?.id ? listAttachments({ kind: "WEEKCARD", refId: week.id }) : [],
   ]);
+  // الحالة للأسبوع الجاري فحسب — بطاقة الرئيسية لا تعرض غيره
+  const weekState = week ? weekStates.get(week.number) : undefined;
+  const cardUrl = weekFiles[0]?.url;
   const needsCharter = user.role === "PARTICIPANT" && !me?.charterAcceptedAt;
   const needsDiagnostic = user.role === "PARTICIPANT" && !diagnostics.some((d) => d.stage === "PRE");
   const needsPostDiagnostic = user.role === "PARTICIPANT" && weekNo >= 12 && diagnostics.some((d) => d.stage === "PRE") && !diagnostics.some((d) => d.stage === "POST");
@@ -40,7 +50,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const routineDay = wd === 6 ? "السبت" : wd === 2 ? "الثلاثاء" : wd === 4 ? "الخميس" : wd === 5 ? "الجمعة" : "الأحد – الخميس";
   const routine = weekNo < 0 || weekNo > 13 ? undefined : PARTICIPANT_ROUTINE.find((r) => r.day === routineDay) ?? PARTICIPANT_ROUTINE.find((r) => r.day === "الأحد – الخميس");
   const isReadingDay = wd >= 0 && wd <= 4;
-  const due = weekNo >= 0 && weekNo <= 12 ? await reportDueDate(weekNo) : null;
 
   return (
     <>
@@ -115,33 +124,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </Card>
 
-      {/* هذا الأسبوع */}
-      {week && weekNo <= 13 && (
-        <Card className="mb-4" title={`الأسبوع ${week.label}`} action={<Link href="/program/schedule" className="text-xs text-muted underline">الجدول كاملاً</Link>}>
-          <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <div><dt className="text-xs text-muted">اللقاء الحضوري (السبت)</dt><dd>{week.session}</dd></div>
-            <div><dt className="text-xs text-muted">حلقة النقاش (الثلاثاء)</dt><dd>{week.circle}</dd></div>
-            <div><dt className="text-xs text-muted">الورد القرائي</dt><dd>{week.reading}</dd></div>
-            <div><dt className="text-xs text-muted">المهمة الأسبوعية</dt><dd>{week.task}</dd></div>
-          </dl>
-          {(week.remoteUrl || week.meetingPlace || week.note) && (
-            <div className="flex flex-wrap gap-2 mt-3 items-center text-sm">
-              {week.meetingPlace && <span className="badge badge-soft">المكان: {week.meetingPlace}</span>}
-              {week.remoteUrl && (
-                <a href={week.remoteUrl} target="_blank" rel="noopener" className="btn btn-sm btn-secondary">
-                  <Video size={14} /> دخول حلقة النقاش
-                </a>
-              )}
-              {week.note && <span className="badge">{week.note}</span>}
-            </div>
-          )}
-          {due && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <Badge tone={report ? "ink" : "default"}>{report ? "التقرير الأسبوعي مسلّم" : `تسليم التقرير: الخميس 10 مساءً (${daysUntil(due, now) >= 0 ? `بعد ${daysUntil(due, now)} يوم` : "فات الموعد"})`}</Badge>
-              {unread > 0 && <Link href="/app/notifications" className="badge">{unread} إشعار جديد</Link>}
-            </div>
-          )}
-        </Card>
+      {/* بطاقة الأسبوع */}
+      {week && weekNo <= 14 && (
+        <div className="mb-4">
+          <WeekCard week={week} total={13} cohortName={cohort?.name} state={weekState} current cardUrl={cardUrl} />
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <Link href="/app/week" className="text-xs text-muted underline">بطاقات الأسابيع كلها</Link>
+            {unread > 0 && <Link href="/app/notifications" className="badge">{unread} إشعار جديد</Link>}
+          </div>
+        </div>
       )}
 
       {/* ما ينتظرك */}

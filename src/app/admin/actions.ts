@@ -501,6 +501,7 @@ export async function saveWeek(formData: FormData) {
       circle: str(formData.get("circle")),
       reading: str(formData.get("reading")),
       task: str(formData.get("task")),
+      field: str(formData.get("field")),
       meetingPlace: str(formData.get("meetingPlace")) || null,
       remoteUrl: remoteUrl || null,
       note: str(formData.get("note")) || null,
@@ -508,6 +509,9 @@ export async function saveWeek(formData: FormData) {
   });
   revalidatePath("/admin/schedule");
   revalidatePath("/program/schedule");
+  // بطاقة الأسبوع تُرسم من هذه الحقول في لوحة المشارك أيضاً
+  revalidatePath("/app");
+  revalidatePath("/app/week");
   ok(`/admin/schedule?week=${number}`, "تم تحديث الأسبوع");
 }
 
@@ -763,6 +767,7 @@ export async function createCohort(formData: FormData) {
         hijri: formatHijri(day, { day: "numeric", month: "long" }),
         gregorian: todayKey(day),
         competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+        field: w.field,
       };
     }),
   });

@@ -5,7 +5,13 @@ import { todayKey, reportDueFrom } from "./dates";
 import { cohortWhere } from "./cohort";
 
 /** أسبوع البرنامج بعد إتاحة تعديله من لوحة مدير المشروع */
-export type LiveWeek = Week & { meetingPlace?: string | null; remoteUrl?: string | null; note?: string | null };
+export type LiveWeek = Week & {
+  /** معرّف صف الأسبوع في القاعدة — تُنسب إليه صورة البطاقة. غائب حين تُقرأ الأسابيع من الخطة الأصلية */
+  id?: string;
+  meetingPlace?: string | null;
+  remoteUrl?: string | null;
+  note?: string | null;
+};
 
 /** أسابيع البرنامج من قاعدة البيانات، وإن لم تُبذر بعد فمن الخطة الأصلية */
 export const getWeeks = cache(async (): Promise<LiveWeek[]> => {
@@ -13,9 +19,9 @@ export const getWeeks = cache(async (): Promise<LiveWeek[]> => {
     const rows = await db.programWeek.findMany({ where: await cohortWhere(), orderBy: { number: "asc" } });
     if (rows.length) {
       return rows.map((r) => ({
-        number: r.number, label: r.label, hijri: r.hijri, gregorian: r.gregorian,
+        id: r.id, number: r.number, label: r.label, hijri: r.hijri, gregorian: r.gregorian,
         competency: r.competency, session: r.session, circle: r.circle, reading: r.reading, task: r.task,
-        meetingPlace: r.meetingPlace, remoteUrl: r.remoteUrl, note: r.note,
+        field: r.field, meetingPlace: r.meetingPlace, remoteUrl: r.remoteUrl, note: r.note,
       }));
     }
   } catch {

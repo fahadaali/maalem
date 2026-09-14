@@ -14,7 +14,8 @@ async function authorize(keyParts: string[]) {
     const owner = await db.user.findUnique({ where: { id: att.userId }, select: { mentorId: true } });
     allowed = owner?.mentorId === user.id;
   }
-  if (!allowed) allowed = att.kind === "MATERIAL"; // مواد المكتبة متاحة لكل من دخل المنصة
+  // مواد المكتبة وبطاقات الأسابيع محتوى برنامج لا شواهد مشارك، فتُتاح لكل من دخل المنصة
+  if (!allowed) allowed = att.kind === "MATERIAL" || att.kind === "WEEKCARD";
   // ما عدا ذلك — ملفات المشاريع والشواهد — لصاحبها ومشرفه ومدير المشروع وحدهم
   return allowed ? { status: 200 as const, att, user } : { status: 403 as const };
 }

@@ -12,8 +12,12 @@ export async function schemaReady(): Promise<boolean> {
   }
 }
 
-/** جدول أنشأه آخر ملف ترحيل: وجوده يعني أن المخطط على أحدث صورة */
-const BASELINE_SENTINEL = "ExcuseRequest";
+/**
+ * جدول أنشأه ترحيل بعينه: وجوده يعني أن كل ترحيل حتى ذلك الملف مطبَّق.
+ * تُسجَّل هذه وحدها كمطبَّقة، ويبقى ما بعدها ليُنفَّذ — فترحيلٌ لاحق لا ينشئ جدولاً
+ * (كإضافة عمود) لا يُبتلع بالتسجيل فيغيب أثره عن القاعدة.
+ */
+const BASELINE_SENTINEL = { table: "ExcuseRequest", through: "0009_question_bank_and_excuses.sql" };
 
 async function tableExists(name: string): Promise<boolean> {
   try {
@@ -40,12 +44,14 @@ export async function applyMigrations(): Promise<string[]> {
    * يفشل في كل طلب ولا تُبذر بيانات الخطة أبداً. فتُسجَّل الترحيلات كلها كمطبَّقة
    * دون تنفيذ، بشرط وجود آخر ما أضافته الترحيلات فعلاً.
    */
-  if (applied.size === 0 && (await schemaReady()) && (await tableExists(BASELINE_SENTINEL))) {
-    for (const m of MIGRATIONS) {
+  if (applied.size === 0 && (await schemaReady()) && (await tableExists(BASELINE_SENTINEL.table))) {
+    // أسماء الملفات مرقَّمة بأصفار بادئة، فمقارنة النصوص ترتيبٌ صحيح
+    const baselined = MIGRATIONS.filter((m) => m.name <= BASELINE_SENTINEL.through);
+    for (const m of baselined) {
       await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);
       applied.add(m.name);
     }
-    console.log("migrations baselined:", MIGRATIONS.length);
+    console.log("migrations baselined:", baselined.length);
   }
   for (const m of MIGRATIONS) {
     if (applied.has(m.name)) continue;
@@ -57,6 +63,17 @@ export async function applyMigrations(): Promise<string[]> {
       // بعض تعليمات PRAGMA لا تقبلها D1 من داخل التطبيق، وهي إرشادية هنا
       if (/^PRAGMA\s/i.test(st)) {
         await db.$executeRawUnsafe(st).catch(() => {});
+        continue;
+      }
+      /**
+       * عمودٌ أضافه prisma db push قبل أن يجري ترحيله — وهو المسار المحلي في
+       * README — ليس خطأً يوقف الإقلاع: المطلوب حاصل. ولولا التجاوز لفشل الإقلاع
+       * في كل طلب ولم تُبذر بيانات الخطة أبداً.
+       */
+      if (/^ALTER\s+TABLE[\s\S]+ADD\s+COLUMN/i.test(st)) {
+        await db.$executeRawUnsafe(st).catch((e: unknown) => {
+          if (!/duplicate column/i.test(String((e as Error)?.message ?? e))) throw e;
+        });
         continue;
       }
       await db.$executeRawUnsafe(st);
@@ -113,8 +130,17 @@ export async function ensureProgramData(cohortId: string): Promise<void> {
         cohortId,
         number: w.number, label: w.label, hijri: w.hijri, gregorian: w.gregorian,
         competency: w.competency, session: w.session, circle: w.circle, reading: w.reading, task: w.task,
+        field: w.field,
       })),
     });
+  } else {
+    /**
+     * الدفعات المبذورة قبل إضافة صف المعايشة تبقى بلا نصّه. يُكمَّل هنا للصفوف
+     * الفارغة وحدها، فلا يُطمس ما حرّره المدير بيده.
+     */
+    for (const w of WEEKS.filter((x) => x.field)) {
+      await db.programWeek.updateMany({ where: { cohortId, number: w.number, field: "" }, data: { field: w.field } });
+    }
   }
   if ((await db.programBook.count({ where: { cohortId } })) === 0) {
     await db.programBook.createMany({

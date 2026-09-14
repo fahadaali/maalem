@@ -1,40 +1,21 @@
-import { PageHeader, Card } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
+import WeekCard from "@/components/WeekCard";
 import { SCHEDULE_NOTE } from "@/lib/program";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
-import { formatGregorian, keyToDate } from "@/lib/dates";
-import { cn } from "@/lib/utils";
+import { activeCohort } from "@/lib/cohort";
 
 export const metadata = { title: "الجدول الزمني" };
 
 export default async function SchedulePage() {
-  const weeks = await getWeeks();
+  const [weeks, cohort] = await Promise.all([getWeeks(), activeCohort()]);
   const cur = resolveCurrentWeek(weeks);
   return (
     <>
       <PageHeader eyebrow="ثالثاً" title="الجدول الزمني الأسبوعي" subtitle={SCHEDULE_NOTE} />
-      <div className="space-y-3">
+      <div className="space-y-4">
         {weeks.map((w) => (
-          <Card key={w.number} className={cn(w.number === cur && "border-ink")}>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-              <h2 className="text-lg">الأسبوع {w.label}</h2>
-              <span className="text-sm text-muted">{w.hijri} · {formatGregorian(keyToDate(w.gregorian))}</span>
-              {w.number === cur && <span className="badge badge-ink">الأسبوع الحالي</span>}
-              <span className="badge badge-soft">{w.competency}</span>
-            </div>
-            <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-              <div><dt className="text-xs text-muted">اللقاء الحضوري (ساعتان)</dt><dd>{w.session}</dd></div>
-              <div><dt className="text-xs text-muted">حلقة النقاش عن بُعد (ساعة)</dt><dd>{w.circle}</dd></div>
-              <div><dt className="text-xs text-muted">الورد القرائي</dt><dd>{w.reading}</dd></div>
-              <div><dt className="text-xs text-muted">المهمة الأسبوعية والتسليم</dt><dd>{w.task}</dd></div>
-            </dl>
-            {(w.meetingPlace || w.remoteUrl || w.note) && (
-              <div className="flex flex-wrap gap-2 mt-3 items-center text-sm">
-                {w.meetingPlace && <span className="badge badge-soft">المكان: {w.meetingPlace}</span>}
-                {w.remoteUrl && <a href={w.remoteUrl} target="_blank" rel="noopener" className="badge badge-ink">رابط حلقة النقاش</a>}
-                {w.note && <span className="badge badge-wrap">{w.note}</span>}
-              </div>
-            )}
-          </Card>
+          // وثيقة البرنامج عامة: تُعرض البطاقة بمحتواها دون حالة مشاركٍ بعينه
+          <WeekCard key={w.number} week={w} total={13} cohortName={cohort?.name} current={w.number === cur} />
         ))}
       </div>
     </>
