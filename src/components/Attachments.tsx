@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Download, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
 import { FILE_ACCEPT, MAX_FILE_BYTES, checkFile, fileSize } from "@/lib/files";
@@ -19,18 +19,41 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
   const [pct, setPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * القائمة تتبع السجل المعروض لا أوّل سجل رُسم. الانتقال بين سجلّين في الصفحة
+   * نفسها — أسابيع جدول البرنامج ومهام المشاركين — تنقّلٌ من طرف العميل، فتبقى
+   * هذه الشجرة مركَّبة وتُهمل initial الجديدة لأنها قيمة ابتدائية لا تُقرأ إلا
+   * عند التركيب: فكانت صورة بطاقة أسبوعٍ تظهر في كل الأسابيع وإن لم تُنسب إلا
+   * إلى صفّ أسبوعها وحده. المعرّف يُقارن في التصيير فتُستأنف الحالة بمرفقات
+   * السجل الجديد.
+   */
+  const record = `${kind}:${refId ?? ""}`;
+  const [shown, setShown] = useState(record);
+  const live = useRef(record);
+  if (shown !== record) {
+    setShown(record);
+    live.current = record;
+    setItems(initial);
+    setError(null);
+  }
+
   async function upload(file: File) {
     // فحصٌ قبل الرفع: الملف المرفوض يُردّ في الحال بدل أن يُرفع كاملاً ثم يُردّ
     const bad = checkFile(file);
     if (bad) return setError(bad);
+    const at = record;
     setBusy(true);
     setError(null);
     setPct(0);
     try {
-      const item = await uploadFile(file, kind, refId, setPct);
-      setItems((s) => [...s, item]);
+      // النسبة أيضاً للسجل الذي بدأ رفعه وحده، فلا تظهر على سجلٍّ انتُقل إليه
+      const item = await uploadFile(file, kind, refId, (p) => {
+        if (live.current === at) setPct(p);
+      });
+      // الملف رُفع إلى سجلّه، فلا يُضاف إلى قائمة سجلٍّ انتُقل إليه أثناء رفعه
+      if (live.current === at) setItems((s) => [...s, item]);
     } catch (e) {
-      setError((e as Error).message);
+      if (live.current === at) setError((e as Error).message);
     } finally {
       setBusy(false);
     }
