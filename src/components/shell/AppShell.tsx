@@ -10,16 +10,31 @@ import { ROLE_LABELS } from "@/lib/utils";
 import { db } from "@/lib/db";
 import LogoutButton from "@/components/LogoutButton";
 
-/** `short` تسمية مختصرة لشريط تبويبات الجوال حيث لا يتسع النص الطويل */
-export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string };
+/**
+ * `short` تسمية مختصرة لشريط تبويبات الجوال حيث لا يتسع النص الطويل.
+ * `group` عنوان المجموعة التي يقع فيها البند في القائمة — قائمةٌ من ثلاثين بنداً
+ * مسطَّحاً لا تُقرأ، ومجموعاتٌ معنونة تُقرأ بالنظرة.
+ */
+export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string; group?: string };
 
 export default async function AppShell({ user, items, children, base }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string }) {
   const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
   const tabs = items.filter((i) => i.tab);
   const sideItems = items.filter((i) => !i.tabOnly);
+  // المجموعات بترتيب ورودها في القائمة، وما لا مجموعة له يتصدّر بلا عنوان
+  const groups: { title?: string; items: NavItem[] }[] = [];
+  for (const i of sideItems) {
+    const last = groups[groups.length - 1];
+    if (last && last.title === i.group) last.items.push(i);
+    else groups.push({ title: i.group, items: [i] });
+  }
   const notificationsHref = `${base}/notifications`;
-  // خانة البحث تتبع صفحة البحث في قائمة الدور نفسه، فلا تظهر لدورٍ لا صفحة بحث له — كالمشرف المرافق
-  const searchHref = items.find((i) => i.href.endsWith("/search"))?.href;
+  /**
+   * وجهة خانة البحث من منطقة الدور لا من قائمته: القائمة لم يعد فيها بند بحث —
+   * بابه هذه الخانة وحدها — فاشتقاقها منها كان يُسقطها من الشريط. والمشرف
+   * المرافق لا صفحة بحث له، فلا خانة له.
+   */
+  const searchHref = user.role === "MENTOR" ? undefined : `${base}/search`;
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
@@ -35,11 +50,18 @@ export default async function AppShell({ user, items, children, base }: { user: 
           عنصر الـ flex فلا يعمل التمرير.
         */}
         <nav className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-          {sideItems.map((i) => (
-            <NavLink key={i.href} href={i.href} exact={i.exact}>
-              <i.icon size={18} strokeWidth={1.75} />
-              <span>{i.label}</span>
-            </NavLink>
+          {groups.map((g) => (
+            <div key={g.title ?? "—"} className={g.title ? "mt-3 first:mt-0" : undefined}>
+              {g.title && <div className="text-[11px] text-muted px-2 pb-1">{g.title}</div>}
+              <div className="flex flex-col gap-1">
+                {g.items.map((i) => (
+                  <NavLink key={i.href} href={i.href} exact={i.exact}>
+                    <i.icon size={18} strokeWidth={1.75} />
+                    <span>{i.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
         <div className="border-t border-line pt-3 mt-3 text-sm">

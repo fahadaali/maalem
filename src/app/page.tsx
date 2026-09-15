@@ -31,7 +31,8 @@ export default async function Home() {
             <Link href="/login" className="btn">
               تسجيل الدخول
             </Link>
-            <Link href="/program" className="btn btn-secondary">تعرّف على البرنامج</Link>
+            {/* التعريف في هذه الصفحة نفسها؛ والوثيقة الكاملة خلف الجلسة لا يقود إليها زرّ عام */}
+            <Link href="/install" className="btn btn-secondary">ثبّت التطبيق</Link>
           </div>
         </section>
 

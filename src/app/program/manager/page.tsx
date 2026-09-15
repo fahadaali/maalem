@@ -1,9 +1,16 @@
 import { PageHeader, Card } from "@/components/ui";
 import { BUDGET, MANAGER_ROUTINE, PHASES, RISKS } from "@/lib/program";
+import { requireRole } from "@/lib/auth";
 
 export const metadata = { title: "خطة مدير المشروع" };
 
-export default function ManagerPlanPage() {
+/**
+ * مراحل المشروع ومهامه، ومصفوفة متابعة المدير، وسجل المخاطر، والميزانية
+ * بأرقامها — شأن إدارةٍ لا يُعرض على المشارك ولا على زائر. والحراسة هنا لا في
+ * الوسيط وحده: الوسيط طبقة تنقّل، والصفحة هي التي تملك بياناتها.
+ */
+export default async function ManagerPlanPage() {
+  await requireRole("ADMIN");
   return (
     <>
       <PageHeader eyebrow="رابعاً" title="خطة مدير المشروع" />

@@ -13,13 +13,40 @@ export const AREA: Record<Role, string> = {
   MENTOR: "/mentor",
 };
 
+/** وصفٌ موجز لما في منطقة كل دور — تعرضه صفحة الصلاحيات في اللوحة */
+export const ROLE_AREA_LABELS: Record<Role, string> = {
+  ADMIN: "إدارة البرنامج كاملةً: المشاركون والتقييم والمحتوى والمتابعة",
+  PARTICIPANT: "سجلّات المشارك نفسه ومحتوى البرنامج المتاح له",
+  MENTOR: "من رُبطوا به من المشاركين: معايشتهم وتقاريرهم ومهامهم",
+};
+
 /** لوحة الدور: الوجهة بعد تسجيل الدخول وعند فتح التطبيق */
 export function homeFor(role: string): string {
   return AREA[role as Role] ?? "/login";
 }
 
-/** الدور الذي يملك هذا المسار، أو null إن كان مساراً عاماً */
+/**
+ * مسارات خارج مناطق الأدوار لا يدخلها إلا مدير المشروع: خطة المشروع بمراحلها
+ * ومخاطرها وميزانيتها ومصفوفة مهامه — شأن إدارةٍ لا محتوى برنامجٍ يُقرأ.
+ * تُعرَّف هنا وحدها فيقرأها الوسيط والصفحات وصفحة مراجعة الصلاحيات معاً.
+ */
+export const ADMIN_ONLY = ["/program/manager", "/admin"];
+
+/**
+ * مسارات تُفتح بلا جلسة: واجهة التعريف، والدخول، ودليل التثبيت وما يخدمه.
+ * وما عداها خلف الجلسة — ومنه وثيقة البرنامج ومركز المساعدة.
+ */
+export const PUBLIC_PATHS = ["/", "/login", "/install", "/setup", "/boot"];
+
+export function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.includes(pathname);
+}
+
+/** الدور الذي يملك هذا المسار، أو null إن كان مفتوحاً لكل من دخل */
 export function areaOwner(pathname: string): Role | null {
+  for (const p of ADMIN_ONLY) {
+    if (pathname === p || pathname.startsWith(p + "/")) return "ADMIN";
+  }
   for (const role of ROLES) {
     const base = AREA[role];
     if (pathname === base || pathname.startsWith(base + "/")) return role;

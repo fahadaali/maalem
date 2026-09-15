@@ -1,12 +1,15 @@
 import { PageHeader, Card } from "@/components/ui";
 import { PEER_CRITERIA, RUBRIC_LEVEL_LABELS, TASK_RUBRIC, WEEKLY_REPORT_FIELDS } from "@/lib/program";
+import { getSession } from "@/lib/auth";
 
 export const metadata = { title: "الملاحق والنماذج" };
 
-export default function AppendicesPage() {
+export default async function AppendicesPage() {
+  // ملحق سجل الأداء نموذج متابعةٍ لمدير المشروع، فلا يُعرض في نماذج المشارك
+  const admin = (await getSession())?.role === "ADMIN";
   return (
     <>
-      <PageHeader eyebrow="سابعاً" title="الملاحق والنماذج" subtitle="هذه النماذج مدمجة في المنصة: التقرير الأسبوعي، وبطاقة القراءة، وسلم التقدير، وسجل الأداء، واستمارة تقييم الأقران." />
+      <PageHeader eyebrow="سابعاً" title="الملاحق والنماذج" subtitle="هذه النماذج مدمجة في المنصة: التقرير الأسبوعي، وبطاقة القراءة، وسلم التقدير، واستمارة تقييم الأقران." />
       <Card title="ملحق 1: قالب التقرير الأسبوعي للمشارك">
         <ol className="list-decimal ps-5 text-sm space-y-1">
           <li>الاسم / الأسبوع / التاريخ</li>
@@ -25,9 +28,11 @@ export default function AppendicesPage() {
           </table>
         </div>
       </Card>
-      <Card title="ملحق 3: سجل الأداء (لمدير المشروع)" className="mt-6">
-        <p className="text-sm">يُحتسب آلياً في لوحة مدير المشروع: الحضور %، بطاقات القراءة، الاختبارات (متوسط)، المهام المسلمة، ساعات المعايشة، الدور القيادي، وملاحظات المتابعة.</p>
-      </Card>
+      {admin && (
+        <Card title="ملحق 3: سجل الأداء (لمدير المشروع)" className="mt-6">
+          <p className="text-sm">يُحتسب آلياً في لوحة مدير المشروع: الحضور %، بطاقات القراءة، الاختبارات (متوسط)، المهام المسلمة، ساعات المعايشة، الدور القيادي، وملاحظات المتابعة.</p>
+        </Card>
+      )}
       <Card title="ملحق 4: بطاقة القراءة اليومية" className="mt-6">
         <p className="text-sm">اليوم، التاريخ، الكتاب، من صفحة، إلى صفحة، أهم فائدة، سؤال أطرحه في الحلقة — من الأحد إلى الخميس.</p>
       </Card>

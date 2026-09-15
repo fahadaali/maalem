@@ -15,7 +15,16 @@ export default async function LeadershipPage({ searchParams }: { searchParams: P
   const { ok, err } = await searchParams;
   const [mine, others] = await Promise.all([
     db.leadershipActivity.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, include: { evaluations: { include: { evaluator: { select: { name: true } } } } } }),
-    db.leadershipActivity.findMany({ where: { userId: { not: user.id }, user: await participantsWhere() }, orderBy: { date: "desc" }, include: { user: { select: { name: true } }, evaluations: { where: { evaluatorId: user.id } } } }),
+    /**
+     * تقارير الأقران لا تُجلب أصلاً: المطلوب للتقييم عنوان النشاط وصاحبه
+     * وتاريخه، وتقريرُ زميلٍ ليس من شأن من يقيّمه. فالحقل لا يخرج من القاعدة
+     * بدل أن يخرج ثم يُخفى في الواجهة.
+     */
+    db.leadershipActivity.findMany({
+      where: { userId: { not: user.id }, user: await participantsWhere() },
+      orderBy: { date: "desc" },
+      select: { id: true, title: true, date: true, user: { select: { name: true } }, evaluations: { where: { evaluatorId: user.id } } },
+    }),
   ]);
   const avg = (evs: { c1: number; c2: number; c3: number; c4: number; c5: number }[]) => (evs.length ? (evs.reduce((s, e) => s + (e.c1 + e.c2 + e.c3 + e.c4 + e.c5) / 5, 0) / evs.length).toFixed(1) : "—");
 

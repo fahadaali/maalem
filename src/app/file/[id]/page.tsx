@@ -5,7 +5,7 @@ import PdfViewer from "@/components/PdfViewerLoader";
 import { authorizeAttachment, toItem } from "@/lib/attachments";
 import { homeFor } from "@/lib/auth";
 
-export const metadata = { title: "عرض الملف" };
+export const metadata = { title: "عرض الملف", robots: { index: false, follow: false } };
 
 /**
  * عارض المرفق بملء الشاشة — خارج مناطق الأدوار الثلاث، فيخدمها بصفحة واحدة
