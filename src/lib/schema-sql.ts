@@ -39,5 +39,9 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   {
     "name": "0010_week_field.sql",
     "sql": "-- AlterTable\nALTER TABLE \"ProgramWeek\" ADD COLUMN \"field\" TEXT NOT NULL DEFAULT '';\n"
+  },
+  {
+    "name": "0011_undo_entries.sql",
+    "sql": "-- CreateTable\nCREATE TABLE \"UndoEntry\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"kind\" TEXT NOT NULL,\n    \"recordId\" TEXT NOT NULL,\n    \"userId\" TEXT,\n    \"userName\" TEXT NOT NULL,\n    \"label\" TEXT NOT NULL,\n    \"detail\" TEXT,\n    \"payload\" TEXT NOT NULL,\n    \"at\" DATETIME NOT NULL,\n    \"undoneBy\" TEXT NOT NULL,\n    \"undoneAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"restoredAt\" DATETIME\n);\n\n-- CreateIndex\nCREATE INDEX \"UndoEntry_undoneAt_idx\" ON \"UndoEntry\"(\"undoneAt\");\n"
   }
 ];

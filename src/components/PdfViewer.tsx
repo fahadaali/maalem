@@ -7,7 +7,12 @@ type PdfPage = {
   getViewport: (o: { scale: number }) => { width: number; height: number };
   render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void>; cancel: () => void };
 };
-type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
+/**
+ * إتلاف الوثيقة على مهمة التحميل لا على الوثيقة نفسها: PDF.js حذف `destroy`
+ * من الوثيقة، فكان استدعاؤه عند إغلاق العارض يرمي «destroy is not a function»
+ * ويُظهر للمشارك صفحة «تعذُّر عرض هذه الصفحة» بعد خروجه من ملفٍ فتحه.
+ */
+type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage> };
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
@@ -58,8 +63,8 @@ export default function PdfViewer({ url }: { url: string }) {
         // withCredentials: الملف محميٌّ بالجلسة ويُجلب من المنصة نفسها
         task = pdfjs.getDocument({ url, withCredentials: true }) as unknown as typeof task;
         const doc = (await task!.promise) as PdfDoc;
-        // خرج المشارك قبل اكتمال التحميل: تُتلف الوثيقة وإلا بقي عاملها حيّاً
-        if (dead) return void doc.destroy();
+        // خرج المشارك قبل اكتمال التحميل: أتلفَ التنظيفُ مهمةَ التحميل وعاملها، فلا يُركَّب شيء
+        if (dead) return;
         docRef.current = doc;
         setPages(doc.numPages);
         setLoading(false);
@@ -73,9 +78,8 @@ export default function PdfViewer({ url }: { url: string }) {
     return () => {
       dead = true;
       taskRef.current?.cancel();
-      void docRef.current?.destroy();
       docRef.current = null;
-      // تحميلٌ لم ينتهِ بعد: يُلغى فلا يبقى عاملٌ يتيم
+      // مهمة التحميل تُتلف الوثيقة وعاملها معاً، سواء اكتمل التحميل أم لم يكتمل
       void task?.destroy().catch(() => {});
     };
   }, [url]);

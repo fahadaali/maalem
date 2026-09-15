@@ -1,7 +1,7 @@
 import Link from "@/components/Link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Bell } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { NavLink } from "./NavLink";
 import WarmTabs from "./WarmTabs";
 import AppBadge from "@/components/AppBadge";
@@ -18,6 +18,8 @@ export default async function AppShell({ user, items, children, base }: { user: 
   const tabs = items.filter((i) => i.tab);
   const sideItems = items.filter((i) => !i.tabOnly);
   const notificationsHref = `${base}/notifications`;
+  // خانة البحث تتبع صفحة البحث في قائمة الدور نفسه، فلا تظهر لدورٍ لا صفحة بحث له — كالمشرف المرافق
+  const searchHref = items.find((i) => i.href.endsWith("/search"))?.href;
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
@@ -54,21 +56,32 @@ export default async function AppShell({ user, items, children, base }: { user: 
           مع h-14 وحدها كان محتوى الترويسة ينضغط بمقدار شريط حالة الجهاز فيبدو مقصوصاً.
         */}
         <header
-          className="app-shell-header sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between"
+          className="app-shell-header sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between gap-2"
           style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
         >
-          <Link href={base} className="display text-lg font-bold md:hidden">
+          <Link href={base} className="display text-lg font-bold md:hidden shrink-0">
             معالم التربية
           </Link>
-          <div className="hidden md:block text-sm text-muted">{ROLE_LABELS[user.role]} · {user.name}</div>
-          <Link href={notificationsHref} className="relative p-2 rounded-full hover:bg-paper-2" aria-label="الإشعارات">
-            <Bell size={20} strokeWidth={1.75} />
-            {unread > 0 && (
-              <span className="absolute -top-0.5 -start-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-ink text-paper text-[10px] flex items-center justify-center font-bold">
-                {unread > 99 ? "99+" : unread}
-              </span>
+          <div className="hidden md:block text-sm text-muted truncate">{ROLE_LABELS[user.role]} · {user.name}</div>
+          <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
+            {/* البحث من أي صفحة: نموذج GET إلى صفحة البحث نفسها، فلا يحتاج جافاسكربت ولا يكسر زرّ الرجوع */}
+            {searchHref && (
+              <form action={searchHref} role="search" className="relative flex-1 min-w-0 max-w-56">
+                <input name="q" type="search" className="input input-head" placeholder="بحث" aria-label="البحث" />
+                <button type="submit" className="absolute inset-y-0 start-0 flex items-center px-2 text-muted" aria-label="ابحث">
+                  <Search size={16} strokeWidth={1.75} />
+                </button>
+              </form>
             )}
-          </Link>
+            <Link href={notificationsHref} className="relative p-2 rounded-full hover:bg-paper-2 shrink-0" aria-label="الإشعارات">
+              <Bell size={20} strokeWidth={1.75} />
+              {unread > 0 && (
+                <span className="absolute -top-0.5 -start-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-ink text-paper text-[10px] flex items-center justify-center font-bold">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </Link>
+          </div>
         </header>
 
         <main className="app-main flex-1 px-4 py-5 md:px-8 md:py-8 max-w-6xl w-full mx-auto">{children}</main>
