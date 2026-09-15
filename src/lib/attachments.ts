@@ -43,6 +43,21 @@ export async function removeAttachments(kind: string, refId: string): Promise<nu
   return rows.length;
 }
 
+/**
+ * يحذف مرفقاً رُفع للتوّ ولم يُربط بسجلّ بعدُ.
+ *
+ * الملف يُرفع قبل حفظ المادة، فلو سقط التحقّق النصّي بعده بقي في التخزين ملفٌّ
+ * لا يظهر لأحد ولا يعرف أحدٌ بوجوده. وشرط `refId: null` يمنع أن يمسّ هذا الحذفُ
+ * مرفقاً مرتبطاً بسجلّ قائم.
+ */
+export async function dropPendingAttachment(id: string, userId: string): Promise<void> {
+  const { deleteObject } = await import("./storage");
+  const row = await db.attachment.findFirst({ where: { id, userId, refId: null }, select: { id: true, key: true } });
+  if (!row) return;
+  await deleteObject(row.key).catch(() => {});
+  await db.attachment.deleteMany({ where: { id: row.id } });
+}
+
 export type AttachmentAuth =
   | { status: 401 | 403 | 404 }
   | { status: 200; att: Attachment; user: NonNullable<Awaited<ReturnType<typeof getSession>>> };

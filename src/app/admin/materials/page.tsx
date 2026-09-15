@@ -10,6 +10,8 @@ import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
 import { MATERIAL_KIND_LABELS, hostOf } from "@/lib/utils";
 import { toItem } from "@/lib/attachments";
+import { FILE_ACCEPT, MAX_FILE_BYTES, fileSize } from "@/lib/files";
+import AddMaterialForm from "./AddMaterialForm";
 
 export const metadata = { title: "مكتبة المواد" };
 
@@ -81,10 +83,10 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
           )}
         </div>
         <Card title="إضافة مادة">
-          <form action={saveMaterial}>
+          {/* نموذج عميل: يرفع الملف على مسار الرفع ثم يستدعي الإجراء بالنص وحده */}
+          <AddMaterialForm>
             <MaterialFields competencies={competencies} weeks={weeks} withFile />
-            <SubmitButton>إضافة وإشعار المشاركين</SubmitButton>
-          </form>
+          </AddMaterialForm>
           <div className="border-t border-line mt-4 pt-3 text-xs text-muted">
             <div className="font-medium text-ink-2 mb-1">كتب البرنامج المقررة</div>
             <ul className="list-disc ps-4 space-y-0.5">
@@ -164,9 +166,9 @@ function MaterialFields({ material, weeks, competencies, withFile }: { material?
             type="file"
             name="file"
             className="input"
-            accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.mp4"
+            accept={FILE_ACCEPT}
           />
-          <p className="text-xs text-muted mt-1">PDF أو مستند أو صورة أو صوت أو فيديو، حتى 25 ميغابايت. يمكنك رفع ملفات أخرى للمادة بعد إضافتها.</p>
+          <p className="text-xs text-muted mt-1">PDF أو مستند أو صورة أو صوت أو فيديو، حتى {fileSize(MAX_FILE_BYTES)}. يمكنك رفع ملفات أخرى للمادة بعد إضافتها.</p>
         </div>
       )}
     </>

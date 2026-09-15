@@ -98,6 +98,9 @@ export class PushError extends Error {
   }
 }
 
+/** مهلة كل نداءٍ خارجي: تكفي خدمات الدفع البطيئة، ولا تُبقي طلباً معلَّقاً */
+const EXTERNAL_TIMEOUT_MS = 10_000;
+
 /** يرسل إشعاراً إلى اشتراك واحد. يرمي PushError عند رفض خدمة الدفع. */
 export async function sendPush(sub: PushSub, payload: string, vapid: VapidDetails, opts: { ttl?: number; urgency?: "very-low" | "low" | "normal" | "high" } = {}): Promise<void> {
   const body = await encryptPayload(sub.keys.p256dh, sub.keys.auth, te.encode(payload));
@@ -112,6 +115,9 @@ export async function sendPush(sub: PushSub, payload: string, vapid: VapidDetail
       Urgency: opts.urgency ?? "normal",
     },
     body: body as BodySource,
+    // خدمة دفعٍ لا تردّ كانت تُعلّق الإجراء الذي استدعاها بلا نهاية — والانتظار يقع
+    // داخل Promise.all، فطرفٌ واحد جامد يكفي لتعليق الحفظ كلّه
+    signal: AbortSignal.timeout(EXTERNAL_TIMEOUT_MS),
   });
   if (res.status < 200 || res.status >= 300) throw new PushError(res.status, await res.text().catch(() => ""));
 }

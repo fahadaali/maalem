@@ -6,22 +6,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
  * تخزين المرفقات: على Cloudflare يُستخدم رابط R2 (FILES)،
  * ومحلياً بدون الرابط تُحفظ الملفات في مجلد .data/uploads.
  */
-export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 ميغابايت
-export const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "audio/mpeg",
-  "audio/mp4",
-  "audio/x-m4a",
-  "video/mp4",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-]);
+// الحدود والأنواع في وحدة مستقلة يستوردها المتصفح أيضاً، وتُعاد هنا فلا يتغيّر مستوردوها
+export { MAX_FILE_BYTES, ALLOWED_TYPES } from "./files";
 
 function r2(): R2Bucket | undefined {
   try {
