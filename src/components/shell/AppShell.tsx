@@ -29,8 +29,12 @@ export default async function AppShell({ user, items, children, base }: { user: 
     else groups.push({ title: i.group, items: [i] });
   }
   const notificationsHref = `${base}/notifications`;
-  // خانة البحث تتبع صفحة البحث في قائمة الدور نفسه، فلا تظهر لدورٍ لا صفحة بحث له — كالمشرف المرافق
-  const searchHref = items.find((i) => i.href.endsWith("/search"))?.href;
+  /**
+   * وجهة خانة البحث من منطقة الدور لا من قائمته: القائمة لم يعد فيها بند بحث —
+   * بابه هذه الخانة وحدها — فاشتقاقها منها كان يُسقطها من الشريط. والمشرف
+   * المرافق لا صفحة بحث له، فلا خانة له.
+   */
+  const searchHref = user.role === "MENTOR" ? undefined : `${base}/search`;
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
