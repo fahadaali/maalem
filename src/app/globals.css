@@ -100,6 +100,16 @@ h1, h2, h3, .display {
 @media (pointer: coarse) {
   .input, .textarea, .select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: max(16px, 1em); }
 }
+/* حقل البحث في الشريط العلوي: أقصر من حقول النماذج ليسع ارتفاع الشريط، وحشوةُ مبدئه تفسح لأيقونته */
+.input-head {
+  padding: 0.35rem 0.8rem;
+  padding-inline-start: 2rem;
+  border-radius: 999px;
+  background: var(--paper-2);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .textarea { min-height: 6rem; resize: vertical; }
 .label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 0.3rem; font-weight: 500; }
 .field { margin-bottom: 1rem; }

@@ -52,7 +52,7 @@ export default async function MaterialsPage() {
                 )}
                       {f.length > 0 && (
                         <div className="mt-2">
-                          <Attachments kind="MATERIAL" refId={m.id} initial={f} readOnly />
+                          <Attachments kind="MATERIAL" refId={m.id} initial={f} readOnly viewButton />
                         </div>
                       )}
                     </Card>

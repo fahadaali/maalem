@@ -62,7 +62,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
                   </div>
                 )}
                 <div className="mt-2">
-                  <Attachments kind="MATERIAL" refId={m.id} initial={filesOf(m.id)} />
+                  <Attachments kind="MATERIAL" refId={m.id} initial={filesOf(m.id)} viewButton />
                 </div>
                 <details className="mt-3 text-sm">
                   <summary className="cursor-pointer text-muted">تعديل</summary>

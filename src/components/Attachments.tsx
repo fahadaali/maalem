@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Download, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
+import { Download, Eye, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
 
 export type AttachmentItem = { id: string; name: string; size: number; url: string; contentType: string };
 
@@ -12,8 +12,13 @@ function fmt(n: number) {
 /** ما يُعرض داخل المنصة: PDF وصور. ما عداه يُنزَّل ليفتحه تطبيق الجهاز */
 const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/");
 
-/** قائمة مرفقات مع رفع إلى التخزين (R2) وحذف. */
-export default function Attachments({ kind, refId, initial, readOnly, canDelete = true }: { kind: string; refId?: string; initial: AttachmentItem[]; readOnly?: boolean; canDelete?: boolean }) {
+/**
+ * قائمة مرفقات مع رفع إلى التخزين (R2) وحذف.
+ *
+ * `viewButton` يُظهر زرّ «عرض» صريحاً لما يُعرض داخل المنصة — يُطلب حيث الملفّ
+ * نفسه هو المقصود بالصفحة كمكتبة المواد، فلا يُترك فتحُه معلّقاً باسمه وحده.
+ */
+export default function Attachments({ kind, refId, initial, readOnly, canDelete = true, viewButton }: { kind: string; refId?: string; initial: AttachmentItem[]; readOnly?: boolean; canDelete?: boolean; viewButton?: boolean }) {
   const [items, setItems] = useState(initial);
   // وجهة الرجوع من العارض: مسار الصفحة التي فُتح منها الملف
   const here = usePathname();
@@ -85,6 +90,12 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
                 <a href={`${it.url}?download=1`} className="hover:underline truncate flex-1">{it.name}</a>
               )}
               <span className="text-xs text-muted whitespace-nowrap">{fmt(it.size)}</span>
+              {/* «عرض» للعارض داخل المنصة، و«تنزيل» يحفظ الملف كما هو — ولا يظهر «عرض» لنوعٍ لا يُعرض فيَعِد بما لا يفي به */}
+              {viewButton && viewable(it.contentType) && (
+                <a href={`/file/${it.id}?from=${encodeURIComponent(here)}`} className="btn btn-secondary btn-sm shrink-0">
+                  <Eye size={14} /> عرض
+                </a>
+              )}
               <a href={`${it.url}?download=1`} className="btn btn-ghost btn-sm shrink-0" aria-label={`تنزيل ${it.name}`}>
                 <Download size={14} />
               </a>
