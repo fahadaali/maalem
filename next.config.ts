@@ -7,6 +7,24 @@ initOpenNextCloudflareForDev();
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-d1"],
   /**
+   * رؤوس أمان لكل صفحة: لا تُخمَّن أنواع المحتوى، ولا تُؤطَّر المنصة في موقع
+   * آخر، ولا يُسرَّب مسار الصفحة إلى وجهةٍ خارجية مع الرابط، ولا تُطلب أذونات
+   * جهازٍ لا تستعملها. وملف public/_headers يبقى للتخزين المؤقت للأصول.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+        ],
+      },
+    ];
+  },
+  /**
    * إدراج التنسيق في الوثيقة بدل ربطه بملف: ملف التنسيق المرتبط يحجب أول رسم
    * حتى يصل — رحلةٌ كاملة إلى الخادم بعد وصول الوثيقة، قِيست فأخّرت ظهور شاشة
    * الإقلاع بقدرها كاملاً. وحجمه ستة كيلوبايتات ونصف مضغوطاً، والوثيقة لا

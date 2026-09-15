@@ -51,5 +51,10 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/app/:path*", "/admin/:path*", "/mentor/:path*"],
+  /**
+   * وثيقة البرنامج ومركز المساعدة أُضيفا إلى الحراسة: كانا مفتوحين للعموم بلا
+   * جلسة، وفيهما خطة مدير المشروع وميزانيته وسجل مخاطره — يقرؤها كل من وصل
+   * إلى الرابط. والتحقّق الفعلي في الصفحات أيضاً، فالوسيط طبقة تنقّل.
+   */
+  matcher: ["/", "/app/:path*", "/admin/:path*", "/mentor/:path*", "/program/:path*", "/help/:path*"],
 };

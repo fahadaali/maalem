@@ -47,5 +47,9 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   {
     "name": "0012_material_folders.sql",
     "sql": "-- CreateTable\nCREATE TABLE \"MaterialFolder\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"color\" TEXT NOT NULL DEFAULT 'gray',\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n\n-- AlterTable\nALTER TABLE \"Material\" ADD COLUMN \"folderId\" TEXT REFERENCES \"MaterialFolder\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE;\n\n-- CreateIndex\nCREATE INDEX \"Material_folderId_order_idx\" ON \"Material\"(\"folderId\", \"order\");\n"
+  },
+  {
+    "name": "0013_help_items.sql",
+    "sql": "-- CreateTable\nCREATE TABLE \"HelpItem\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"audience\" TEXT NOT NULL DEFAULT 'ALL',\n    \"question\" TEXT NOT NULL,\n    \"answer\" TEXT NOT NULL,\n    \"href\" TEXT,\n    \"hrefLabel\" TEXT,\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n\n-- CreateIndex\nCREATE INDEX \"HelpItem_audience_order_idx\" ON \"HelpItem\"(\"audience\", \"order\");\n"
   }
 ];

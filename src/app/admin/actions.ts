@@ -23,6 +23,7 @@ import { ensureProgramData } from "@/lib/setup";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 import { isFolderColor } from "@/lib/folders";
+import { isHelpAudience } from "@/lib/help";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -1378,4 +1379,72 @@ export async function moveMaterialOrder(formData: FormData) {
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
   ok("/admin/materials", "تم ترتيب المواد");
+}
+
+// ——— مركز المساعدة ———
+
+/** رابط بند المساعدة: مسارٌ داخل المنصة وحده، فلا يقود سؤالٌ إلى موقع خارجي */
+function internalHref(raw: string): string | null {
+  if (!raw) return null;
+  return /^\/(?!\/)/.test(raw) ? raw.slice(0, 200) : null;
+}
+
+export async function saveHelpItem(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const audience = str(formData.get("audience")) || "ALL";
+  const question = str(formData.get("question"));
+  const answer = str(formData.get("answer"));
+  const rawHref = str(formData.get("href"));
+  if (!isHelpAudience(audience)) fail("/admin/help", "جمهور غير معروف");
+  if (!question || !answer) fail("/admin/help", "السؤال وجوابه حقلان إلزاميان");
+  if (rawHref && !internalHref(rawHref)) fail("/admin/help", "الرابط يجب أن يكون مساراً داخل المنصة يبدأ بـ /");
+  const data = {
+    audience, question: question.slice(0, 160), answer,
+    href: internalHref(rawHref), hrefLabel: str(formData.get("hrefLabel")).slice(0, 40) || null,
+  };
+  if (id) await db.helpItem.update({ where: { id }, data });
+  else {
+    const last = await db.helpItem.findFirst({ where: { audience }, orderBy: { order: "desc" }, select: { order: true } });
+    await db.helpItem.create({ data: { ...data, order: (last?.order ?? 0) + 1 } });
+  }
+  revalidatePath("/admin/help");
+  revalidatePath("/app/help");
+  revalidatePath("/mentor/help");
+  ok("/admin/help", id ? "تم تحديث السؤال" : "أُضيف السؤال");
+}
+
+export async function deleteHelpItem(formData: FormData) {
+  await admin();
+  await db.helpItem.delete({ where: { id: str(formData.get("id")) } }).catch(() => {});
+  revalidatePath("/admin/help");
+  revalidatePath("/app/help");
+  revalidatePath("/mentor/help");
+  ok("/admin/help", "حُذف السؤال");
+}
+
+/** ترتيب السؤال داخل جمهوره: مبادلةٌ مع أقرب جار، كترتيب المواد والمجلدات */
+export async function moveHelpItem(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const up = str(formData.get("dir")) === "up";
+  const me = await db.helpItem.findUnique({ where: { id } });
+  if (!me) fail("/admin/help", "السؤال غير موجود");
+  const neighbour = await db.helpItem.findFirst({
+    where: {
+      audience: me.audience,
+      OR: up
+        ? [{ order: { lt: me.order } }, { order: me.order, createdAt: { lt: me.createdAt } }]
+        : [{ order: { gt: me.order } }, { order: me.order, createdAt: { gt: me.createdAt } }],
+    },
+    orderBy: up ? [{ order: "desc" }, { createdAt: "desc" }] : [{ order: "asc" }, { createdAt: "asc" }],
+  });
+  if (!neighbour) ok("/admin/help", "السؤال في طرف قائمته");
+  const [a, b] = me.order === neighbour.order ? (up ? [me.order - 1, neighbour.order] : [me.order + 1, neighbour.order]) : [neighbour.order, me.order];
+  await db.helpItem.update({ where: { id: me.id }, data: { order: a } });
+  await db.helpItem.update({ where: { id: neighbour.id }, data: { order: b } });
+  revalidatePath("/admin/help");
+  revalidatePath("/app/help");
+  revalidatePath("/mentor/help");
+  ok("/admin/help", "تم ترتيب الأسئلة");
 }

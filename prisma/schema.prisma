@@ -741,3 +741,19 @@ model UndoEntry {
 
   @@index([undoneAt])
 }
+
+/// بند في مركز المساعدة: سؤالٌ وجوابه، يحرّره مدير المشروع ويُعرض لمن يعنيه
+model HelpItem {
+  id        String   @id @default(cuid())
+  /// ALL لكل من دخل | PARTICIPANT | MENTOR | ADMIN
+  audience  String   @default("ALL")
+  question  String
+  answer    String
+  /// رابطٌ داخل المنصة يُعرض بعد الجواب — لا يُقبل إلا مسارٌ داخليّ
+  href      String?
+  hrefLabel String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([audience, order])
+}
