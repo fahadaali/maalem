@@ -22,6 +22,7 @@ import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
+import { isFolderColor } from "@/lib/folders";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -470,6 +471,8 @@ export async function saveMaterial(formData: FormData) {
     competency: str(formData.get("competency")) || null,
     week: str(formData.get("week")) === "" ? null : num(formData.get("week")),
     order: num(formData.get("order"), 0),
+    // «بلا مجلد» اختيارٌ صحيح لا نقص، فالحقل الفارغ يُحفظ فارغاً
+    folderId: str(formData.get("folderId")) || null,
   };
   let refId = id;
   if (id) await db.material.update({ where: { id }, data });
@@ -1257,4 +1260,122 @@ export async function restoreActivity(formData: FormData) {
   }
   revalidatePath("/admin/activity");
   ok(back, `أُعيد «${row.label}»`);
+}
+
+// ——— مجلدات مكتبة المواد ———
+
+/** ترتيبٌ بعد آخر مجلد، فلا يتكرر ترتيبٌ ولا يقفز مجلدٌ إلى الصدارة */
+async function nextFolderOrder(): Promise<number> {
+  const last = await db.materialFolder.findFirst({ orderBy: { order: "desc" }, select: { order: true } });
+  return (last?.order ?? 0) + 1;
+}
+
+export async function createFolder(formData: FormData) {
+  await admin();
+  const name = str(formData.get("name"));
+  const color = str(formData.get("color")) || "gray";
+  const note = str(formData.get("note"));
+  if (!name) fail("/admin/materials", "اكتب اسم المجلد");
+  if (!isFolderColor(color)) fail("/admin/materials", "لون غير معروف");
+  await db.materialFolder.create({ data: { name: name.slice(0, 60), color, note: note || null, order: await nextFolderOrder() } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", `أُنشئ مجلد «${name}»`);
+}
+
+export async function saveFolder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const name = str(formData.get("name"));
+  const color = str(formData.get("color")) || "gray";
+  const note = str(formData.get("note"));
+  if (!name) fail("/admin/materials", "اكتب اسم المجلد");
+  if (!isFolderColor(color)) fail("/admin/materials", "لون غير معروف");
+  await db.materialFolder.update({ where: { id }, data: { name: name.slice(0, 60), color, note: note || null } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", "تم تحديث المجلد");
+}
+
+/**
+ * تحريك المجلد: يُبادَل ترتيبه بترتيب جاره في الاتجاه المطلوب، فيبقى الترتيب
+ * متّصلاً ولا يحتاج إعادة ترقيم القائمة كلها مع كل نقلة.
+ */
+export async function moveFolder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const up = str(formData.get("dir")) === "up";
+  const me = await db.materialFolder.findUnique({ where: { id } });
+  if (!me) fail("/admin/materials", "المجلد غير موجود");
+  const neighbour = await db.materialFolder.findFirst({
+    where: up ? { order: { lt: me.order } } : { order: { gt: me.order } },
+    orderBy: { order: up ? "desc" : "asc" },
+  });
+  if (!neighbour) ok("/admin/materials", "المجلد في طرف القائمة");
+  await db.materialFolder.update({ where: { id: me.id }, data: { order: neighbour.order } });
+  await db.materialFolder.update({ where: { id: neighbour.id }, data: { order: me.order } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", "تم ترتيب المجلدات");
+}
+
+/**
+ * حذف المجلد لا يحذف مواده: تُنقل إلى «بلا مجلد» صراحةً قبل حذفه — لا اتّكالاً
+ * على قيد المفتاح الأجنبي، فإنفاذه في D1 غير مضمون — فلا تختفي مادةٌ مع مجلدها.
+ */
+export async function deleteFolder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const folder = await db.materialFolder.findUnique({ where: { id }, select: { name: true } });
+  if (!folder) fail("/admin/materials", "المجلد غير موجود");
+  const moved = await db.material.updateMany({ where: { folderId: id }, data: { folderId: null } });
+  await db.materialFolder.delete({ where: { id } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", `حُذف مجلد «${folder.name}»${moved.count ? ` ونُقلت ${moved.count} مادة إلى «بلا مجلد»` : ""}`);
+}
+
+/** نقل مادة إلى مجلد أو إخراجها منه — الحقل الفارغ يعني «بلا مجلد» */
+export async function moveMaterial(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const folderId = str(formData.get("folderId")) || null;
+  if (folderId && !(await db.materialFolder.findUnique({ where: { id: folderId }, select: { id: true } }))) {
+    fail("/admin/materials", "المجلد غير موجود");
+  }
+  await db.material.update({ where: { id }, data: { folderId } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", folderId ? "نُقلت المادة إلى المجلد" : "أُخرجت المادة من المجلد");
+}
+
+/** تحريك المادة داخل مجموعتها: المبادلة مع أقرب جار في المجلد نفسه */
+export async function moveMaterialOrder(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const up = str(formData.get("dir")) === "up";
+  const me = await db.material.findUnique({ where: { id } });
+  if (!me) fail("/admin/materials", "المادة غير موجودة");
+  const sameFolder = { folderId: me.folderId };
+  /**
+   * الترتيب وحده لا يفصل المتساويات — والمواد القديمة كلها على صفر — فيُقاس
+   * بالترتيب ثم بزمن الإنشاء، كما تُقرأ القائمة نفسها.
+   */
+  const neighbour = await db.material.findFirst({
+    where: {
+      ...sameFolder,
+      OR: up
+        ? [{ order: { lt: me.order } }, { order: me.order, createdAt: { lt: me.createdAt } }]
+        : [{ order: { gt: me.order } }, { order: me.order, createdAt: { gt: me.createdAt } }],
+    },
+    orderBy: up ? [{ order: "desc" }, { createdAt: "desc" }] : [{ order: "asc" }, { createdAt: "asc" }],
+  });
+  if (!neighbour) ok("/admin/materials", "المادة في طرف مجموعتها");
+  // المتساويان في الترتيب يُفرَّق بينهما برقمين جديدين، وإلا بقيت المبادلة بلا أثر
+  const [a, b] = me.order === neighbour.order ? (up ? [me.order - 1, neighbour.order] : [me.order + 1, neighbour.order]) : [neighbour.order, me.order];
+  await db.material.update({ where: { id: me.id }, data: { order: a } });
+  await db.material.update({ where: { id: neighbour.id }, data: { order: b } });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  ok("/admin/materials", "تم ترتيب المواد");
 }

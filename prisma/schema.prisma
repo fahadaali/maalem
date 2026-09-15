@@ -120,7 +120,7 @@ model Diagnostic {
 
 /// مكتبة المواد: الكتب والقوالب والأدلة
 model Material {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   title       String
   kind        String // BOOK | TEMPLATE | GUIDE | LINK
   author      String?
@@ -128,8 +128,25 @@ model Material {
   url         String?
   competency  String?
   week        Int?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
+  order       Int             @default(0)
+  /// المجلد الذي تقع فيه المادة. فارغٌ يعني «بلا مجلد» — وهي حالة صحيحة لا نقص
+  folderId    String?
+  folder      MaterialFolder? @relation(fields: [folderId], references: [id])
+  createdAt   DateTime        @default(now())
+
+  @@index([folderId, order])
+}
+
+/// مجلد في مكتبة المواد: اسمٌ ولونٌ وترتيب يضعه مدير المشروع. حذفه لا يحذف مواده — تعود إلى «بلا مجلد»
+model MaterialFolder {
+  id        String     @id @default(cuid())
+  name      String
+  /// مفتاح من FOLDER_COLORS في src/lib/folders.ts، لا قيمة لونٍ مباشرة
+  color     String     @default("gray")
+  order     Int        @default(0)
+  note      String?
+  createdAt DateTime   @default(now())
+  materials Material[]
 }
 
 /// محضر لقاء حضوري أو حلقة نقاش

@@ -43,5 +43,9 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   {
     "name": "0011_undo_entries.sql",
     "sql": "-- CreateTable\nCREATE TABLE \"UndoEntry\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"kind\" TEXT NOT NULL,\n    \"recordId\" TEXT NOT NULL,\n    \"userId\" TEXT,\n    \"userName\" TEXT NOT NULL,\n    \"label\" TEXT NOT NULL,\n    \"detail\" TEXT,\n    \"payload\" TEXT NOT NULL,\n    \"at\" DATETIME NOT NULL,\n    \"undoneBy\" TEXT NOT NULL,\n    \"undoneAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"restoredAt\" DATETIME\n);\n\n-- CreateIndex\nCREATE INDEX \"UndoEntry_undoneAt_idx\" ON \"UndoEntry\"(\"undoneAt\");\n"
+  },
+  {
+    "name": "0012_material_folders.sql",
+    "sql": "-- CreateTable\nCREATE TABLE \"MaterialFolder\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"color\" TEXT NOT NULL DEFAULT 'gray',\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n\n-- AlterTable\nALTER TABLE \"Material\" ADD COLUMN \"folderId\" TEXT REFERENCES \"MaterialFolder\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE;\n\n-- CreateIndex\nCREATE INDEX \"Material_folderId_order_idx\" ON \"Material\"(\"folderId\", \"order\");\n"
   }
 ];
