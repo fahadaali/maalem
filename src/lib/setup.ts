@@ -76,6 +76,18 @@ export async function applyMigrations(): Promise<string[]> {
         });
         continue;
       }
+      /**
+       * وكذلك جدولٌ أو فهرسٌ أنشأه prisma db push قبل ترحيله: «موجود سلفاً» ليس
+       * خطأً يوقف الإقلاع، فالمطلوب حاصل. ولولا التجاوز لفشل الإقلاع في كل طلب
+       * ولم تُبذر بيانات الخطة أبداً — كما وقع فعلاً مع أول ترحيلٍ ينشئ جدولاً
+       * بعد اعتماد هذا المسار في README.
+       */
+      if (/^CREATE\s+(TABLE|(UNIQUE\s+)?INDEX)/i.test(st)) {
+        await db.$executeRawUnsafe(st).catch((e: unknown) => {
+          if (!/already exists/i.test(String((e as Error)?.message ?? e))) throw e;
+        });
+        continue;
+      }
       await db.$executeRawUnsafe(st);
     }
     await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);

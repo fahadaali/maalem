@@ -705,3 +705,22 @@ model ExcuseRequest {
   @@index([status, createdAt])
   @@index([userId, createdAt])
 }
+
+/// سجل التراجع: لقطة الإدخال الذي تراجع عنه مدير المشروع من مركز الأنشطة،
+/// تبقى فيُعاد منها السجل كما كان — فالتراجع نفسه له تراجع.
+model UndoEntry {
+  id         String    @id @default(cuid())
+  kind       String // نوع الإدخال — من مفاتيح ACTIVITY_KINDS
+  recordId   String // معرّف السجل الأصلي
+  userId     String? // صاحب الإدخال من المشاركين
+  userName   String // اسمه وقت التراجع، فيبقى مقروءاً وإن حُذف حسابه
+  label      String // وصف الإدخال كما ظهر في المركز
+  detail     String?
+  payload    String // JSON بصفّ السجل كاملاً — منه تُعاد الإعادة
+  at         DateTime // زمن الإدخال الأصلي
+  undoneBy   String // اسم مدير المشروع الذي تراجع
+  undoneAt   DateTime  @default(now())
+  restoredAt DateTime?
+
+  @@index([undoneAt])
+}

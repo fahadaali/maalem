@@ -21,6 +21,7 @@ import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
 import { removeAttachments } from "@/lib/attachments";
+import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -1192,4 +1193,63 @@ export async function decideExcuse(formData: FormData) {
   revalidatePath("/admin/excuses");
   revalidatePath("/admin/attendance");
   ok("/admin/excuses", approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
+}
+
+// ——— مركز الأنشطة: التراجع والإعادة ———
+
+/**
+ * التراجع عن إدخالٍ خاطئ — من مشاركٍ أو من مدير المشروع نفسه.
+ *
+ * لا يُمحى السجل وحسب: تُحفظ لقطته كاملة في سجل التراجع فيُعاد منها بضغطة، لأن
+ * الخطأ في زرّ التراجع نفسه وارد، وضياع إدخال مشاركٍ بنقرةٍ لا يُستدرَك.
+ * ويُشعَر صاحبه ليعلم أن إدخاله رُفع فيعيده صحيحاً.
+ */
+export async function undoActivity(formData: FormData) {
+  const me = await admin();
+  const kind = str(formData.get("kind"));
+  const id = str(formData.get("id"));
+  const back = safeBack(str(formData.get("back")), "/admin/activity");
+  if (!isActivityKind(kind)) fail(back, "نوع إدخال غير معروف");
+  const spec = ACTIVITY_KINDS[kind];
+
+  const snap = await spec.undo(id).catch(() => null);
+  if (!snap) fail(back, "لم يعد هذا الإدخال موجوداً — لعلّ أحداً تراجع عنه قبلك");
+
+  await db.undoEntry.create({
+    data: {
+      kind, recordId: id, userId: snap.userId, userName: snap.userName,
+      label: snap.label, detail: snap.detail ?? null,
+      payload: JSON.stringify(snap.payload), at: snap.at, undoneBy: me.name,
+    },
+  });
+  await notifyUsers([snap.userId], {
+    title: "تراجَع مدير المشروع عن إدخال يخصّك",
+    body: `${spec.label}: ${snap.label}. ${spec.undoNote}.`,
+  });
+  revalidatePath("/admin/activity");
+  ok(back, `تم التراجع عن «${snap.label}» — تجده في سجل التراجع لإعادته`);
+}
+
+/** إعادة ما تُرُوجِع عنه من لقطته، كما كان بمعرّفه نفسه */
+export async function restoreActivity(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const back = safeBack(str(formData.get("back")), "/admin/activity");
+  const row = await db.undoEntry.findUnique({ where: { id } });
+  if (!row) fail(back, "لا سجل تراجع بهذا المعرّف");
+  if (row.restoredAt) fail(back, "أُعيد هذا الإدخال من قبل");
+  if (!isActivityKind(row.kind)) fail(back, "نوع إدخال غير معروف");
+
+  try {
+    await ACTIVITY_KINDS[row.kind].restore(JSON.parse(row.payload) as Record<string, unknown>);
+  } catch {
+    // أشيع ما يمنع الإعادة: أدخل المشارك بديلاً بعد التراجع، والقيد يمنع إدخالين
+    fail(back, "تعذّرت الإعادة — لعلّ إدخالاً جديداً حلّ مكانه. راجعه في صفحته أولاً");
+  }
+  await db.undoEntry.update({ where: { id }, data: { restoredAt: new Date() } });
+  if (row.userId) {
+    await notifyUsers([row.userId], { title: "أُعيد إدخالك", body: `${row.label} — عاد كما كان.` });
+  }
+  revalidatePath("/admin/activity");
+  ok(back, `أُعيد «${row.label}»`);
 }
