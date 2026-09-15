@@ -11,7 +11,7 @@ import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
 import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
-import { ALLOWED_TYPES, MAX_FILE_BYTES, deleteObject, putObject, safeKey } from "@/lib/storage";
+import { deleteObject } from "@/lib/storage";
 import { computeGrades, levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
 import { SCHEDULE_KEYS, SCHEDULE_DEFAULTS } from "@/lib/ics";
@@ -20,7 +20,7 @@ import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
 import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
-import { removeAttachments } from "@/lib/attachments";
+import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 
 function ok(path: string, msg: string): never {
@@ -446,19 +446,21 @@ export async function saveMaterial(formData: FormData) {
   const title = str(formData.get("title"));
   const kind = str(formData.get("kind"));
   const url = str(formData.get("url"));
-  if (!title) fail("/admin/materials", "اكتب عنوان المادة");
-  if (!MATERIAL_KINDS.has(kind)) fail("/admin/materials", "نوع غير صحيح");
-  if (url && !/^https?:\/\//i.test(url)) fail("/admin/materials", "الرابط يجب أن يبدأ بـ http أو https");
   /**
-   * الملف يُرفع مع النموذج نفسه لا في خطوة تالية: المادة لا معرّف لها قبل حفظها،
-   * وكانت أداة الرفع لا تظهر إلا بعده — فبدت المكتبة وكأنها لا تقبل إلا الروابط.
-   * ويُتحقّق منه قبل أي كتابة في القاعدة، فلا تبقى مادةٌ أُنشئت لملفٍ مرفوض.
+   * الملف رُفع قبل هذا الإجراء إلى ‎/api/upload، ولا يصل هنا إلا معرّف مرفقه:
+   * لإجراءات الخادم وحدها حدُّ حجمٍ للجسم، وتجاوزه يردّ 500 لا يفهمه عميل React
+   * فيبقى النموذج على «جارٍ الحفظ…» أبداً بلا رسالة. والنموذج في الواجهة خطوة
+   * واحدة كما كان، فلا يرى المدير هذا التقسيم.
    */
-  const upload = formData.get("file");
-  const file = upload instanceof File && upload.size > 0 ? upload : null;
-  const contentType = file ? file.type || "application/octet-stream" : "";
-  if (file && file.size > MAX_FILE_BYTES) fail("/admin/materials", "حجم الملف يتجاوز 25 ميغابايت");
-  if (file && !ALLOWED_TYPES.has(contentType)) fail("/admin/materials", "نوع الملف غير مسموح");
+  const attachmentId = str(formData.get("attachmentId"));
+  /** سقط التحقّق بعد رفع الملف: يُحذف فلا يبقى في التخزين ملفٌّ لا مادة له */
+  const bail = async (msg: string): Promise<never> => {
+    if (attachmentId) await dropPendingAttachment(attachmentId, user.id);
+    fail("/admin/materials", msg);
+  };
+  if (!title) await bail("اكتب عنوان المادة");
+  if (!MATERIAL_KINDS.has(kind)) await bail("نوع غير صحيح");
+  if (url && !/^https?:\/\//i.test(url)) await bail("الرابط يجب أن يبدأ بـ http أو https");
   const data = {
     title,
     kind,
@@ -475,18 +477,21 @@ export async function saveMaterial(formData: FormData) {
     const created = await db.material.create({ data });
     refId = created.id;
   }
-  if (file) {
-    const key = safeKey(user.id, file.name);
-    await putObject(key, await file.arrayBuffer(), contentType);
-    await db.attachment.create({
-      data: { userId: user.id, kind: "MATERIAL", refId, key, name: file.name.slice(0, 200), size: file.size, contentType },
+  /**
+   * شرط `where` هو التفويض نفسه: مرفقُ صاحب الطلب، من نوع المادة، ولم يُربط بعد.
+   * و`updateMany` فمعرّفٌ لا يطابق لا يرمي استثناءً بل لا يفعل شيئاً.
+   */
+  if (attachmentId) {
+    await db.attachment.updateMany({
+      where: { id: attachmentId, userId: user.id, kind: "MATERIAL", refId: null },
+      data: { refId },
     });
   }
-  // الإشعار بعد رفع الملف، فلا يصل المشارك إلى مادة لم يُرفع ملفها بعد
+  // الإشعار بعد ربط الملف، فلا يصل المشارك إلى مادة لم يظهر ملفها بعد
   if (!id) await notifyRole("PARTICIPANT", { title: "مادة جديدة في المكتبة", body: title, url: "/app/materials" });
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
-  ok("/admin/materials", id ? "تم تحديث المادة" : `تمت إضافة المادة${file ? " وملفها" : ""} وإشعار المشاركين`);
+  ok("/admin/materials", id ? "تم تحديث المادة" : `تمت إضافة المادة${attachmentId ? " وملفها" : ""} وإشعار المشاركين`);
 }
 
 export async function deleteMaterial(formData: FormData) {

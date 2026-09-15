@@ -65,6 +65,12 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
+/**
+ * مهلة كل رسالة. والحلقة أدناه متتابعة، فمزوّدٌ يخنق الطلبات أو لا يردّ كان
+ * يُعلّق الإجراء المستدعي بلا نهاية — وهو ما يراه المستخدم دوراناً لا ينتهي.
+ */
+const EXTERNAL_TIMEOUT_MS = 10_000;
+
 /** يرسل رسالة واحدة إلى عدة عناوين. يعيد عدد ما أُرسل، ولا يرمي استثناءً على فشل مزوّد. */
 export async function sendEmail(to: string[], title: string, body: string, url?: string): Promise<number> {
   const cfg = await emailConfig();
@@ -80,11 +86,13 @@ export async function sendEmail(to: string[], title: string, body: string, url?:
               method: "POST",
               headers: { "api-key": cfg.apiKey, "content-type": "application/json" },
               body: JSON.stringify({ sender: { email: cfg.from, name: cfg.fromName }, to: [{ email: address }], subject: title, htmlContent: html }),
+              signal: AbortSignal.timeout(EXTERNAL_TIMEOUT_MS),
             })
           : await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { authorization: `Bearer ${cfg.apiKey}`, "content-type": "application/json" },
               body: JSON.stringify({ from: `${cfg.fromName} <${cfg.from}>`, to: address, subject: title, html }),
+              signal: AbortSignal.timeout(EXTERNAL_TIMEOUT_MS),
             });
       if (res.ok) sent++;
       else console.warn("email failed", res.status, (await res.text()).slice(0, 200));

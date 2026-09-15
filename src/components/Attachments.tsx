@@ -2,12 +2,10 @@
 import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Download, Eye, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
+import { FILE_ACCEPT, MAX_FILE_BYTES, checkFile, fileSize } from "@/lib/files";
+import { uploadFile } from "@/lib/upload-client";
 
 export type AttachmentItem = { id: string; name: string; size: number; url: string; contentType: string };
-
-function fmt(n: number) {
-  return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(n / 1024)} ك.ب`;
-}
 
 /** ما يُعرض داخل المنصة: PDF وصور. ما عداه يُنزَّل ليفتحه تطبيق الجهاز */
 const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/");
@@ -23,6 +21,7 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
   // وجهة الرجوع من العارض: مسار الصفحة التي فُتح منها الملف
   const here = usePathname();
   const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -44,19 +43,20 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
   }
 
   async function upload(file: File) {
+    // فحصٌ قبل الرفع: الملف المرفوض يُردّ في الحال بدل أن يُرفع كاملاً ثم يُردّ
+    const bad = checkFile(file);
+    if (bad) return setError(bad);
     const at = record;
     setBusy(true);
     setError(null);
+    setPct(0);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("kind", kind);
-      if (refId) fd.append("refId", refId);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = (await res.json()) as AttachmentItem & { error?: string };
-      if (!res.ok) throw new Error(data.error || "تعذّر الرفع");
+      // النسبة أيضاً للسجل الذي بدأ رفعه وحده، فلا تظهر على سجلٍّ انتُقل إليه
+      const item = await uploadFile(file, kind, refId, (p) => {
+        if (live.current === at) setPct(p);
+      });
       // الملف رُفع إلى سجلّه، فلا يُضاف إلى قائمة سجلٍّ انتُقل إليه أثناء رفعه
-      if (live.current === at) setItems((s) => [...s, data]);
+      if (live.current === at) setItems((s) => [...s, item]);
     } catch (e) {
       if (live.current === at) setError((e as Error).message);
     } finally {
@@ -89,7 +89,7 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
               ) : (
                 <a href={`${it.url}?download=1`} className="hover:underline truncate flex-1">{it.name}</a>
               )}
-              <span className="text-xs text-muted whitespace-nowrap">{fmt(it.size)}</span>
+              <span className="text-xs text-muted whitespace-nowrap">{fileSize(it.size)}</span>
               {/* «عرض» للعارض داخل المنصة، و«تنزيل» يحفظ الملف كما هو — ولا يظهر «عرض» لنوعٍ لا يُعرض فيَعِد بما لا يفي به */}
               {viewButton && viewable(it.contentType) && (
                 <a href={`/file/${it.id}?from=${encodeURIComponent(here)}`} className="btn btn-secondary btn-sm shrink-0">
@@ -108,13 +108,13 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
       )}
       {!readOnly && (
         <label className={`btn btn-secondary btn-sm cursor-pointer ${busy ? "opacity-50" : ""}`}>
-          <Upload size={14} /> {busy ? "جارٍ الرفع…" : "إرفاق ملف"}
-          <input type="file" className="hidden" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} accept=".pdf,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.mp4,.doc,.docx,.pptx,.xlsx,.txt" />
+          <Upload size={14} /> {busy ? `جارٍ الرفع… ${pct}٪` : "إرفاق ملف"}
+          <input type="file" className="hidden" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} accept={FILE_ACCEPT} />
         </label>
       )}
       {items.length === 0 && readOnly && <span className="text-muted text-xs">لا مرفقات.</span>}
       {error && <div className="text-xs mt-1" role="alert">{error}</div>}
-      <p className="text-xs text-muted mt-1">{!readOnly && "الحد الأقصى 25 ميغابايت للملف: مستندات، صور، صوت، فيديو."}</p>
+      <p className="text-xs text-muted mt-1">{!readOnly && `الحد الأقصى ${fileSize(MAX_FILE_BYTES)} للملف: مستندات، صور، صوت، فيديو.`}</p>
     </div>
   );
 }
