@@ -240,6 +240,84 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     },
   },
 
+  /**
+   * تسليم ملف الإنجاز والتوقيع على الميثاق: إدخالان لا صفَّ لهما في جدول، إنما
+   * ختمُ وقتٍ على صفّ المشارك نفسه — ولذلك غابا عن أول صورة لهذا السجلّ إذ بُني
+   * على الصفوف وحدها. وهما أحوج ما يكون إلى التراجع: كلاهما لا يُسلَّم إلا مرة،
+   * فالمشارك لا يملك تصحيح تسليمٍ سلّمه سهواً، ولا سبيل إليه إلا من هنا.
+   */
+  PORTFOLIO: {
+    label: "تسليم ملف الإنجاز",
+    by: "PARTICIPANT",
+    undoNote: "يُمحى التسليم فيستطيع المشارك تسليمه من جديد، ولا يُمسّ شيء من محتوى ملفه",
+    list: async (who, take) =>
+      (await db.user.findMany({ where: { ...who, portfolioSubmittedAt: { not: null } }, select: { id: true, name: true, portfolioSubmittedAt: true }, orderBy: { portfolioSubmittedAt: "desc" }, take }))
+        .map((u) => ({ kind: "PORTFOLIO" as ActivityKind, id: u.id, at: u.portfolioSubmittedAt!, userId: u.id, userName: u.name, title: "سلّم ملف الإنجاز", href: `/admin/participants/${u.id}/portfolio` })),
+    undo: async (id) => {
+      const u = await db.user.findUnique({ where: { id }, select: { id: true, name: true, portfolioSubmittedAt: true } });
+      if (!u?.portfolioSubmittedAt) return null;
+      await db.user.update({ where: { id }, data: { portfolioSubmittedAt: null } });
+      return { label: "تسليم ملف الإنجاز", at: u.portfolioSubmittedAt, userId: u.id, userName: u.name, payload: { id: u.id, portfolioSubmittedAt: u.portfolioSubmittedAt } };
+    },
+    restore: async (p) => {
+      await db.user.update({ where: { id: s(p.id) }, data: { portfolioSubmittedAt: dn(p.portfolioSubmittedAt) } });
+    },
+  },
+
+  CHARTER: {
+    label: "توقيع الميثاق",
+    by: "PARTICIPANT",
+    undoNote: "يُمحى التوقيع فيُطلب من المشارك التوقيع من جديد",
+    list: async (who, take) =>
+      (await db.user.findMany({ where: { ...who, charterAcceptedAt: { not: null } }, select: { id: true, name: true, charterName: true, charterAcceptedAt: true }, orderBy: { charterAcceptedAt: "desc" }, take }))
+        .map((u) => ({ kind: "CHARTER" as ActivityKind, id: u.id, at: u.charterAcceptedAt!, userId: u.id, userName: u.name, title: "وقّع ميثاق المشاركة", detail: u.charterName ?? undefined })),
+    undo: async (id) => {
+      const u = await db.user.findUnique({ where: { id }, select: { id: true, name: true, charterName: true, charterAcceptedAt: true } });
+      if (!u?.charterAcceptedAt) return null;
+      await db.user.update({ where: { id }, data: { charterAcceptedAt: null, charterName: null } });
+      return { label: "توقيع ميثاق المشاركة", detail: u.charterName ?? undefined, at: u.charterAcceptedAt, userId: u.id, userName: u.name, payload: { id: u.id, charterName: u.charterName, charterAcceptedAt: u.charterAcceptedAt } };
+    },
+    restore: async (p) => {
+      await db.user.update({ where: { id: s(p.id) }, data: { charterName: sn(p.charterName), charterAcceptedAt: dn(p.charterAcceptedAt) } });
+    },
+  },
+
+  PROJECT: {
+    label: "مشروع التخرج",
+    by: "PARTICIPANT",
+    undoNote: "يُحذف المشروع بحالته وروابطه وتحكيمه إن حُكّم، فيسجّله المشارك من جديد",
+    list: async (who, take) =>
+      (await db.graduationProject.findMany({ where: { user: who }, include: withUser, orderBy: { createdAt: "desc" }, take }))
+        .map((r) => item("PROJECT", r, r.createdAt, `سجّل موضوع مشروعه: ${r.topic}`, r.problem ? cut(r.problem) : undefined, "/admin/projects")),
+    undo: async (id) => {
+      const r = await db.graduationProject.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.graduationProject.delete({ where: { id } });
+      return { label: `مشروع التخرج — ${r.topic}`, detail: r.problem ? cut(r.problem) : undefined, at: r.createdAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.graduationProject.create({ data: { id: s(p.id), userId: s(p.userId), topic: s(p.topic), problem: sn(p.problem), mentorName: sn(p.mentorName), status: s(p.status), draftLink: sn(p.draftLink), finalLink: sn(p.finalLink), adminNote: sn(p.adminNote), clarity: nn(p.clarity), grounding: nn(p.grounding), design: nn(p.design), integration: nn(p.integration), presentation: nn(p.presentation), judgeNote: sn(p.judgeNote), createdAt: d(p.createdAt) } });
+    },
+  },
+
+  PEER_EVAL: {
+    label: "تقييم قرين",
+    by: "PARTICIPANT",
+    undoNote: "يُحذف تقييمه لنشاط قرينه فيستطيع تقييمه من جديد",
+    list: async (who, take) =>
+      (await db.peerEvaluation.findMany({ where: { evaluator: who }, include: { evaluator: { select: { name: true } }, activity: { select: { title: true, user: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take }))
+        .map((r) => ({ kind: "PEER_EVAL" as ActivityKind, id: r.id, at: r.createdAt, userId: r.evaluatorId, userName: r.evaluator.name, title: `قيّم «${r.activity.title}» لـ${r.activity.user.name}`, detail: r.comment ?? undefined })),
+    undo: async (id) => {
+      const r = await db.peerEvaluation.findUnique({ where: { id }, include: { evaluator: { select: { name: true } }, activity: { select: { title: true } } } });
+      if (!r) return null;
+      await db.peerEvaluation.delete({ where: { id } });
+      return { label: `تقييم قرين — «${r.activity.title}»`, detail: r.comment ?? undefined, at: r.createdAt, userId: r.evaluatorId, userName: r.evaluator.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.peerEvaluation.create({ data: { id: s(p.id), activityId: s(p.activityId), evaluatorId: s(p.evaluatorId), c1: n(p.c1), c2: n(p.c2), c3: n(p.c3), c4: n(p.c4), c5: n(p.c5), comment: sn(p.comment), createdAt: d(p.createdAt) } });
+    },
+  },
+
   // ——— ما يُدخله مدير المشروع على المشاركين ———
   ATTENDANCE: {
     label: "رصد حضور",
@@ -353,6 +431,63 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
       await db.finalGrade.create({ data: { id: s(p.id), userId: s(p.userId), computed: n(p.computed), adjustment: n(p.adjustment), reason: sn(p.reason), breakdown: s(p.breakdown), approvedBy: s(p.approvedBy), approvedAt: d(p.approvedAt) } });
     },
   },
+
+  PROJECT_JUDGING: {
+    label: "تحكيم مشروع",
+    by: "ADMIN",
+    undoNote: "تُمحى درجات التحكيم وملاحظته ويعود المشروع مسلَّماً بانتظار التحكيم، ويبقى عمل المشارك كما هو",
+    list: async (who, take) =>
+      (await db.graduationProject.findMany({ where: { user: who, status: "JUDGED" }, include: withUser, orderBy: { updatedAt: "desc" }, take }))
+        .map((r) => item("PROJECT_JUDGING", r, r.updatedAt, `حكّم «${r.topic}» — ${(r.clarity ?? 0) + (r.grounding ?? 0) + (r.design ?? 0) + (r.integration ?? 0) + (r.presentation ?? 0)} من 30`, r.judgeNote ? cut(r.judgeNote) : undefined, "/admin/projects")),
+    undo: async (id) => {
+      const r = await db.graduationProject.findUnique({ where: { id }, include: withUser });
+      if (!r || r.status !== "JUDGED") return null;
+      await db.graduationProject.update({ where: { id }, data: { clarity: null, grounding: null, design: null, integration: null, presentation: null, judgeNote: null, status: "FINAL" } });
+      return {
+        label: `تحكيم مشروع «${r.topic}»`, detail: r.judgeNote ? cut(r.judgeNote) : undefined, at: r.updatedAt, userId: r.userId, userName: r.user.name,
+        payload: { id: r.id, clarity: r.clarity, grounding: r.grounding, design: r.design, integration: r.integration, presentation: r.presentation, judgeNote: r.judgeNote, status: r.status },
+      };
+    },
+    restore: async (p) => {
+      await db.graduationProject.update({ where: { id: s(p.id) }, data: { clarity: nn(p.clarity), grounding: nn(p.grounding), design: nn(p.design), integration: nn(p.integration), presentation: nn(p.presentation), judgeNote: sn(p.judgeNote), status: s(p.status) } });
+    },
+  },
+
+  CERTIFICATE: {
+    label: "إصدار وثيقة",
+    by: "ADMIN",
+    undoNote: "تُسحب الوثيقة فلا تظهر للمشارك، ويمكن إصدارها من جديد برقم جديد",
+    list: async (who, take) =>
+      (await db.certificate.findMany({ where: { user: who }, include: withUser, orderBy: { issuedAt: "desc" }, take }))
+        .map((r) => item("CERTIFICATE", r, r.issuedAt, `أصدر ${r.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"} — ${r.serial}`, `${r.level} · ${r.total} من 100`, "/admin/certificates")),
+    undo: async (id) => {
+      const r = await db.certificate.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.certificate.delete({ where: { id } });
+      return { label: `${r.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"} — ${r.serial}`, detail: `${r.level} · ${r.total} من 100`, at: r.issuedAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.certificate.create({ data: { id: s(p.id), kind: s(p.kind), userId: s(p.userId), serial: s(p.serial), level: s(p.level), total: n(p.total), note: sn(p.note), issuedAt: d(p.issuedAt) } });
+    },
+  },
+
+  FEEDBACK_SESSION: {
+    label: "جلسة تغذية راجعة",
+    by: "ADMIN",
+    undoNote: "تُحذف الجلسة من سجل المشارك",
+    list: async (who, take) =>
+      (await db.feedbackSession.findMany({ where: { user: who }, include: withUser, orderBy: { date: "desc" }, take }))
+        .map((r) => item("FEEDBACK_SESSION", r, r.date, "سجّل جلسة تغذية راجعة", cut(r.notes), `/admin/participants/${r.userId}`)),
+    undo: async (id) => {
+      const r = await db.feedbackSession.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.feedbackSession.delete({ where: { id } });
+      return { label: "جلسة تغذية راجعة", detail: cut(r.notes), at: r.date, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.feedbackSession.create({ data: { id: s(p.id), userId: s(p.userId), date: d(p.date), notes: s(p.notes) } });
+    },
+  },
 };
 
 export type ActivityKind = keyof typeof ACTIVITY_KINDS;
@@ -372,7 +507,7 @@ export async function buildActivity(opts: { kind?: ActivityKind; by?: ActivityBy
     (k) => (!opts.kind || k === opts.kind) && (!opts.by || ACTIVITY_KINDS[k].by === opts.by),
   );
   // نصيب النوع الواحد: الحدّ كاملاً حين يُطلب نوعٌ بعينه، وطرفٌ منه حين تُدمج الأنواع
-  const take = opts.kind ? limit : Math.max(8, Math.ceil(limit / 3));
+  const take = opts.kind ? limit : Math.max(8, Math.ceil(limit / 4));
   const lists = await Promise.all(kinds.map((k) => ACTIVITY_KINDS[k].list(who, take).catch(() => [] as ActivityItem[])));
   return lists.flat().sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
 }
