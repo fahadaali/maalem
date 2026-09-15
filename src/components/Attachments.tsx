@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Download, FileText, ImageIcon, Paperclip, Trash2, Upload } from "lucide-react";
 
@@ -20,7 +20,26 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * القائمة تتبع السجل المعروض لا أوّل سجل رُسم. الانتقال بين سجلّين في الصفحة
+   * نفسها — أسابيع جدول البرنامج ومهام المشاركين — تنقّلٌ من طرف العميل، فتبقى
+   * هذه الشجرة مركَّبة وتُهمل initial الجديدة لأنها قيمة ابتدائية لا تُقرأ إلا
+   * عند التركيب: فكانت صورة بطاقة أسبوعٍ تظهر في كل الأسابيع وإن لم تُنسب إلا
+   * إلى صفّ أسبوعها وحده. المعرّف يُقارن في التصيير فتُستأنف الحالة بمرفقات
+   * السجل الجديد.
+   */
+  const record = `${kind}:${refId ?? ""}`;
+  const [shown, setShown] = useState(record);
+  const live = useRef(record);
+  if (shown !== record) {
+    setShown(record);
+    live.current = record;
+    setItems(initial);
+    setError(null);
+  }
+
   async function upload(file: File) {
+    const at = record;
     setBusy(true);
     setError(null);
     try {
@@ -31,9 +50,10 @@ export default function Attachments({ kind, refId, initial, readOnly, canDelete 
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const data = (await res.json()) as AttachmentItem & { error?: string };
       if (!res.ok) throw new Error(data.error || "تعذّر الرفع");
-      setItems((s) => [...s, data]);
+      // الملف رُفع إلى سجلّه، فلا يُضاف إلى قائمة سجلٍّ انتُقل إليه أثناء رفعه
+      if (live.current === at) setItems((s) => [...s, data]);
     } catch (e) {
-      setError((e as Error).message);
+      if (live.current === at) setError((e as Error).message);
     } finally {
       setBusy(false);
     }
