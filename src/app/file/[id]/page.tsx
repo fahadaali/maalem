@@ -42,9 +42,10 @@ export default async function FilePage({
   const back = from && /^\/(app|admin|mentor)(\/|\?|$)/.test(from) ? from : homeFor(auth.user.role);
 
   return (
-    <main className="h-dvh flex flex-col bg-paper-2">
+    <main className="h-dvh flex flex-col bg-paper-2 relative">
+      {/* شريطٌ كامل على الشاشات الواسعة: فيها فسحةٌ لاسم الملف */}
       <header
-        className="shrink-0 border-b border-line bg-paper flex items-center gap-2 px-3 py-2"
+        className="hidden md:flex shrink-0 border-b border-line bg-paper items-center gap-2 px-3 py-2"
         style={{ paddingTop: "max(env(safe-area-inset-top), 0.5rem)" }}
       >
         <Link href={back} className="btn btn-ghost btn-sm shrink-0" aria-label="إغلاق">
@@ -52,14 +53,39 @@ export default async function FilePage({
         </Link>
         <h1 className="text-sm font-medium truncate flex-1 min-w-0">{item.name}</h1>
         <a href={`${item.url}?download=1`} className="btn btn-secondary btn-sm shrink-0">
-          <Download size={14} /> <span className="hidden sm:inline">تنزيل</span>
+          <Download size={14} /> تنزيل
         </a>
       </header>
+
+      {/*
+        وعلى الجوال زرّان دائريان عائقان فوق الملف بنمط أوراق iOS: الشريط الكامل
+        يقتطع من ارتفاع شاشةٍ ضيّقة أصلاً، والاسم يعرفه من فتح الملف. والإزاحة
+        بالمنطقة الآمنة فلا يقعان تحت شقّ الشاشة.
+      */}
+      <div
+        className="md:hidden absolute inset-x-0 z-20 flex items-center justify-between px-3 pointer-events-none"
+        style={{ top: "max(env(safe-area-inset-top), 0.5rem)" }}
+      >
+        <Link
+          href={back}
+          aria-label="إغلاق"
+          className="pointer-events-auto w-9 h-9 rounded-full bg-paper/85 backdrop-blur border border-line shadow-sm flex items-center justify-center"
+        >
+          <X size={18} />
+        </Link>
+        <a
+          href={`${item.url}?download=1`}
+          aria-label={`تنزيل ${item.name}`}
+          className="pointer-events-auto w-9 h-9 rounded-full bg-paper/85 backdrop-blur border border-line shadow-sm flex items-center justify-center"
+        >
+          <Download size={16} />
+        </a>
+      </div>
 
       {isPdf ? (
         <PdfViewer url={item.url} />
       ) : isImage ? (
-        <div className="flex-1 overflow-auto p-3 flex items-start justify-center">
+        <div className="flex-1 overflow-auto p-3 pt-14 md:pt-3 flex items-start justify-center">
           {/* محسِّن next/image لا يعمل على العامل بلا إعداد، والمرفق لا يُخزَّن في شبكة التوزيع أصلاً */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={item.url} alt={item.name} className="max-w-full rounded-xl border border-line" />

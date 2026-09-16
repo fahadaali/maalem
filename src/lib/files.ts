@@ -51,3 +51,10 @@ export function checkFile(f: File): string | null {
   }
   return null;
 }
+
+/**
+ * إصدار حزمة PDF.js — يدخل في مسار موارد التصيير (`/pdf/<version>/…`) التي ينسخها
+ * scripts/copy-pdf-worker.mjs، فيتغيّر المسار بترقية الحزمة ويسقط تخزينُ القديم من نفسه.
+ * ثابتٌ هنا لا يُقرأ من package.json: هذا الملف يُبنى في حزمة المتصفح.
+ */
+export const PDFJS_VERSION = "6.3.289";

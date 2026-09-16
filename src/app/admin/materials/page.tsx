@@ -1,15 +1,15 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ChevronDown, ChevronUp, ExternalLink, FolderPlus } from "lucide-react";
-import { PageHeader, Card, Badge, Empty } from "@/components/ui";
+import { ChevronDown, ChevronUp, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { PageHeader, Card, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import Attachments from "@/components/Attachments";
+import MaterialCard from "@/components/MaterialCard";
 import { createFolder, deleteFolder, deleteMaterial, moveFolder, moveMaterial, moveMaterialOrder, saveFolder, saveMaterial } from "../actions";
 import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
-import { MATERIAL_KIND_LABELS, hostOf } from "@/lib/utils";
 import { toItem } from "@/lib/attachments";
+import { MATERIAL_KIND_LABELS } from "@/lib/utils";
 import { FILE_ACCEPT, MAX_FILE_BYTES, fileSize } from "@/lib/files";
 import { FOLDER_COLORS, folderHex, groupByFolder, type FolderView } from "@/lib/folders";
 import AddMaterialForm from "./AddMaterialForm";
@@ -49,66 +49,53 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
                   <p className="text-sm text-muted ps-3">لا مواد في هذا المجلد بعد. انقل إليه مادة من قائمة «المجلد» في بطاقتها.</p>
                 ) : (
                   <div
-                    className="space-y-3 border-s-2 ps-3"
+                    className="border-s-2 ps-3"
                     style={{ borderInlineStartColor: g.folder ? folderHex(g.folder.color) : "var(--line)" }}
                   >
-                    {g.items.map((m, i) => (
-                      <Card key={m.id}>
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-medium">{m.title}</div>
-                            <div className="text-xs text-muted">
-                              {MATERIAL_KIND_LABELS[m.kind]}
-                              {m.author ? ` · ${m.author}` : ""}
-                              {m.competency ? ` · ${m.competency}` : ""}
-                              {m.week != null ? ` · الأسبوع ${m.week}` : ""}
+                    {/* ما يراه المشارك نفسه، وتحته شريطٌ مختصر بأدوات المدير */}
+                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {g.items.map((m, i) => (
+                        <MaterialCard
+                          key={m.id}
+                          m={m}
+                          files={filesOf(m.id)}
+                          color={g.folder ? folderHex(g.folder.color) : undefined}
+                          admin={
+                            <div className="text-xs">
+                              <div className="flex items-center gap-1">
+                                {/* الترتيب داخل المجموعة: مبادلةٌ مع الجار، فلا يحتاج سحباً ولا جافاسكربت */}
+                                <MoveButton action={moveMaterialOrder} id={m.id} dir="up" disabled={i === 0} label="تقديم" />
+                                <MoveButton action={moveMaterialOrder} id={m.id} dir="down" disabled={i === g.items.length - 1} label="تأخير" />
+                                <span className="flex-1" />
+                                <details className="relative">
+                                  <summary className="btn btn-ghost btn-sm list-none cursor-pointer" aria-label="تعديل المادة" title="تعديل"><Pencil size={14} /></summary>
+                                  <div className="absolute z-10 end-0 mt-1 w-72 card shadow-sm text-sm">
+                                    <form action={saveMaterial}>
+                                      <input type="hidden" name="id" value={m.id} />
+                                      <input type="hidden" name="folderId" value={m.folderId ?? ""} />
+                                      <MaterialFields competencies={competencies} material={m} weeks={weeks} />
+                                      <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
+                                    </form>
+                                  </div>
+                                </details>
+                                <form action={deleteMaterial}>
+                                  <input type="hidden" name="id" value={m.id} />
+                                  <SubmitButton ghost className="btn-sm text-muted" pendingText="…" label="حذف" confirm={`حذف «${m.title}» وملفاتها؟ لا رجعة في هذا.`}>
+                                    <Trash2 size={14} />
+                                  </SubmitButton>
+                                </form>
+                              </div>
+                              {/* المجلد في سطره: القائمة لا تتّسع في صفٍّ واحد داخل بطاقة */}
+                              <form action={moveMaterial} className="flex items-center gap-1 mt-1">
+                                <input type="hidden" name="id" value={m.id} />
+                                <div className="flex-1 min-w-0"><FolderSelect folders={folders} value={m.folderId} /></div>
+                                <button type="submit" className="btn btn-ghost btn-sm shrink-0">نقل</button>
+                              </form>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {/* الترتيب داخل المجموعة: مبادلةٌ مع الجار، فلا يحتاج سحباً ولا جافاسكربت */}
-                            <MoveButton action={moveMaterialOrder} id={m.id} dir="up" disabled={i === 0} label="تقديم" />
-                            <MoveButton action={moveMaterialOrder} id={m.id} dir="down" disabled={i === g.items.length - 1} label="تأخير" />
-                            <Badge tone="soft">{MATERIAL_KIND_LABELS[m.kind]}</Badge>
-                          </div>
-                        </div>
-                        {m.description && <p className="text-sm text-muted mt-1">{m.description}</p>}
-                        {m.url && (
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {/* يغادر إلى المتصفح الافتراضي: التطبيق مثبَّت standalone فالرابط الخارج عن نطاقه يخرج منه */}
-                            <a href={m.url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
-                              <ExternalLink size={14} /> فتح الرابط
-                            </a>
-                            <span className="text-xs text-muted truncate" dir="ltr">{hostOf(m.url)}</span>
-                          </div>
-                        )}
-                        <div className="mt-2">
-                          <Attachments kind="MATERIAL" refId={m.id} initial={filesOf(m.id)} viewButton />
-                        </div>
-                        <form action={moveMaterial} className="flex items-end gap-2 mt-3 pt-3 border-t border-line">
-                          <input type="hidden" name="id" value={m.id} />
-                          <div className="field mb-0 flex-1 min-w-0">
-                            <label className="label">المجلد</label>
-                            <FolderSelect folders={folders} value={m.folderId} />
-                          </div>
-                          <SubmitButton secondary className="btn-sm" pendingText="جارٍ النقل…">نقل</SubmitButton>
-                        </form>
-                        <details className="mt-3 text-sm">
-                          <summary className="cursor-pointer text-muted">تعديل</summary>
-                          <form action={saveMaterial} className="mt-2">
-                            <input type="hidden" name="id" value={m.id} />
-                            <input type="hidden" name="folderId" value={m.folderId ?? ""} />
-                            <MaterialFields competencies={competencies} material={m} weeks={weeks} />
-                            <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
-                          </form>
-                          <form action={deleteMaterial} className="mt-2">
-                            <input type="hidden" name="id" value={m.id} />
-                            <SubmitButton ghost className="btn-sm text-muted" pendingText="جارٍ الحذف…" confirm={`حذف «${m.title}» وملفاتها؟ لا رجعة في هذا.`}>
-                              حذف المادة وملفاتها
-                            </SubmitButton>
-                          </form>
-                        </details>
-                      </Card>
-                    ))}
+                          }
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </section>

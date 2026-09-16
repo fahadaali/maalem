@@ -11,3 +11,7 @@
 # عامل PDF.js: مولَّد من حزمة مثبَّتة بإصدار مثبَّت، فيُخزَّن طويلاً كبقية الأصول
 /pdf.worker.min.mjs
   Cache-Control: public, max-age=31536000, immutable
+
+# موارد عارض PDF: مؤرَّخة بإصدار الحزمة في مسارها، فترقيتها تُسقط تخزينها من نفسها
+/pdf/*
+  Cache-Control: public, max-age=31536000, immutable
