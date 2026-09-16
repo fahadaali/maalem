@@ -79,7 +79,8 @@ export default async function AppShell({ user, items, children, base }: { user: 
         */}
         <header
           className="app-shell-header sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line px-4 flex items-center justify-between gap-2"
-          style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
+          /* والارتفاع من متغيّر يقرؤه غيرُه: شريط تحكم المكتبة يلتصق تحته بالضبط */
+          style={{ paddingTop: "env(safe-area-inset-top)", height: "var(--header-h)" }}
         >
           <Link href={base} className="display text-lg font-bold md:hidden shrink-0">
             معالم التربية

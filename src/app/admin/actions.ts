@@ -1306,15 +1306,15 @@ export async function moveFolder(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
   const up = str(formData.get("dir")) === "up";
-  const me = await db.materialFolder.findUnique({ where: { id } });
-  if (!me) fail("/admin/materials", "المجلد غير موجود");
-  const neighbour = await db.materialFolder.findFirst({
-    where: up ? { order: { lt: me.order } } : { order: { gt: me.order } },
-    orderBy: { order: up ? "desc" : "asc" },
-  });
-  if (!neighbour) ok("/admin/materials", "المجلد في طرف القائمة");
-  await db.materialFolder.update({ where: { id: me.id }, data: { order: neighbour.order } });
-  await db.materialFolder.update({ where: { id: neighbour.id }, data: { order: me.order } });
+  // الترقيم بالتسلسل المعروض ثم المبادلة، كما في ترتيب المواد وللعلّة نفسها
+  const all = await db.materialFolder.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { id: true } });
+  const i = all.findIndex((f) => f.id === id);
+  const j = up ? i - 1 : i + 1;
+  if (i < 0) fail("/admin/materials", "المجلد غير موجود");
+  if (j < 0 || j >= all.length) ok("/admin/materials", "المجلد في طرف القائمة");
+  const seq = all.map((f) => f.id);
+  [seq[i], seq[j]] = [seq[j], seq[i]];
+  await db.$transaction(seq.map((fid, k) => db.materialFolder.update({ where: { id: fid }, data: { order: k } })));
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
   ok("/admin/materials", "تم ترتيب المجلدات");
@@ -1355,27 +1355,28 @@ export async function moveMaterialOrder(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
   const up = str(formData.get("dir")) === "up";
-  const me = await db.material.findUnique({ where: { id } });
+  const me = await db.material.findUnique({ where: { id }, select: { folderId: true } });
   if (!me) fail("/admin/materials", "المادة غير موجودة");
-  const sameFolder = { folderId: me.folderId };
   /**
-   * الترتيب وحده لا يفصل المتساويات — والمواد القديمة كلها على صفر — فيُقاس
-   * بالترتيب ثم بزمن الإنشاء، كما تُقرأ القائمة نفسها.
+   * تُرقَّم المجموعة بتسلسلها المعروض، ثم تُبادَل المادةُ جارَها في الترقيم.
+   *
+   * ولا تكفي مبادلةُ رقمين: المواد القديمة كلها على صفر، والقائمة تفصل
+   * متساوياتِها بزمن الإنشاء. فإنقاصُ رقمِ مادةٍ بواحدٍ — وهو ما كان — يقفز بها
+   * فوق كل من يساويها لا فوق جارها وحده: رأيتُ مادةً تتقدّم من الموضع السابع
+   * إلى الأول بضغطةٍ واحدة. وبالترقيم يصير لكل مادةٍ رقمٌ لا يشاركها فيه أحد،
+   * فتتقدّم خطوةً واحدة كما يُنتظر، ويثبت الترتيب بعدها.
    */
-  const neighbour = await db.material.findFirst({
-    where: {
-      ...sameFolder,
-      OR: up
-        ? [{ order: { lt: me.order } }, { order: me.order, createdAt: { lt: me.createdAt } }]
-        : [{ order: { gt: me.order } }, { order: me.order, createdAt: { gt: me.createdAt } }],
-    },
-    orderBy: up ? [{ order: "desc" }, { createdAt: "desc" }] : [{ order: "asc" }, { createdAt: "asc" }],
+  const group = await db.material.findMany({
+    where: { folderId: me.folderId },
+    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
   });
-  if (!neighbour) ok("/admin/materials", "المادة في طرف مجموعتها");
-  // المتساويان في الترتيب يُفرَّق بينهما برقمين جديدين، وإلا بقيت المبادلة بلا أثر
-  const [a, b] = me.order === neighbour.order ? (up ? [me.order - 1, neighbour.order] : [me.order + 1, neighbour.order]) : [neighbour.order, me.order];
-  await db.material.update({ where: { id: me.id }, data: { order: a } });
-  await db.material.update({ where: { id: neighbour.id }, data: { order: b } });
+  const i = group.findIndex((g) => g.id === id);
+  const j = up ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= group.length) ok("/admin/materials", "المادة في طرف مجموعتها");
+  const seq = group.map((g) => g.id);
+  [seq[i], seq[j]] = [seq[j], seq[i]];
+  await db.$transaction(seq.map((gid, k) => db.material.update({ where: { id: gid }, data: { order: k } })));
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
   ok("/admin/materials", "تم ترتيب المواد");

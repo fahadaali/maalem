@@ -55,3 +55,4 @@ prisma/*.db-journal
 # مولَّد عند البناء
 public/sw.js
 public/pdf.worker.min.mjs
+public/pdf/
