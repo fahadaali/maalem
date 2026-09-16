@@ -63,6 +63,11 @@
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  /**
+   * ترويسة الشاشة لاصقة، فما يُمرَّر إليه المتصفّح — بؤرةُ لوحة المفاتيح تنتقل
+   * إلى عنصرٍ خارج الشاشة — يقف عند حافة النافذة فيختفي تحتها. فيُحجز ارتفاعُها.
+   */
+  scroll-padding-top: var(--header-h);
 }
 
 body {
