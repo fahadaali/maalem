@@ -1,20 +1,22 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ChevronDown, ChevronUp, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { PageHeader, Card, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import MaterialCard from "@/components/MaterialCard";
-import { createFolder, deleteFolder, deleteMaterial, moveFolder, moveMaterial, moveMaterialOrder, saveFolder, saveMaterial } from "../actions";
+import { createFolder } from "../actions";
 import { getBooks, getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
 import { toItem } from "@/lib/attachments";
-import { MATERIAL_KIND_LABELS } from "@/lib/utils";
-import { FILE_ACCEPT, MAX_FILE_BYTES, fileSize } from "@/lib/files";
 import { FOLDER_COLORS, folderHex, groupByFolder, type FolderView } from "@/lib/folders";
 import AddMaterialForm from "./AddMaterialForm";
+import MaterialFields from "./MaterialFields";
+import LibraryBoard, { Selectable, type FolderRow, type MaterialRow } from "./LibraryBoard";
 
 export const metadata = { title: "مكتبة المواد" };
+
+const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/");
 
 export default async function AdminMaterialsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireRole("ADMIN");
@@ -30,6 +32,25 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
   // المجلد الفارغ يبقى ظاهراً للمدير: فيه يضع، وإخفاؤه يُخفي مكان الوضع
   const groups = groupByFolder(folders, materials, { keepEmpty: true });
 
+  /**
+   * الشريط يحتاج ما لا يُحسب في المتصفّح: موضعُ المادة في مجموعتها ليُعطَّل زرّ
+   * الترتيب عند الطرف، وأولُ ملفٍ لها ليُفتح بزرّ العرض. فيُحسبان هنا مرّة.
+   */
+  const rows: MaterialRow[] = groups.flatMap((g) =>
+    g.items.map((m, i) => ({
+      id: m.id, title: m.title, kind: m.kind, folderId: m.folderId,
+      author: m.author, description: m.description, url: m.url,
+      competency: m.competency, week: m.week, order: m.order,
+      canUp: i > 0, canDown: i < g.items.length - 1,
+      fileId: filesOf(m.id).find((f) => viewable(f.contentType))?.id ?? null,
+    })),
+  );
+  const folderRows: FolderRow[] = folders.map((f, i) => ({
+    id: f.id, name: f.name, color: f.color, note: f.note,
+    count: materials.filter((m) => m.folderId === f.id).length,
+    canUp: i > 0, canDown: i < folders.length - 1,
+  }));
+
   return (
     <>
       <PageHeader
@@ -38,70 +59,36 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
       />
       <FormMessage ok={ok} err={err} />
       <div className="grid md:grid-cols-[1fr_360px] gap-4 items-start">
-        <div className="space-y-6">
+        <LibraryBoard materials={rows} folders={folderRows} competencies={competencies} weeks={weeks}>
           {materials.length === 0 && folders.length === 0 ? (
             <Empty>لا مواد بعد. ابدأ بكتب «نقرأ لنربي» الأربعة وقوالب التقرير وبطاقة القراءة.</Empty>
           ) : (
-            groups.map((g, gi) => (
-              <section key={g.folder?.id ?? "loose"}>
-                <FolderHeading folder={g.folder} count={g.items.length} first={gi === 0} last={gi === folders.length - 1} />
-                {g.items.length === 0 ? (
-                  <p className="text-sm text-muted ps-3">لا مواد في هذا المجلد بعد. انقل إليه مادة من قائمة «المجلد» في بطاقتها.</p>
-                ) : (
-                  <div
-                    className="border-s-2 ps-3"
-                    style={{ borderInlineStartColor: g.folder ? folderHex(g.folder.color) : "var(--line)" }}
-                  >
-                    {/* ما يراه المشارك نفسه، وتحته شريطٌ مختصر بأدوات المدير */}
-                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                      {g.items.map((m, i) => (
-                        <MaterialCard
-                          key={m.id}
-                          m={m}
-                          files={filesOf(m.id)}
-                          color={g.folder ? folderHex(g.folder.color) : undefined}
-                          admin={
-                            <div className="text-xs">
-                              <div className="flex items-center gap-1">
-                                {/* الترتيب داخل المجموعة: مبادلةٌ مع الجار، فلا يحتاج سحباً ولا جافاسكربت */}
-                                <MoveButton action={moveMaterialOrder} id={m.id} dir="up" disabled={i === 0} label="تقديم" />
-                                <MoveButton action={moveMaterialOrder} id={m.id} dir="down" disabled={i === g.items.length - 1} label="تأخير" />
-                                <span className="flex-1" />
-                                <details className="relative">
-                                  <summary className="btn btn-ghost btn-sm list-none cursor-pointer" aria-label="تعديل المادة" title="تعديل"><Pencil size={14} /></summary>
-                                  <div className="absolute z-10 end-0 mt-1 w-72 card shadow-sm text-sm">
-                                    <form action={saveMaterial}>
-                                      <input type="hidden" name="id" value={m.id} />
-                                      <input type="hidden" name="folderId" value={m.folderId ?? ""} />
-                                      <MaterialFields competencies={competencies} material={m} weeks={weeks} />
-                                      <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
-                                    </form>
-                                  </div>
-                                </details>
-                                <form action={deleteMaterial}>
-                                  <input type="hidden" name="id" value={m.id} />
-                                  <SubmitButton ghost className="btn-sm text-muted" pendingText="…" label="حذف" confirm={`حذف «${m.title}» وملفاتها؟ لا رجعة في هذا.`}>
-                                    <Trash2 size={14} />
-                                  </SubmitButton>
-                                </form>
-                              </div>
-                              {/* المجلد في سطره: القائمة لا تتّسع في صفٍّ واحد داخل بطاقة */}
-                              <form action={moveMaterial} className="flex items-center gap-1 mt-1">
-                                <input type="hidden" name="id" value={m.id} />
-                                <div className="flex-1 min-w-0"><FolderSelect folders={folders} value={m.folderId} /></div>
-                                <button type="submit" className="btn btn-ghost btn-sm shrink-0">نقل</button>
-                              </form>
-                            </div>
-                          }
-                        />
-                      ))}
+            <div className="space-y-6">
+              {groups.map((g) => (
+                <section key={g.folder?.id ?? "loose"}>
+                  <FolderHeading folder={g.folder} count={g.items.length} />
+                  {g.items.length === 0 ? (
+                    <p className="text-sm text-muted ps-3">لا مواد في هذا المجلد بعد. حدّد مادةً من القائمة ثم انقلها إليه من الشريط.</p>
+                  ) : (
+                    <div
+                      className="border-s-2 ps-3"
+                      style={{ borderInlineStartColor: g.folder ? folderHex(g.folder.color) : "var(--line)" }}
+                    >
+                      {/* ما يراه المشارك بعينه: الأدوات في شريط الأعلى لا في البطاقة */}
+                      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {g.items.map((m) => (
+                          <Selectable key={m.id} type="material" id={m.id} className="h-full">
+                            <MaterialCard m={m} files={filesOf(m.id)} color={g.folder ? folderHex(g.folder.color) : undefined} />
+                          </Selectable>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </section>
-            ))
+                  )}
+                </section>
+              ))}
+            </div>
           )}
-        </div>
+        </LibraryBoard>
 
         <div className="space-y-4">
           <Card title="إضافة مادة">
@@ -130,7 +117,11 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
               </div>
               <div className="field">
                 <label className="label">اللون</label>
-                <ColorSelect />
+                <select name="color" className="select" defaultValue="gray">
+                  {Object.entries(FOLDER_COLORS).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="field">
                 <label className="label">وصف يظهر تحت اسم المجلد (اختياري)</label>
@@ -145,160 +136,26 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
   );
 }
 
-/** ترويسة المجموعة: اسم المجلد ولونه وعدده وأدوات تنظيمه، أو «بلا مجلد» بلا أدوات */
-function FolderHeading({ folder, count, first, last }: { folder: FolderView | null; count: number; first: boolean; last: boolean }) {
+/** ترويسة المجموعة: تُحدَّد كما تُحدَّد البطاقة، و«بلا مجلد» ليس مجلداً فلا يُحدَّد */
+function FolderHeading({ folder, count }: { folder: FolderView | null; count: number }) {
   if (!folder) {
     return (
-      <div className="flex items-baseline gap-2 mb-2">
+      <div className="flex items-baseline gap-2 mb-2 px-2">
         <h2 className="text-lg">بلا مجلد</h2>
         <span className="text-xs text-muted">{count} مادة</span>
       </div>
     );
   }
   return (
-    <div className="mb-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: folderHex(folder.color) }} aria-hidden />
-        <h2 className="text-lg">{folder.name}</h2>
-        <span className="text-xs text-muted">{count} مادة</span>
-        <div className="flex items-center gap-1 ms-auto">
-          <MoveButton action={moveFolder} id={folder.id} dir="up" disabled={first} label="رفع المجلد" />
-          <MoveButton action={moveFolder} id={folder.id} dir="down" disabled={last} label="خفض المجلد" />
+    <Selectable type="folder" id={folder.id} className="mb-2 block">
+      <div className="px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: folderHex(folder.color) }} aria-hidden />
+          <h2 className="text-lg">{folder.name}</h2>
+          <span className="text-xs text-muted">{count} مادة</span>
         </div>
+        {folder.note && <p className="text-xs text-muted mt-0.5">{folder.note}</p>}
       </div>
-      {folder.note && <p className="text-xs text-muted mt-0.5">{folder.note}</p>}
-      <details className="text-sm mt-1">
-        <summary className="cursor-pointer text-muted text-xs">تنظيم المجلد</summary>
-        <form action={saveFolder} className="mt-2 grid sm:grid-cols-[1fr_auto] gap-2 items-end">
-          <input type="hidden" name="id" value={folder.id} />
-          <div className="grid sm:grid-cols-3 gap-2">
-            <div className="field mb-0"><label className="label">الاسم</label><input name="name" className="input" defaultValue={folder.name} required maxLength={60} /></div>
-            <div className="field mb-0"><label className="label">اللون</label><ColorSelect value={folder.color} /></div>
-            <div className="field mb-0"><label className="label">الوصف</label><input name="note" className="input" defaultValue={folder.note ?? ""} maxLength={160} /></div>
-          </div>
-          <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
-        </form>
-        <form action={deleteFolder} className="mt-2">
-          <input type="hidden" name="id" value={folder.id} />
-          <SubmitButton ghost className="btn-sm text-muted" pendingText="جارٍ الحذف…" confirm={`حذف مجلد «${folder.name}»؟\n\nمواده لا تُحذف — تعود إلى «بلا مجلد».`}>
-            حذف المجلد
-          </SubmitButton>
-        </form>
-      </details>
-    </div>
-  );
-}
-
-/** زرّ تحريكٍ في نموذجه: الأطراف معطَّلة فلا يُرسَل طلبٌ لا أثر له */
-function MoveButton({ action, id, dir, disabled, label }: { action: (f: FormData) => void; id: string; dir: "up" | "down"; disabled: boolean; label: string }) {
-  return (
-    <form action={action}>
-      <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="dir" value={dir} />
-      <button type="submit" disabled={disabled} className="btn btn-ghost btn-sm px-1.5 disabled:opacity-30" aria-label={label} title={label}>
-        {dir === "up" ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-    </form>
-  );
-}
-
-function ColorSelect({ value }: { value?: string }) {
-  return (
-    <select name="color" className="select" defaultValue={value ?? "gray"}>
-      {Object.entries(FOLDER_COLORS).map(([k, v]) => (
-        <option key={k} value={k}>{v.label}</option>
-      ))}
-    </select>
-  );
-}
-
-function FolderSelect({ folders, value }: { folders: FolderView[]; value?: string | null }) {
-  return (
-    <select name="folderId" className="select" defaultValue={value ?? ""}>
-      <option value="">بلا مجلد</option>
-      {folders.map((f) => (
-        <option key={f.id} value={f.id}>{f.name}</option>
-      ))}
-    </select>
-  );
-}
-
-type M = { title: string; kind: string; author: string | null; description: string | null; url: string | null; competency: string | null; week: number | null; order: number };
-
-/** `withFile` لنموذج الإضافة وحده: المادة المحفوظة لها أداة رفع مستقلة في بطاقتها */
-function MaterialFields({ material, weeks, competencies, withFile, folders }: { material?: M; weeks: { number: number; label: string }[]; competencies: { slug: string; name: string }[]; withFile?: boolean; folders?: FolderView[] }) {
-  return (
-    <>
-      <div className="field">
-        <label className="label">العنوان</label>
-        <input name="title" className="input" required defaultValue={material?.title ?? ""} />
-      </div>
-      {folders && (
-        <div className="field">
-          <label className="label">المجلد</label>
-          <FolderSelect folders={folders} />
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="field">
-          <label className="label">النوع</label>
-          <select name="kind" className="select" defaultValue={material?.kind ?? "BOOK"}>
-            {Object.entries(MATERIAL_KIND_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="label">المؤلف</label>
-          <input name="author" className="input" defaultValue={material?.author ?? ""} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="field">
-          <label className="label">الكفاءة</label>
-          <select name="competency" className="select" defaultValue={material?.competency ?? ""}>
-            <option value="">—</option>
-            {competencies.map((c) => (
-              <option key={c.slug} value={c.name}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="label">الأسبوع</label>
-          <select name="week" className="select" defaultValue={material?.week ?? ""}>
-            <option value="">—</option>
-            {weeks.map((w) => (
-              <option key={w.number} value={w.number}>الأسبوع {w.label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="field">
-        <label className="label">الوصف</label>
-        <textarea name="description" className="textarea" rows={2} defaultValue={material?.description ?? ""} />
-      </div>
-      <div className="grid grid-cols-[1fr_90px] gap-3">
-        <div className="field">
-          <label className="label">رابط خارجي (اختياري)</label>
-          <input name="url" className="input" dir="ltr" placeholder="https://" defaultValue={material?.url ?? ""} />
-        </div>
-        <div className="field">
-          <label className="label">الترتيب</label>
-          <input type="number" name="order" className="input" defaultValue={material?.order ?? 0} />
-        </div>
-      </div>
-      {withFile && (
-        <div className="field">
-          <label className="label">ملف المادة (اختياري)</label>
-          <input
-            type="file"
-            name="file"
-            className="input"
-            accept={FILE_ACCEPT}
-          />
-          <p className="text-xs text-muted mt-1">PDF أو مستند أو صورة أو صوت أو فيديو، حتى {fileSize(MAX_FILE_BYTES)}. يمكنك رفع ملفات أخرى للمادة بعد إضافتها.</p>
-        </div>
-      )}
-    </>
+    </Selectable>
   );
 }

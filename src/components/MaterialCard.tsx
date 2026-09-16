@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import Link from "@/components/Link";
 import { BookOpen, Download, ExternalLink, Eye, FileText, LibraryBig, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui";
@@ -28,17 +27,16 @@ const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/"
  * بالقراءة. والبطاقة تُري وجه الملف نفسه: أول صفحةٍ من الـPDF أو الصورة المرفقة،
  * فتُقرأ المكتبة بالنظرة كما يُقرأ رفّ كتب.
  *
- * و`admin` شريطٌ مختصر يُمرَّر من لوحة المدير — ترتيبٌ ونقلٌ وتعديلٌ وحذف — يقع
- * في ذيل البطاقة، فلا يفترق ما يراه عمّا يراه المشارك إلا بسطرٍ من الأدوات.
+ * وليس فيها شيءٌ من أدوات المدير: هي في شريط التحكم أعلى الصفحة، يعمل على ما
+ * حُدِّد منها. فما يراه المدير هو ما يراه المشارك، لا بطاقةٌ مثقلةٌ بنماذج.
  */
 export default function MaterialCard({
-  m, files, color, admin, readOnly,
+  m, files, color, readOnly,
 }: {
   m: MaterialView;
   files: AttachmentItem[];
   /** لون مجلدها — يُلوَّن به وجه البطاقة حين لا غلاف */
   color?: string;
-  admin?: ReactNode;
   readOnly?: boolean;
 }) {
   // الملف الأول مما يُعرض داخل المنصة هو وجه البطاقة وزرّها الأول
@@ -49,7 +47,7 @@ export default function MaterialCard({
   const tint = color ?? "var(--line-2)";
 
   return (
-    <article className="card p-0 overflow-hidden flex flex-col">
+    <article className="card p-0 overflow-hidden flex flex-col h-full">
       <div className="relative w-full bg-paper-2" style={{ aspectRatio: "3 / 4" }}>
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -107,7 +105,6 @@ export default function MaterialCard({
         )}
       </div>
 
-      {admin && <div className="border-t border-line bg-paper-2/60 px-2 py-1.5">{admin}</div>}
     </article>
   );
 }
