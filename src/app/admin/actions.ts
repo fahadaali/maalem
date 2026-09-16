@@ -444,6 +444,8 @@ const MATERIAL_KINDS = new Set(["BOOK", "TEMPLATE", "GUIDE", "LINK"]);
 
 export async function saveMaterial(formData: FormData) {
   const user = await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const title = str(formData.get("title"));
   const kind = str(formData.get("kind"));
@@ -458,7 +460,7 @@ export async function saveMaterial(formData: FormData) {
   /** سقط التحقّق بعد رفع الملف: يُحذف فلا يبقى في التخزين ملفٌّ لا مادة له */
   const bail = async (msg: string): Promise<never> => {
     if (attachmentId) await dropPendingAttachment(attachmentId, user.id);
-    fail("/admin/materials", msg);
+    fail(back, msg);
   };
   if (!title) await bail("اكتب عنوان المادة");
   if (!MATERIAL_KINDS.has(kind)) await bail("نوع غير صحيح");
@@ -495,11 +497,13 @@ export async function saveMaterial(formData: FormData) {
   if (!id) await notifyRole("PARTICIPANT", { title: "مادة جديدة في المكتبة", body: title, url: "/app/materials" });
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
-  ok("/admin/materials", id ? "تم تحديث المادة" : `تمت إضافة المادة${attachmentId ? " وملفها" : ""} وإشعار المشاركين`);
+  ok(back, id ? "تم تحديث المادة" : `تمت إضافة المادة${attachmentId ? " وملفها" : ""} وإشعار المشاركين`);
 }
 
 export async function deleteMaterial(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const files = await db.attachment.findMany({ where: { kind: "MATERIAL", refId: id } });
   for (const f of files) {
@@ -507,8 +511,8 @@ export async function deleteMaterial(formData: FormData) {
     await db.attachment.delete({ where: { id: f.id } }).catch(() => {});
   }
   await db.material.deleteMany({ where: { id } });
-  revalidatePath("/admin/materials");
-  ok("/admin/materials", "تم حذف المادة");
+  revalidatePath(back);
+  ok(back, "تم حذف المادة");
 }
 
 // ——— جدول البرنامج: تعديل أسبوع (المواعيد، اللقاء، الحلقة، الورد، المهمة، الروابط) ———
@@ -1286,16 +1290,18 @@ export async function createFolder(formData: FormData) {
 
 export async function saveFolder(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const name = str(formData.get("name"));
   const color = str(formData.get("color")) || "gray";
   const note = str(formData.get("note"));
-  if (!name) fail("/admin/materials", "اكتب اسم المجلد");
-  if (!isFolderColor(color)) fail("/admin/materials", "لون غير معروف");
+  if (!name) fail(back, "اكتب اسم المجلد");
+  if (!isFolderColor(color)) fail(back, "لون غير معروف");
   await db.materialFolder.update({ where: { id }, data: { name: name.slice(0, 60), color, note: note || null } });
-  revalidatePath("/admin/materials");
+  revalidatePath(back);
   revalidatePath("/app/materials");
-  ok("/admin/materials", "تم تحديث المجلد");
+  ok(back, "تم تحديث المجلد");
 }
 
 /**
@@ -1304,20 +1310,22 @@ export async function saveFolder(formData: FormData) {
  */
 export async function moveFolder(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const up = str(formData.get("dir")) === "up";
   // الترقيم بالتسلسل المعروض ثم المبادلة، كما في ترتيب المواد وللعلّة نفسها
   const all = await db.materialFolder.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { id: true } });
   const i = all.findIndex((f) => f.id === id);
   const j = up ? i - 1 : i + 1;
-  if (i < 0) fail("/admin/materials", "المجلد غير موجود");
-  if (j < 0 || j >= all.length) ok("/admin/materials", "المجلد في طرف القائمة");
+  if (i < 0) fail(back, "المجلد غير موجود");
+  if (j < 0 || j >= all.length) ok(back, "المجلد في طرف القائمة");
   const seq = all.map((f) => f.id);
   [seq[i], seq[j]] = [seq[j], seq[i]];
   await db.$transaction(seq.map((fid, k) => db.materialFolder.update({ where: { id: fid }, data: { order: k } })));
-  revalidatePath("/admin/materials");
+  revalidatePath(back);
   revalidatePath("/app/materials");
-  ok("/admin/materials", "تم ترتيب المجلدات");
+  ok(back, "تم ترتيب المجلدات");
 }
 
 /**
@@ -1339,24 +1347,28 @@ export async function deleteFolder(formData: FormData) {
 /** نقل مادة إلى مجلد أو إخراجها منه — الحقل الفارغ يعني «بلا مجلد» */
 export async function moveMaterial(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const folderId = str(formData.get("folderId")) || null;
   if (folderId && !(await db.materialFolder.findUnique({ where: { id: folderId }, select: { id: true } }))) {
-    fail("/admin/materials", "المجلد غير موجود");
+    fail(back, "المجلد غير موجود");
   }
   await db.material.update({ where: { id }, data: { folderId } });
-  revalidatePath("/admin/materials");
+  revalidatePath(back);
   revalidatePath("/app/materials");
-  ok("/admin/materials", folderId ? "نُقلت المادة إلى المجلد" : "أُخرجت المادة من المجلد");
+  ok(back, folderId ? "نُقلت المادة إلى المجلد" : "أُخرجت المادة من المجلد");
 }
 
 /** تحريك المادة داخل مجموعتها: المبادلة مع أقرب جار في المجلد نفسه */
 export async function moveMaterialOrder(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير: مجلدٌ مفتوح أو جذر المكتبة
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
   const up = str(formData.get("dir")) === "up";
   const me = await db.material.findUnique({ where: { id }, select: { folderId: true } });
-  if (!me) fail("/admin/materials", "المادة غير موجودة");
+  if (!me) fail(back, "المادة غير موجودة");
   /**
    * تُرقَّم المجموعة بتسلسلها المعروض، ثم تُبادَل المادةُ جارَها في الترقيم.
    *
@@ -1373,13 +1385,13 @@ export async function moveMaterialOrder(formData: FormData) {
   });
   const i = group.findIndex((g) => g.id === id);
   const j = up ? i - 1 : i + 1;
-  if (i < 0 || j < 0 || j >= group.length) ok("/admin/materials", "المادة في طرف مجموعتها");
+  if (i < 0 || j < 0 || j >= group.length) ok(back, "المادة في طرف مجموعتها");
   const seq = group.map((g) => g.id);
   [seq[i], seq[j]] = [seq[j], seq[i]];
   await db.$transaction(seq.map((gid, k) => db.material.update({ where: { id: gid }, data: { order: k } })));
-  revalidatePath("/admin/materials");
+  revalidatePath(back);
   revalidatePath("/app/materials");
-  ok("/admin/materials", "تم ترتيب المواد");
+  ok(back, "تم ترتيب المواد");
 }
 
 // ——— مركز المساعدة ———

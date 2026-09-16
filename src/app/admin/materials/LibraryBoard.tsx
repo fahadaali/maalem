@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, Eye, FolderInput, Pencil, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp, Eye, FolderInput, FolderOpen, Pencil, Trash2, X } from "lucide-react";
 import SubmitButton from "@/components/SubmitButton";
 import MaterialFields, { FolderSelect } from "./MaterialFields";
 import { FOLDER_COLORS, folderHex, type FolderView } from "@/lib/folders";
@@ -65,9 +66,12 @@ const Ctx = createContext<{ selected: Selection; select: (s: Selection) => void 
  * غلافُ عنصرٍ قابل للتحديد. والنقرُ على أداةٍ داخله — رابطٌ أو زرٌّ أو مطواة —
  * لا يُحدِّد: المدير قصد الأداة لا العنصر، ولو حُدِّد لانتقل الشريط تحت يده.
  */
-export function Selectable({ type, id, children, className = "" }: { type: "material" | "folder"; id: string; children: ReactNode; className?: string }) {
+export function Selectable({ type, id, href, children, className = "" }: { type: "material" | "folder"; id: string; href?: string; children: ReactNode; className?: string }) {
   const { selected, select } = useContext(Ctx);
+  const router = useRouter();
   const on = selected?.type === type && selected.id === id;
+  /** نقرةٌ تُحدِّد ونقرتان تفتحان، ومفتاح Enter يفتح والمسافة تُحدِّد — كأقراص الملفات */
+  const open = href ? () => router.push(href) : undefined;
   return (
     <div
       data-selectable
@@ -78,22 +82,31 @@ export function Selectable({ type, id, children, className = "" }: { type: "mate
         if ((e.target as HTMLElement).closest("a, button, summary, input, select, textarea, label")) return;
         select(on ? null : { type, id });
       }}
+      onDoubleClick={(e) => {
+        if (!open || (e.target as HTMLElement).closest("a, button, summary, input, select, textarea, label")) return;
+        e.preventDefault();
+        open();
+      }}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" && open) { e.preventDefault(); open(); return; }
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(on ? null : { type, id }); }
       }}
-      className={`rounded-xl transition-shadow cursor-default outline-none ${on ? "ring-2 ring-ink ring-offset-2 ring-offset-paper" : "focus-visible:ring-2 focus-visible:ring-line-2"} ${className}`}
+      /* وشريط التحكم لاصقٌ فوقها: تُحجز مسافته أيضاً فلا تقف البطاقة تحته */
+      className={`rounded-xl transition-shadow cursor-default outline-none scroll-mt-14 ${on ? "ring-2 ring-ink ring-offset-2 ring-offset-paper" : "focus-visible:ring-2 focus-visible:ring-line-2"} ${className}`}
     >
       {children}
     </div>
   );
 }
 
-export default function LibraryBoard({ materials, folders, competencies, weeks, children }: {
+export default function LibraryBoard({ materials, folders, competencies, weeks, here, children }: {
   materials: MaterialRow[];
   folders: FolderRow[];
   competencies: { slug: string; name: string }[];
   weeks: { number: number; label: string }[];
+  /** الصفحة الجارية بمجلدها إن كان مفتوحاً: إليها تعود الإجراءات فلا تُخرج المديرَ من المجلد */
+  here: string;
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<Selection>(null);
@@ -116,21 +129,37 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setSelected(null); setPanel(null); store(null); } };
-    /**
-     * نقرةٌ خارج المحدَّد وخارج شريطه تُلغي التحديد وتُغلق المطواة، كما في أقراص
-     * الملفات. والمستمع على الصفحة كلها لا على لوح المكتبة وحده: حشوةُ الصفحة
-     * وعمودُ النماذج بجانبها فراغٌ في عين الناقر، ولو استُثنيا لبقي التحديد
-     * معلّقاً بعد نقرةٍ يراها المدير إلغاءً.
-     */
+    /** والمطواة تُغلق بأول ضغطة خارجها، كما تُغلق قوائم الأقراص */
     const onDown = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t?.closest("[data-library-bar]")) return;
+      if ((e.target as HTMLElement | null)?.closest("[data-library-bar]")) return;
       setPanel(null);
-      if (!t?.closest("[data-selectable]")) { setSelected(null); store(null); }
+    };
+    /**
+     * وإلغاءُ التحديد على النقرة التامّة لا على ضغطتها.
+     *
+     * والمستمع على الصفحة كلها لا على لوح المكتبة وحده: حشوةُ الصفحة وعمودُ
+     * النماذج بجانبها فراغٌ في عين الناقر، ولو استُثنيا لبقي التحديد معلّقاً بعد
+     * نقرةٍ يراها المدير إلغاءً.
+     *
+     * ولو أُلغي عند الضغط — وهو ما كان — لانطوى الشريط تحت الإصبع قبل رفعه،
+     * فتُزاح الصفحةُ بمقدار ما نقص منه، ويقع الرفع على غير ما وقع عليه الضغط،
+     * فلا يولد حدث النقر أصلاً: كان الضغط على «كل المواد» وشيءٌ محدَّد لا يفتح
+     * شيئاً، ولا رسالةَ خطأ تدلّ على السبب.
+     */
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("[data-library-bar], [data-selectable]")) return;
+      setSelected(null);
+      store(null);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onDown);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onDown); };
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("click", onClick);
+    };
   }, []);
 
   const clear = () => { setSelected(null); setPanel(null); store(null); };
@@ -142,8 +171,9 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
         <div ref={bar} data-library-bar className="sticky z-30 -mx-1 px-1 py-1 bg-paper/95 backdrop-blur" style={{ top: "var(--header-h)" }}>
           <div className="card p-1.5 shadow-sm flex flex-wrap items-center gap-1 min-h-[2.9rem]">
             {!mat && !fol ? (
-              <p className="text-xs text-muted px-2">
-                حدّد مادة أو مجلداً لتظهر أدواته هنا. <span className="hidden sm:inline">النقر على البطاقة يحدّدها، ونقرةٌ على الفراغ تُلغي التحديد.</span>
+              /* سطرٌ واحد لا يلتفّ: التفافُه يزيد ارتفاع الشريط فتُزاح الصفحة عند كل تحديد */
+              <p className="text-xs text-muted px-2 truncate">
+                حدّد مادة أو مجلداً لتظهر أدواته هنا. <span className="hidden lg:inline">نقرةٌ على الفراغ تُلغي التحديد، ونقرتان على المجلد تفتحانه.</span>
               </p>
             ) : (
               <>
@@ -162,8 +192,8 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
                 <span className="hidden sm:block flex-1" />
 
                 {/* الترتيب: مبادلةٌ مع الجار — المادة داخل مجموعتها، والمجلد بين المجلدات */}
-                <OrderForm action={mat ? moveMaterialOrder : moveFolder} id={(mat ?? fol!).id} dir="up" disabled={!(mat ?? fol!).canUp} label={mat ? "تقديم" : "رفع المجلد"} />
-                <OrderForm action={mat ? moveMaterialOrder : moveFolder} id={(mat ?? fol!).id} dir="down" disabled={!(mat ?? fol!).canDown} label={mat ? "تأخير" : "خفض المجلد"} />
+                <OrderForm action={mat ? moveMaterialOrder : moveFolder} id={(mat ?? fol!).id} dir="up" disabled={!(mat ?? fol!).canUp} label={mat ? "تقديم" : "رفع المجلد"} back={here} />
+                <OrderForm action={mat ? moveMaterialOrder : moveFolder} id={(mat ?? fol!).id} dir="down" disabled={!(mat ?? fol!).canDown} label={mat ? "تأخير" : "خفض المجلد"} back={here} />
 
                 {mat && (
                   <div className="relative">
@@ -174,6 +204,7 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
                       <Popover>
                         <form action={moveMaterial} className="p-3 flex flex-col gap-2">
                           <input type="hidden" name="id" value={mat.id} />
+                          <input type="hidden" name="back" value={here} />
                           <label className="label">انقلها إلى</label>
                           <FolderSelect folders={folders} value={mat.folderId} />
                           <SubmitButton secondary className="btn-sm" pendingText="جارٍ النقل…">نقل</SubmitButton>
@@ -183,8 +214,14 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
                   </div>
                 )}
 
+                {fol && (
+                  <a href={`/admin/materials?folder=${fol.id}`} className="btn btn-ghost btn-sm" title="فتح المجلد">
+                    <FolderOpen size={15} /> <span className="hidden sm:inline">فتح</span>
+                  </a>
+                )}
+
                 {mat?.fileId && (
-                  <a href={`/file/${mat.fileId}?from=${encodeURIComponent("/admin/materials")}`} className="btn btn-ghost btn-sm" title="عرض الملف">
+                  <a href={`/file/${mat.fileId}?from=${encodeURIComponent(here)}`} className="btn btn-ghost btn-sm" title="عرض الملف">
                     <Eye size={15} /> <span className="hidden sm:inline">عرض</span>
                   </a>
                 )}
@@ -200,12 +237,14 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
                         <form key={mat.id} action={saveMaterial} className="p-3">
                           <input type="hidden" name="id" value={mat.id} />
                           <input type="hidden" name="folderId" value={mat.folderId ?? ""} />
+                          <input type="hidden" name="back" value={here} />
                           <MaterialFields competencies={competencies} material={mat} weeks={weeks} />
                           <SubmitButton secondary className="btn-sm">حفظ</SubmitButton>
                         </form>
                       ) : (
                         <form key={fol!.id} action={saveFolder} className="p-3">
                           <input type="hidden" name="id" value={fol!.id} />
+                          <input type="hidden" name="back" value={here} />
                           <div className="field"><label className="label">الاسم</label><input name="name" className="input" defaultValue={fol!.name} required maxLength={60} /></div>
                           <div className="field"><label className="label">اللون</label>
                             <select name="color" className="select" defaultValue={fol!.color}>
@@ -222,6 +261,7 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
 
                 <form action={mat ? deleteMaterial : deleteFolder}>
                   <input type="hidden" name="id" value={(mat ?? fol!).id} />
+                  <input type="hidden" name="back" value={here} />
                   <SubmitButton
                     ghost
                     className="btn-sm text-muted"
@@ -257,11 +297,12 @@ function Popover({ children, wide }: { children: ReactNode; wide?: boolean }) {
   );
 }
 
-function OrderForm({ action, id, dir, disabled, label }: { action: (f: FormData) => void; id: string; dir: "up" | "down"; disabled: boolean; label: string }) {
+function OrderForm({ action, id, dir, disabled, label, back }: { action: (f: FormData) => void; id: string; dir: "up" | "down"; disabled: boolean; label: string; back: string }) {
   return (
     <form action={action}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="dir" value={dir} />
+      <input type="hidden" name="back" value={back} />
       <button type="submit" disabled={disabled} className="btn btn-ghost btn-sm px-1.5 disabled:opacity-30" aria-label={label} title={label}>
         {dir === "up" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
