@@ -1,9 +1,8 @@
 import { MATERIAL_KIND_LABELS } from "@/lib/utils";
-import { FILE_ACCEPT, MAX_FILE_BYTES, fileSize } from "@/lib/files";
 import type { FolderView } from "@/lib/folders";
 
 /**
- * حقول المادة — نموذج الإضافة في جانب الصفحة، ونموذج التعديل في شريط التحكم.
+ * حقول المادة — نموذج التعديل في شريط التحكم.
  *
  * فُصلت عن الصفحة ليستوردها الشريط وهو مكوّن عميل: الاختيار يجري في المتصفّح،
  * فلا يعرف الخادمُ أيَّ مادةٍ حُدِّدت ليُصيّر حقولها. وليس فيها ما يحتاج خادماً
@@ -25,13 +24,10 @@ export function FolderSelect({ folders, value }: { folders: FolderView[]; value?
   );
 }
 
-/** `withFile` لنموذج الإضافة وحده: المادة المحفوظة لها أداة رفع مستقلة في بطاقتها */
-export default function MaterialFields({ material, weeks, competencies, withFile, folders }: {
+export default function MaterialFields({ material, weeks, competencies }: {
   material?: MaterialDraft;
   weeks: { number: number; label: string }[];
   competencies: { slug: string; name: string }[];
-  withFile?: boolean;
-  folders?: FolderView[];
 }) {
   return (
     <>
@@ -39,12 +35,6 @@ export default function MaterialFields({ material, weeks, competencies, withFile
         <label className="label">العنوان</label>
         <input name="title" className="input" required defaultValue={material?.title ?? ""} />
       </div>
-      {folders && (
-        <div className="field">
-          <label className="label">المجلد</label>
-          <FolderSelect folders={folders} />
-        </div>
-      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="field">
           <label className="label">النوع</label>
@@ -93,13 +83,6 @@ export default function MaterialFields({ material, weeks, competencies, withFile
           <input type="number" name="order" className="input" defaultValue={material?.order ?? 0} />
         </div>
       </div>
-      {withFile && (
-        <div className="field">
-          <label className="label">ملف المادة (اختياري)</label>
-          <input type="file" name="file" className="input" accept={FILE_ACCEPT} />
-          <p className="text-xs text-muted mt-1">PDF أو مستند أو صورة أو صوت أو فيديو، حتى {fileSize(MAX_FILE_BYTES)}. يمكنك رفع ملفات أخرى للمادة بعد إضافتها.</p>
-        </div>
-      )}
     </>
   );
 }

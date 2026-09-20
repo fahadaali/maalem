@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Eye, FolderInput, FolderOpen, Pencil, Trash2, X } from "lucide-react";
 import SubmitButton from "@/components/SubmitButton";
 import MaterialFields, { FolderSelect } from "./MaterialFields";
+import Popover from "./Popover";
+import NewMenuProvider, { NewMenuButton } from "./NewMenu";
 import { FOLDER_COLORS, folderHex, type FolderView } from "@/lib/folders";
 import { MATERIAL_KIND_LABELS } from "@/lib/utils";
 import { deleteFolder, deleteMaterial, moveFolder, moveMaterial, moveMaterialOrder, saveFolder, saveMaterial } from "../actions";
@@ -100,13 +102,15 @@ export function Selectable({ type, id, href, children, className = "" }: { type:
   );
 }
 
-export default function LibraryBoard({ materials, folders, competencies, weeks, here, children }: {
+export default function LibraryBoard({ materials, folders, competencies, weeks, here, openFolder, children }: {
   materials: MaterialRow[];
   folders: FolderRow[];
   competencies: { slug: string; name: string }[];
   weeks: { number: number; label: string }[];
   /** الصفحة الجارية بمجلدها إن كان مفتوحاً: إليها تعود الإجراءات فلا تُخرج المديرَ من المجلد */
   here: string;
+  /** المجلد المفتوح — يقع فيه ما يُرفع، ويُخفي «مجلد جديد» من قائمة الإضافة */
+  openFolder: { id: string; name: string } | null;
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<Selection>(null);
@@ -148,7 +152,7 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
      */
     const onClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t?.closest("[data-library-bar], [data-selectable]")) return;
+      if (t?.closest("[data-library-bar], [data-selectable], [data-keep-selection]")) return;
       setSelected(null);
       store(null);
     };
@@ -167,12 +171,15 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
 
   return (
     <Ctx.Provider value={{ selected, select: (s) => { setSelected(s); setPanel(null); store(s); } }}>
+      <NewMenuProvider here={here} openFolder={openFolder}>
       <div className="space-y-4">
         <div ref={bar} data-library-bar className="sticky z-30 -mx-1 px-1 py-1 bg-paper/95 backdrop-blur" style={{ top: "var(--header-h)" }}>
           <div className="card p-1.5 shadow-sm flex flex-wrap items-center gap-1 min-h-[2.9rem]">
+            {/* خارج الشرط: موضعه واحد في الحالين فلا ينتقل تحت يد المدير */}
+            <NewMenuButton />
             {!mat && !fol ? (
               /* سطرٌ واحد لا يلتفّ: التفافُه يزيد ارتفاع الشريط فتُزاح الصفحة عند كل تحديد */
-              <p className="text-xs text-muted px-2 truncate">
+              <p className="text-xs text-muted px-2 truncate min-w-0 flex-1">
                 حدّد مادة أو مجلداً لتظهر أدواته هنا. <span className="hidden lg:inline">نقرةٌ على الفراغ تُلغي التحديد، ونقرتان على المجلد تفتحانه.</span>
               </p>
             ) : (
@@ -281,19 +288,8 @@ export default function LibraryBoard({ materials, folders, competencies, weeks, 
 
         {children}
       </div>
+      </NewMenuProvider>
     </Ctx.Provider>
-  );
-}
-
-/** مطواةُ الشريط: عرضها لا يتجاوز الشاشة على الجوال، وطولها يُمرَّر لا يفيض */
-function Popover({ children, wide }: { children: ReactNode; wide?: boolean }) {
-  return (
-    <div
-      className="absolute z-40 end-0 top-full mt-1 card p-0 shadow-sm text-sm max-h-[70vh] overflow-auto"
-      style={{ width: `min(${wide ? "22rem" : "15rem"}, calc(100vw - 2.5rem))` }}
-    >
-      {children}
-    </div>
   );
 }
 

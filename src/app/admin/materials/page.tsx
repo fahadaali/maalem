@@ -1,19 +1,15 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ChevronLeft, FolderPlus } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import Link from "@/components/Link";
-import { PageHeader, Card, Empty } from "@/components/ui";
+import { PageHeader, Empty } from "@/components/ui";
 import FolderTile from "@/components/FolderTile";
-import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import MaterialCard from "@/components/MaterialCard";
-import { createFolder } from "../actions";
-import { getBooks, getCompetencies } from "@/lib/content";
+import { getCompetencies } from "@/lib/content";
 import { getActiveWeeks } from "@/lib/weeks";
 import { toItem } from "@/lib/attachments";
-import { FOLDER_COLORS, folderHex } from "@/lib/folders";
-import AddMaterialForm from "./AddMaterialForm";
-import MaterialFields from "./MaterialFields";
+import { folderHex } from "@/lib/folders";
 import LibraryBoard, { Selectable, type FolderRow, type MaterialRow } from "./LibraryBoard";
 
 export const metadata = { title: "مكتبة المواد" };
@@ -22,7 +18,7 @@ const viewable = (t: string) => t === "application/pdf" || t.startsWith("image/"
 
 export default async function AdminMaterialsPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string; folder?: string }> }) {
   await requireRole("ADMIN");
-  const [books, competencies] = await Promise.all([getBooks(), getCompetencies()]);
+  const competencies = await getCompetencies();
   const { ok, err, folder } = await searchParams;
   const [materials, files, weeks, folders] = await Promise.all([
     db.material.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
@@ -60,11 +56,17 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
         title={open ? open.name : "مكتبة المواد"}
         subtitle={open
           ? (open.note || "مواد هذا المجلد. حدّد مادة ليظهر شريط أدواتها في الأعلى.")
-          : "الكتب الأربعة والقوالب والأدلة في مكان واحد يصل إليه المشاركون. ارفع الملف أو ضع رابطه، ونظّمها في مجلدات."}
+          : "الكتب الأربعة والقوالب والأدلة في مكان واحد يصل إليه المشاركون. ارفع الملفات من «جديد» أو اسحبها إلى الصفحة، ونظّمها في مجلدات."}
       />
       <FormMessage ok={ok} err={err} />
-      <div className="grid md:grid-cols-[1fr_360px] gap-4 items-start">
-        <LibraryBoard materials={rows} folders={folderRows} competencies={competencies} weeks={weeks} here={here}>
+      <LibraryBoard
+        materials={rows}
+        folders={folderRows}
+        competencies={competencies}
+        weeks={weeks}
+        here={here}
+        openFolder={open ? { id: open.id, name: open.name } : null}
+      >
           {open && (
             <Link href="/admin/materials" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink scroll-mt-14">
               <ChevronLeft size={15} className="rotate-180" /> كل المواد
@@ -95,7 +97,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
             {shown.length === 0 ? (
               <Empty>
                 {open
-                  ? "لا مواد في هذا المجلد بعد. حدّد مادة من «كل المواد» ثم انقلها إليه من الشريط."
+                  ? "لا مواد في هذا المجلد بعد. ارفع ملفاً من «جديد»، أو اسحبه إلى هذه الصفحة، أو حدّد مادة من «كل المواد» وانقلها إليه من الشريط."
                   : materials.length === 0 && folders.length === 0
                     ? "لا مواد بعد. ابدأ بكتب «نقرأ لنربي» الأربعة وقوالب التقرير وبطاقة القراءة."
                     : "كل المواد داخل مجلداتها."}
@@ -111,50 +113,7 @@ export default async function AdminMaterialsPage({ searchParams }: { searchParam
               </div>
             )}
           </section>
-        </LibraryBoard>
-
-        <div className="space-y-4">
-          <Card title="إضافة مادة">
-            {/* نموذج عميل: يرفع الملف على مسار الرفع ثم يستدعي الإجراء بالنص وحده */}
-            <AddMaterialForm>
-              <MaterialFields competencies={competencies} weeks={weeks} withFile folders={folders} />
-            </AddMaterialForm>
-            <div className="border-t border-line mt-4 pt-3 text-xs text-muted">
-              <div className="font-medium text-ink-2 mb-1">كتب البرنامج المقررة</div>
-              <ul className="list-disc ps-4 space-y-0.5">
-                {books.filter((b) => b.pages > 0).map((b) => (
-                  <li key={b.order}>{b.title} — {b.author} ({b.availability})</li>
-                ))}
-              </ul>
-            </div>
-          </Card>
-
-          <Card title="مجلد جديد">
-            <p className="text-xs text-muted mb-3">
-              المجلدات تنظيمٌ للمكتبة كما يراها المشاركون. والمادة بلا مجلد تبقى ظاهرة لهم تحت «بلا مجلد»، فلا يلزم أن تُصنَّف كل مادة.
-            </p>
-            <form action={createFolder}>
-              <div className="field">
-                <label className="label">الاسم</label>
-                <input name="name" className="input" required maxLength={60} placeholder="قوالب التقارير" />
-              </div>
-              <div className="field">
-                <label className="label">اللون</label>
-                <select name="color" className="select" defaultValue="gray">
-                  {Object.entries(FOLDER_COLORS).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label className="label">وصف يظهر تحت اسم المجلد (اختياري)</label>
-                <input name="note" className="input" maxLength={160} />
-              </div>
-              <SubmitButton className="btn-sm" pendingText="جارٍ الإنشاء…"><FolderPlus size={14} /> إنشاء المجلد</SubmitButton>
-            </form>
-          </Card>
-        </div>
-      </div>
+      </LibraryBoard>
     </>
   );
 }

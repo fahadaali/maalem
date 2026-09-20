@@ -26,6 +26,38 @@ export const ALLOWED_TYPES = new Set([
 /** ما يرشّحه منتقي الملفات. تلميحٌ لا شرط: يُتجاوز بالسحب وبتغيير الامتداد، والفحص بعده */
 export const FILE_ACCEPT = ".pdf,.doc,.docx,.pptx,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.mp4";
 
+/** حدُّ الدفعة الواحدة في رفع المكتبة: لا طلبٌ ضخم، ولا قائمةُ تقدّمٍ لا تُقرأ */
+export const MAX_BATCH_FILES = 20;
+
+/**
+ * عنوان المادة من اسم ملفها: يُحذف الامتداد وحده، ولا يُمَسّ ما سواه.
+ *
+ * ولا تُبدَّل الشُرَط والسفليات فراغات: التخمين يُخطئ أسماءً فيها شرطةٌ مقصودة،
+ * والمدير يُهذّب العنوان من «تعديل» في الشريط إن شاء. والامتدادُ وحده يُحذف
+ * لأنه اسم الصيغة لا اسم المادة.
+ */
+export function titleFromFilename(name: string): string {
+  const raw = name.trim();
+  const dot = raw.lastIndexOf(".");
+  // `dot > 0` يحفظ ما يبدأ بنقطة، و«ثمانية محارف» تمنع قطع جملةٍ بعد نقطةٍ ليست امتداداً
+  const base = dot > 0 && raw.length - dot - 1 <= 8 ? raw.slice(0, dot) : raw;
+  const clean = base.replace(/\s+/g, " ").trim();
+  return (clean || raw || "ملف").slice(0, 120);
+}
+
+/** مستندات المكتب قوالبُ تُملأ، وما سواها — PDFاً وصورةً وصوتاً — دليلٌ يُقرأ أو يُسمع */
+const TEMPLATE_TYPES = new Set([
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+
+/** نوع المادة من نوع محتوى ملفها. يُشتقّ في الخادم من المرفق، فلا يُرسله العميل */
+export function kindFromContentType(t: string): "TEMPLATE" | "GUIDE" {
+  return TEMPLATE_TYPES.has(t) ? "TEMPLATE" : "GUIDE";
+}
+
 /** حجمٌ مقروء: «1.4 م.ب» أو «320 ك.ب» */
 export function fileSize(n: number): string {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(n / 1024)} ك.ب`;
