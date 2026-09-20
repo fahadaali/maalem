@@ -7,7 +7,7 @@ import WarmTabs from "./WarmTabs";
 import AppBadge from "@/components/AppBadge";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
-import { db } from "@/lib/db";
+import { db, optional } from "@/lib/db";
 import LogoutButton from "@/components/LogoutButton";
 
 /**
@@ -18,7 +18,8 @@ import LogoutButton from "@/components/LogoutButton";
 export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string; group?: string };
 
 export default async function AppShell({ user, items, children, base }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string }) {
-  const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
+  // شارةُ الإشعارات زينة، وهذا الهيكل ترسمه الأدوار الثلاثة كلُّها: تعذُّرُ قراءتها يُسقط الشارة لا الصفحة
+  const unread = await optional(() => db.notification.count({ where: { userId: user.id, readAt: null } }), 0, "shell.badge-skipped");
   const tabs = items.filter((i) => i.tab);
   const sideItems = items.filter((i) => !i.tabOnly);
   // المجموعات بترتيب ورودها في القائمة، وما لا مجموعة له يتصدّر بلا عنوان

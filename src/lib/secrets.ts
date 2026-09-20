@@ -62,6 +62,42 @@ export async function getCronSecret(): Promise<string> {
   return getOrCreate(KEYS.cron, () => randomSecret(24));
 }
 
+/**
+ * يقرأ مفتاح الكرون **بلا توليد**. فالاستيثاق يسبق الإقلاع في مساري الكرون، وما
+ * يسبق الاستيثاق لا يجوز أن يكتب في القاعدة — وإلا صار كلُّ غريبٍ قادراً على
+ * إنشاء سرٍّ بطلبٍ واحد. يعيد `null` إن لم تُعدّ المنصة بعد.
+ */
+export async function peekCronSecret(): Promise<string | null> {
+  const fromEnv = process.env.CRON_SECRET;
+  if (fromEnv) return fromEnv;
+  const hit = cache.get(KEYS.cron);
+  if (hit) return hit;
+  const found = await read(KEYS.cron).catch(() => null);
+  if (found) cache.set(KEYS.cron, found);
+  return found;
+}
+
+/**
+ * مقارنةُ سرٍّ ثابتةُ الزمن.
+ *
+ * فمقارنة النصوص `a === b` تخرج عند أول حرفٍ مختلف، وزمنُ خروجها يُفشي طول
+ * البادئة الصحيحة — فيُستخرج المفتاح حرفاً حرفاً. وتُبصَم القيمتان أولاً لأن
+ * البصمتين متساويتا الطول دائماً، فلا يُفشي الطولُ نفسه شيئاً.
+ */
+export async function secretMatches(given: string | null | undefined, expected: string | null | undefined): Promise<boolean> {
+  if (!given || !expected) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(given)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
 export type Vapid = { publicKey: string; privateKey: string; subject: string };
 
 /** مفاتيح إشعارات الدفع: تُولَّد مرة واحدة وتبقى ثابتة حتى لا تتعطل اشتراكات الأجهزة */

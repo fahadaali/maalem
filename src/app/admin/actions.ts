@@ -402,7 +402,7 @@ export async function sendNotification(formData: FormData) {
   }
   if (!ids.length) fail("/admin/notifications", "لا مستقبلين لهذا الإشعار");
   const r = await notifyUsers(ids, { title, body, url: url || undefined });
-  ok("/admin/notifications", `أُرسل الإشعار إلى ${r.inApp} مستخدم (${r.pushed} إشعار دفع)`);
+  ok("/admin/notifications", `أُدرج الإشعار لـ${r.queued} مستخدماً، ويصل إلى أجهزتهم خلال دقائق`);
 }
 
 // ——— قوائم التحقق لمراحل المشروع ———
@@ -1036,7 +1036,7 @@ export async function sendReminderNow(formData: FormData) {
   if (r.sentAt) fail("/admin/reminders", "أُرسل من قبل");
   const res = await dispatchReminder(r);
   revalidatePath("/admin/reminders");
-  ok("/admin/reminders", `أُرسل إلى ${res.inApp} مستخدماً (دفع: ${res.pushed}، بريد: ${res.emailed})`);
+  ok("/admin/reminders", `أُدرج لـ${res.queued} مستخدماً، ويصل إلى أجهزتهم خلال دقائق`);
 }
 
 // ——— قناة البريد ———

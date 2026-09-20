@@ -46,7 +46,7 @@ export async function reminderRecipients(r: Target): Promise<string[]> {
  */
 export async function dispatchReminder(r: { id: string; title: string; body: string; url: string | null; channels: string } & Target) {
   const claimed = await db.reminder.updateMany({ where: { id: r.id, sentAt: null }, data: { sentAt: new Date() } });
-  if (claimed.count !== 1) return { inApp: 0, pushed: 0, emailed: 0 };
+  if (claimed.count !== 1) return { queued: 0 };
   const recipients = await reminderRecipients(r);
   return notifyUsers(
     recipients,

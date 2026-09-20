@@ -1,7 +1,7 @@
 import Link from "@/components/Link";
 import { Suspense } from "react";
 import { requireParticipantView } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, optional } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import WeekCard from "@/components/WeekCard";
@@ -29,7 +29,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const [todayCard, report, unread, pendingQuizzes, openAssignments, activeAssignments, me, diagnostics, cohort, weekStates, weekFiles] = await Promise.all([
     db.readingCard.findFirst({ where: { userId: user.id, date: { gte: new Date(`${today}T00:00:00+03:00`), lt: new Date(`${today}T23:59:59+03:00`) } } }),
     weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week: weekNo } } }) : null,
-    db.notification.count({ where: { userId: user.id, readAt: null } }),
+    // زينةٌ كشارة الهيكل — و`Promise.all` يُسقط الصفحة كلَّها برفضِ واحد منها
+    optional(() => db.notification.count({ where: { userId: user.id, readAt: null } }), 0, "home.badge-skipped"),
     db.quiz.findMany({ where: { published: true, attempts: { none: { userId: user.id } }, ...(await cohortWhere()) }, select: { id: true, title: true }, take: 3 }),
     db.assignment.findMany({ where: { dueAt: { gte: now }, submissions: { none: { userId: user.id } }, ...(await cohortWhere()) }, orderBy: { dueAt: "asc" }, take: 3 }),
     db.assignment.count({ where: { dueAt: { gte: now }, ...(await cohortWhere()) } }),

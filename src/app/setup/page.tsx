@@ -1,6 +1,6 @@
 import Link from "@/components/Link";
 import { redirect } from "next/navigation";
-import { needsSetup, schemaReady } from "@/lib/setup";
+import { needsSetup, schemaReady, migrationPlan, tooMuchForRequest, MIGRATE_COMMAND } from "@/lib/setup";
 import { runSetup } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
@@ -12,9 +12,14 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const { err } = await searchParams;
   if (!(await needsSetup())) redirect("/login");
   const ready = await schemaReady();
+  // ما لا يُنشأ من المتصفح يُقال قبل الضغط على الزرّ، لا بعده
+  const tooMuch = ready ? null : tooMuchForRequest(await migrationPlan());
   const checks = [
     { label: "قاعدة البيانات متصلة", ok: true },
-    { label: ready ? "الجداول موجودة" : "الجداول غير موجودة — ستُنشأ الآن", ok: true },
+    {
+      label: ready ? "الجداول موجودة" : tooMuch ? `الجداول غير موجودة — طبّقها أولاً: ${MIGRATE_COMMAND}` : "الجداول غير موجودة — ستُنشأ الآن",
+      ok: !tooMuch,
+    },
     { label: "الأسرار تُولَّد تلقائياً وتُحفظ في قاعدة البيانات", ok: true },
     { label: `تخزين المرفقات: ${storageBackend() === "R2" ? "R2" : "محلي"}`, ok: true },
     { label: "مفاتيح إشعارات الدفع تُولَّد مع الإعداد", ok: true },

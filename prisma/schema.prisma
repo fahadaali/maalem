@@ -315,8 +315,13 @@ model Notification {
   url       String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+  /// فارغةً: في الطابور لم يُسلَّم بعد. ويختمها المُصرِّف بوقت محاولته
+  deliveredAt DateTime?
+  /// نيّةُ المُشعِر في البريد، تُحمل إلى المُصرِّف: fallback | always | never
+  emailMode   String    @default("fallback")
 
   @@index([userId, createdAt])
+  @@index([deliveredAt])
 }
 
 model Attendance {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { dispatchReminder } from "@/lib/reminders";
-import { getCronSecret } from "@/lib/secrets";
+import { peekCronSecret, secretMatches } from "@/lib/secrets";
 import { ensureSchema } from "@/lib/setup";
 
 /**
@@ -12,9 +12,10 @@ import { ensureSchema } from "@/lib/setup";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") ?? req.headers.get("authorization")?.replace("Bearer ", "");
-  // المجدول لا يمرّ بالجلسة التي تطبّق الترحيلات، فتُضمن هنا قبل لمس جداول قد تكون جديدة
+  // الاستيثاق قبل الإقلاع: طلبٌ مجهول لا يُطلق ترحيلاً ولا بذراً ولا يكتب سرّاً
+  if (!(await secretMatches(key, await peekCronSecret()))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // والمجدول لا يمرّ بالجلسة التي تطبّق الترحيلات، فتُضمن هنا قبل لمس جداول قد تكون جديدة
   await ensureSchema();
-  if (!key || key !== (await getCronSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const now = new Date();
   const due = await db.reminder.findMany({ where: { sentAt: null, sendAt: { lte: now } }, orderBy: { sendAt: "asc" }, take: 20 });
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
 
   for (const r of due) {
     const res = await dispatchReminder(r);
-    results.push({ id: r.id, recipients: res.inApp });
+    results.push({ id: r.id, recipients: res.queued });
   }
 
   return NextResponse.json({ ok: true, dispatched: results.length, results });

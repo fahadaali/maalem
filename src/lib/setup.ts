@@ -1,5 +1,6 @@
-import { db } from "./db";
+import { db, isWorkers } from "./db";
 import { MIGRATIONS } from "./schema-sql";
+import { log, logError, reason } from "./log";
 import { BUDGET, PROGRAM, WEEKS, BOOKS, CHARTER, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC, COMPLETION_LEVELS, COMPETENCIES } from "./program";
 import { splitTasks } from "./report";
 
@@ -29,15 +30,39 @@ async function tableExists(name: string): Promise<boolean> {
   }
 }
 
+/** عبارات ملف ترحيلٍ مفردةً: تُحذف أسطر التعليق ثم تُشقّ على فاصلةٍ منقوطة في آخر السطر */
+function statementsOf(sql: string): string[] {
+  return sql
+    .split(/;\s*\n/)
+    .map((s) => s.replace(/^\s*--.*$/gm, "").trim())
+    .filter(Boolean);
+}
+
+/** إعادةُ بناء جدولٍ: لا تُنفَّذ في طلب مستخدم بحال، فD1 بلا معاملات */
+const DESTRUCTIVE = /\bDROP\s+TABLE\b|\bRENAME\s+TO\b/i;
+
+export type MigrationPlan = {
+  /** تُسجَّل مطبَّقةً بلا تنفيذ */
+  baseline: string[];
+  /** تُنفَّذ ثم تُسجَّل */
+  pending: { name: string; statements: string[] }[];
+  /** مجموع ما سيُنفَّذ — به يُقاس الإقلاع على سقف الطلبات الفرعية */
+  statements: number;
+  /** أولُ ترحيلٍ معلَّقٍ يعيد بناء جدول، أو null */
+  destructive: string | null;
+};
+
 /**
- * يطبّق ملفات الترحيل غير المطبّقة عبر اتصال Prisma (يعمل على D1 وSQLite)،
- * ويسجّلها في جدول d1_migrations ليتوافق مع wrangler.
+ * ما الذي يلزم تطبيقه؟ قارئةٌ محضة: استعلامان في الحالة المعتادة (إنشاء جدول
+ * السجل إن غاب، ثم قراءة أسمائه)، فيُعرف حجم العمل **قبل** الشروع فيه.
+ *
+ * وشقُّها عن التنفيذ هو ما يتيح الرفض: 158 عبارة لا يمكن أن تكتمل في خمسين
+ * طلباً فرعياً، فمعرفةُ العدد سلفاً تمنع بدءاً يموت في المنتصف.
  */
-export async function applyMigrations(): Promise<string[]> {
+export async function migrationPlan(): Promise<MigrationPlan> {
   // بلا AUTOINCREMENT: إنشاؤه يستلزم جدول sqlite_sequence الذي يمنعه D1 من داخل التطبيق
   await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY, name TEXT UNIQUE, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
   const applied = new Set((await db.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM d1_migrations`)).map((r) => r.name));
-  const done: string[] = [];
   /**
    * قاعدة أُنشئت بـ prisma db push (المسار المحلي في README): جداولها كاملة على
    * آخر صورة للمخطط، لكن لا سجل لها في d1_migrations. تنفيذ الترحيلات عليها
@@ -45,53 +70,79 @@ export async function applyMigrations(): Promise<string[]> {
    * يفشل في كل طلب ولا تُبذر بيانات الخطة أبداً. فتُسجَّل الترحيلات كلها كمطبَّقة
    * دون تنفيذ، بشرط وجود آخر ما أضافته الترحيلات فعلاً.
    */
+  let baseline: string[] = [];
   if (applied.size === 0 && (await schemaReady()) && (await tableExists(BASELINE_SENTINEL.table))) {
     // أسماء الملفات مرقَّمة بأصفار بادئة، فمقارنة النصوص ترتيبٌ صحيح
-    const baselined = MIGRATIONS.filter((m) => m.name <= BASELINE_SENTINEL.through);
-    for (const m of baselined) {
-      await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);
-      applied.add(m.name);
-    }
-    console.log("migrations baselined:", baselined.length);
+    baseline = MIGRATIONS.filter((m) => m.name <= BASELINE_SENTINEL.through).map((m) => m.name);
+    for (const name of baseline) applied.add(name);
   }
-  for (const m of MIGRATIONS) {
-    if (applied.has(m.name)) continue;
-    const statements = m.sql
-      .split(/;\s*\n/)
-      .map((s) => s.replace(/^\s*--.*$/gm, "").trim())
-      .filter(Boolean);
-    for (const st of statements) {
-      // بعض تعليمات PRAGMA لا تقبلها D1 من داخل التطبيق، وهي إرشادية هنا
-      if (/^PRAGMA\s/i.test(st)) {
-        await db.$executeRawUnsafe(st).catch(() => {});
-        continue;
-      }
-      /**
-       * عمودٌ أضافه prisma db push قبل أن يجري ترحيله — وهو المسار المحلي في
-       * README — ليس خطأً يوقف الإقلاع: المطلوب حاصل. ولولا التجاوز لفشل الإقلاع
-       * في كل طلب ولم تُبذر بيانات الخطة أبداً.
-       */
-      if (/^ALTER\s+TABLE[\s\S]+ADD\s+COLUMN/i.test(st)) {
-        await db.$executeRawUnsafe(st).catch((e: unknown) => {
-          if (!/duplicate column/i.test(String((e as Error)?.message ?? e))) throw e;
-        });
-        continue;
-      }
-      /**
-       * وكذلك جدولٌ أو فهرسٌ أنشأه prisma db push قبل ترحيله: «موجود سلفاً» ليس
-       * خطأً يوقف الإقلاع، فالمطلوب حاصل. ولولا التجاوز لفشل الإقلاع في كل طلب
-       * ولم تُبذر بيانات الخطة أبداً — كما وقع فعلاً مع أول ترحيلٍ ينشئ جدولاً
-       * بعد اعتماد هذا المسار في README.
-       */
-      if (/^CREATE\s+(TABLE|(UNIQUE\s+)?INDEX)/i.test(st)) {
-        await db.$executeRawUnsafe(st).catch((e: unknown) => {
-          if (!/already exists/i.test(String((e as Error)?.message ?? e))) throw e;
-        });
-        continue;
-      }
-      await db.$executeRawUnsafe(st);
+  const pending = MIGRATIONS.filter((m) => !applied.has(m.name)).map((m) => ({ name: m.name, statements: statementsOf(m.sql) }));
+  return {
+    baseline,
+    pending,
+    statements: pending.reduce((n, m) => n + m.statements.length, 0),
+    destructive: pending.find((m) => m.statements.some((st) => DESTRUCTIVE.test(st)))?.name ?? null,
+  };
+}
+
+/**
+ * تسجيل ترحيلٍ مطبَّقاً. `INSERT OR IGNORE` لا `INSERT`: نسختان تُقلعان معاً لا
+ * تتسابقان على قيد `UNIQUE`، فتمرّ الثانية صامتةً بدل أن تُسقط الإقلاع كله
+ * بخطأٍ نتيجتُه محقَّقةٌ أصلاً.
+ */
+async function register(name: string): Promise<void> {
+  await db.$executeRawUnsafe(`INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${name.replace(/'/g, "''")}')`);
+}
+
+/**
+ * عبارةٌ واحدة. ما تعذّر منها يُسجَّل باسم ترحيله ونصّه ثم يُرمى: فموضعُ التوقف
+ * معلومٌ في السجل، والترحيلُ لا يُسجَّل مطبَّقاً وقد توقف في منتصفه.
+ */
+async function runStatement(migration: string, st: string): Promise<void> {
+  try {
+    // بعض تعليمات PRAGMA لا تقبلها D1 من داخل التطبيق، وهي إرشادية هنا
+    if (/^PRAGMA\s/i.test(st)) {
+      await db.$executeRawUnsafe(st).catch(() => {});
+      return;
     }
-    await db.$executeRawUnsafe(`INSERT INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}')`);
+    /**
+     * عمودٌ أضافه prisma db push قبل أن يجري ترحيله — وهو المسار المحلي في
+     * README — ليس خطأً يوقف الإقلاع: المطلوب حاصل. ولولا التجاوز لفشل الإقلاع
+     * في كل طلب ولم تُبذر بيانات الخطة أبداً.
+     */
+    if (/^ALTER\s+TABLE[\s\S]+ADD\s+COLUMN/i.test(st)) {
+      await db.$executeRawUnsafe(st).catch((e: unknown) => {
+        if (!/duplicate column/i.test(reason(e))) throw e;
+      });
+      return;
+    }
+    /**
+     * وكذلك جدولٌ أو فهرسٌ أنشأه prisma db push قبل ترحيله: «موجود سلفاً» ليس
+     * خطأً يوقف الإقلاع، فالمطلوب حاصل. ولولا التجاوز لفشل الإقلاع في كل طلب
+     * ولم تُبذر بيانات الخطة أبداً — كما وقع فعلاً مع أول ترحيلٍ ينشئ جدولاً
+     * بعد اعتماد هذا المسار في README.
+     */
+    if (/^CREATE\s+(TABLE|(UNIQUE\s+)?INDEX)/i.test(st)) {
+      await db.$executeRawUnsafe(st).catch((e: unknown) => {
+        if (!/already exists/i.test(reason(e))) throw e;
+      });
+      return;
+    }
+    await db.$executeRawUnsafe(st);
+  } catch (e) {
+    logError("boot.statement-failed", { migration, statement: st.slice(0, 200), reason: reason(e) });
+    throw e;
+  }
+}
+
+/** ينفّذ خطةً قُرئت سلفاً، ويسجّلها في جدول d1_migrations ليتوافق مع wrangler */
+export async function applyPending(plan: MigrationPlan): Promise<string[]> {
+  for (const name of plan.baseline) await register(name);
+  if (plan.baseline.length) log("boot.baselined", { count: plan.baseline.length });
+  const done: string[] = [];
+  for (const m of plan.pending) {
+    for (const st of m.statements) await runStatement(m.name, st);
+    await register(m.name);
     done.push(m.name);
   }
   return done;
@@ -146,15 +197,9 @@ export async function ensureProgramData(cohortId: string): Promise<void> {
         field: w.field,
       })),
     });
-  } else {
-    /**
-     * الدفعات المبذورة قبل إضافة صف المعايشة تبقى بلا نصّه. يُكمَّل هنا للصفوف
-     * الفارغة وحدها، فلا يُطمس ما حرّره المدير بيده.
-     */
-    for (const w of WEEKS.filter((x) => x.field)) {
-      await db.programWeek.updateMany({ where: { cohortId, number: w.number, field: "" }, data: { field: w.field } });
-    }
   }
+  // وإكمالُ صفّ المعايشة للدفعات المبذورة قبل إضافته صار ترحيلاً — 0015 — يجري
+  // مرةً واحدة أبداً وقت النشر، بعد أن كان عشر رحلاتٍ متسلسلة في كل إقلاع.
   /**
    * مهام الأسبوع صفوفاً: كان الأسبوع نصّاً واحداً تُفصل مهامه بـ « + »، فصار لكل
    * مهمة صفٌّ يرصد عليه المشارك إنجازه. وSQL لا يشقّ النصوص، فالاشتقاق هنا حيث
@@ -207,40 +252,119 @@ export async function ensureProgramData(cohortId: string): Promise<void> {
   }
 }
 
-let bootPromise: Promise<void> | null = null;
+/**
+ * بصمةُ الحالة المتوقَّعة، مشقوقةً شِقَّين: نسخةُ المخطط `m` ونسخةُ البذر `s`.
+ *
+ * وكانت واحدةً تخلطهما، فكلُّ ملف `.sql` جديد — وهو تغيُّرٌ في المخطط وحده —
+ * يُبطلها فيُعاد فحص البذر كلِّه: تسعُ رحلاتٍ إلى القاعدة لا تُغيّر شيئاً، في
+ * أول طلبٍ يصل كلَّ نسخةٍ عاملة بعد النشر.
+ */
+const SCHEMA_MARK = `m${MIGRATIONS.length}`;
+/** تُرفع بيدٍ حين يتغيّر محتوى `ensureProgramData` فيلزم فحصه ثانية */
+const SEED_VERSION = 1;
+const SEED_MARK = `s${SEED_VERSION}`;
+const BOOT_STAMP = `${SCHEMA_MARK}.${SEED_MARK}`;
+const BOOT_KEY = "boot:stamp";
+
+/**
+ * حالةُ الإقلاع **بياناتٌ فقط**: بولياناتٌ وأرقام، ولا وعد في نطاق الوحدة بحال.
+ *
+ * فقد كان هنا `bootPromise` مشتركاً بين الطلبات، وWorkers يمنع انتظار إدخال/إخراج
+ * أُنشئ في سياق طلبٍ آخر فيرمي `Cannot perform I/O on behalf of a different
+ * request` — وهو ما يقع حين يطول الإقلاع ويتزاحم الطلب، أي بعد النشر بالضبط.
+ * ولأنها بياناتٌ صرفة، فتزاحمُ عشرة طلبات يعني أن كلاً منها يُقلع **في سياقه هو**
+ * ولا شيء يعبر الحدود. وهو مقبولٌ لأن الحالة المستقرة استعلامٌ واحد، ولأن كل
+ * كتابةٍ هنا متكافئة (`INSERT OR IGNORE` و`upsert` و`createMany` محروسةٌ بعدّ).
+ */
+let booted = false;
+let retryAfter = 0;
+let failures = 0;
+
+/** تراجعٌ أُسّي يُصفَّر عند أول نجاح: بلا مهلةٍ كان كلُّ طلبٍ يُعيد المحاولة — عاصفة */
+const BACKOFF_MS = [5_000, 15_000, 60_000, 300_000, 900_000];
+
+/**
+ * سقفُ ما يُنفَّذ من عبارات في طلب مستخدم. أُخذ من حدّ الخطة المجانية — خمسون
+ * طلباً فرعياً — بعد طرح ما يحتاجه الطلب نفسه من قراءاتٍ وكتابات.
+ */
+const RUNTIME_STATEMENT_BUDGET = 12;
+/** مهلة الرفض: العلاج يدويٌّ، فلا معنى لإعادة المحاولة سريعاً */
+const REFUSE_MS = 900_000;
+export const MIGRATE_COMMAND = "npx wrangler d1 migrations apply maalem-db --remote";
+
+/**
+ * هل يتجاوز هذا القدرُ ما يُنفَّذ في طلبٍ واحد؟ يعيد سببَ المنع أو `null`.
+ *
+ * سقفُ الطلبات الفرعية قيدٌ على Workers وحده، فمحلياً لا حدّ. وأما هناك:
+ * ترحيلٌ لا يمكن أن يكتمل يموت في منتصفه — وD1 بلا معاملات — فيترك القاعدة في
+ * حالةٍ مسمومة تفشل أبداً. ونصفُ فرصةٍ لتخريب القاعدة عند كل نسخةٍ باردة أسوأ
+ * من صفحةٍ تُخدَم منقوصةً وسطرٍ يقول ما العلاج.
+ */
+export function tooMuchForRequest(plan: MigrationPlan): string | null {
+  if (!isWorkers) return null;
+  if (plan.destructive) return `الترحيل ${plan.destructive} يعيد بناء جدول، ولا تُنفَّذ إعادةُ البناء في طلب`;
+  if (plan.statements > RUNTIME_STATEMENT_BUDGET) return `${plan.statements} عبارة، والحدّ في الطلب الواحد ${RUNTIME_STATEMENT_BUDGET}`;
+  return null;
+}
 
 /**
  * تُنفَّذ مرة واحدة في كل نسخة عاملة: تطبّق أي ترحيل جديد لم يُطبَّق بعد،
  * ثم تبذر بيانات الخطة. بهذا تصل التحديثات إلى قاعدة تعمل بلا تدخل يدوي.
- */
-/**
- * بصمة الحالة المتوقعة: عدد الترحيلات المعروفة. تتغير كلما أُضيف ترحيل جديد،
- * فتُعاد التهيئة عندها وحدها.
- */
-const BOOT_STAMP = `v${MIGRATIONS.length}`;
-const BOOT_KEY = "boot:stamp";
-
-/**
- * تُنفَّذ مرة واحدة في كل نسخة عاملة. الحالة الشائعة — قاعدة مهيأة أصلاً —
- * تكلّف استعلاماً واحداً يقرأ البصمة، بدل عشر رحلات تتحقق من كل جدول.
+ *
+ * والحالة الشائعة — قاعدة مهيأة أصلاً — تكلّف استعلاماً واحداً يقرأ البصمة.
  * وهذا يقع على أول طلب في كل نسخة عاملة جديدة، لا مرة واحدة في عمر المنصة،
  * فكان أثقل ما في فتح التطبيق البارد.
  */
-export function ensureSchema(): Promise<void> {
-  bootPromise ??= (async () => {
-    try {
-      const stamp = await db.setting.findUnique({ where: { key: BOOT_KEY } }).catch(() => null);
-      if (stamp?.value === BOOT_STAMP) return;
+export async function ensureSchema(): Promise<void> {
+  if (booted || Date.now() < retryAfter) return;
+  try {
+    // `catch` على القراءة وحدها: أول إقلاعٍ لقاعدةٍ فارغة لا جدول `Setting` فيه،
+    // وهو حالُ البدء المشروع لا عطلاً — فيُقرأ كبصمةٍ غائبة ويمضي الإقلاع
+    const stamp = (await db.setting.findUnique({ where: { key: BOOT_KEY } }).catch(() => null))?.value ?? "";
+    if (stamp === BOOT_STAMP) {
+      booted = true;
+      failures = 0;
+      return;
+    }
+    const [schemaMark, seedMark] = stamp.split(".");
 
-      const applied = await applyMigrations();
-      if (applied.length) console.log("applied migrations:", applied.join(", "));
+    if (schemaMark !== SCHEMA_MARK) {
+      const plan = await migrationPlan();
+      // الرفض الصريح: تُخدَم الصفحة منقوصةً، ويقول سطرٌ واحدٌ ما العلاج
+      const tooMuch = tooMuchForRequest(plan);
+      if (tooMuch) {
+        logError("boot.refuse", {
+          why: tooMuch,
+          statements: plan.statements,
+          migrations: plan.pending.map((m) => m.name),
+          remedy: MIGRATE_COMMAND,
+        });
+        retryAfter = Date.now() + REFUSE_MS;
+        return;
+      }
+      const done = await applyPending(plan);
+      if (done.length) log("boot.migrated", { migrations: done, statements: plan.statements });
+    }
+
+    if (seedMark !== SEED_MARK) {
       const cohortId = await ensureCohort();
       await ensureProgramData(cohortId);
-      await db.setting.upsert({ where: { key: BOOT_KEY }, update: { value: BOOT_STAMP }, create: { key: BOOT_KEY, value: BOOT_STAMP } });
-    } catch (e) {
-      bootPromise = null;
-      console.error("schema boot failed:", (e as Error).message);
     }
-  })();
-  return bootPromise;
+
+    await db.setting.upsert({ where: { key: BOOT_KEY }, update: { value: BOOT_STAMP }, create: { key: BOOT_KEY, value: BOOT_STAMP } });
+    // النجاح يُسجَّل بعد كتابة البصمة وحدها: ما دونها إقلاعٌ لم يتمّ
+    booted = true;
+    failures = 0;
+    log("boot.done", { stamp: BOOT_STAMP, from: stamp || "(none)" });
+  } catch (e) {
+    const wait = BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)];
+    failures += 1;
+    retryAfter = Date.now() + wait;
+    logError("boot.failed", { attempt: failures, retryInMs: wait, reason: reason(e) });
+  }
+}
+
+/** حالةُ الإقلاع كما تراها هذه النسخة العاملة — تُقرأ من الذاكرة بلا استعلام */
+export function bootState() {
+  return { stamp: BOOT_STAMP, booted, failures, retryInMs: Math.max(0, retryAfter - Date.now()), migrations: MIGRATIONS.length };
 }
