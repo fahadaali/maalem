@@ -244,8 +244,37 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
 .shell-tabs { display: flex; }
 /* شريط التحديث يجلس فوق شريط التبويبات على الجوال، لا عليه */
 .update-banner { bottom: calc(3.4rem + env(safe-area-inset-bottom)); }
+
+/*
+  مدخل الإضافة في المكتبة: زرٌّ عائمٌ في ذيل الصفحة على الجوال حيث يبلغه الإبهام،
+  وزرٌّ في شريط التحكم حيث تتّسع الشاشة. وشرطُهما شرطُ شريط التبويبات نفسه — لا
+  نقطةَ توقّفٍ بالعرض وحده — وإلا ظهرا معاً على جوالٍ أفقيٍّ عريضٍ قصير، وجلس
+  العائمُ على التبويبات.
+*/
+:root { --float-bottom: calc(4.1rem + env(safe-area-inset-bottom)); }
+/*
+  وشريط التحديث يجلس في هذا الحيّز نفسه وفوقه في الطبقات، فيُرفع العائم فوق
+  ارتفاعه ما دام ظاهراً ولا يُنازَع في طبقته: زرُّ «تحديث الآن» أولى بالنقر.
+*/
+body:has(.update-banner) { --float-bottom: calc(9.6rem + env(safe-area-inset-bottom)); }
+.library-fab, .library-tray {
+  position: fixed;
+  /* طرفُ السطر المنطقيّ: يسارُ الشاشة في العربية */
+  inset-inline-end: 1rem;
+  bottom: var(--float-bottom);
+  /* فوق شريط المكتبة (30) ومطواته (40)، ودون شريط التحديث (50) */
+  z-index: 45;
+}
+.library-new-bar { display: none; }
+/* فسحةٌ في ذيل الصفحة بقدر العائم: يعلو المحتوى، فبغيرها يُغطّي آخر صفٍّ منه */
+.library-fab-space { height: 4rem; }
+
 @media (min-width: 768px) and (min-height: 600px) {
   .shell-side { display: flex; }
   .shell-tabs { display: none; }
   .update-banner { bottom: env(safe-area-inset-bottom); }
+  :root { --float-bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+  body:has(.update-banner) { --float-bottom: calc(7rem + env(safe-area-inset-bottom)); }
+  .library-fab, .library-fab-space { display: none; }
+  .library-new-bar { display: inline-flex; }
 }

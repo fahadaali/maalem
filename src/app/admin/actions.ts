@@ -23,6 +23,7 @@ import { ensureProgramData } from "@/lib/setup";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 import { isFolderColor } from "@/lib/folders";
+import { MAX_BATCH_FILES, kindFromContentType, titleFromFilename } from "@/lib/files";
 import { isHelpAudience } from "@/lib/help";
 
 function ok(path: string, msg: string): never {
@@ -498,6 +499,68 @@ export async function saveMaterial(formData: FormData) {
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
   ok(back, id ? "تم تحديث المادة" : `تمت إضافة المادة${attachmentId ? " وملفها" : ""} وإشعار المشاركين`);
+}
+
+/**
+ * ترتيبٌ بعد آخر مادة في المجموعة نفسها، فلا تتصدّر المرفوعةُ حديثاً ما قبلها.
+ * والبدء من صفر لا من واحد كما في `nextFolderOrder`: `moveMaterialOrder` يُرقّم
+ * المجموعة بتسلسلها المعروض من صفر، فبدءٌ من واحدٍ يخالفه.
+ */
+async function nextMaterialOrder(folderId: string | null): Promise<number> {
+  const last = await db.material.findFirst({ where: { folderId }, orderBy: { order: "desc" }, select: { order: true } });
+  return (last?.order ?? -1) + 1;
+}
+
+/**
+ * إضافة موادّ دفعةً واحدة من ملفاتٍ رُفعت للتوّ — «رفع ملف» في مكتبة المواد.
+ *
+ * ولم تُستعمل `saveMaterial` في حلقة: آخرُها `redirect()` وهو يُرمى رمياً، فأولُ
+ * ملفٍ يُنهي الحلقة ويترك بقية الملفات مرفوعةً بلا موادّ تحملها — ملفاتٌ في
+ * التخزين لا يعرف بها أحد. فالإجراء واحدٌ يأخذ المعرّفات كلها: يُنشئ ويربط، ثم
+ * يُشعر مرةً ويعيد التوجيه مرة.
+ *
+ * والعنوانُ والنوع يُشتقّان هنا من صفّ المرفق — اسمِه ونوعِ محتواه اللذين كتبهما
+ * مسار الرفع نفسه — لا مما يرسله العميل، فلا يُدَسّ عنوانٌ ولا نوعٌ من خارج.
+ */
+export async function addMaterialsFromUploads(formData: FormData) {
+  const user = await admin();
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
+  const ids = formData.getAll("attachmentIds").map((v) => str(v)).filter(Boolean).slice(0, MAX_BATCH_FILES);
+  if (ids.length === 0) fail(back, "لم يصل أي ملف");
+
+  // المجلد قد يُحذف من نافذةٍ أخرى أثناء الرفع: لا يُهدر المرفوع، يوضع في «بلا مجلد» ويُقال
+  const wanted = str(formData.get("folderId")) || null;
+  const folderId = wanted && (await db.materialFolder.findUnique({ where: { id: wanted }, select: { id: true } })) ? wanted : null;
+
+  /** شرط `where` هو التفويض نفسه، كما في `saveMaterial`: مرفقُ صاحب الطلب، من نوع المادة، ولم يُربط بعد */
+  const rows = await db.attachment.findMany({
+    where: { id: { in: ids }, userId: user.id, kind: "MATERIAL", refId: null },
+    select: { id: true, name: true, contentType: true },
+  });
+  if (rows.length === 0) fail(back, "لم يُعثر على الملفات المرفوعة. أعد المحاولة.");
+
+  // بترتيب ما اختاره المدير لا بترتيب ما ردّته القاعدة
+  const picked = ids.map((id) => rows.find((r) => r.id === id)).filter((r) => !!r);
+
+  let order = await nextMaterialOrder(folderId);
+  const titles: string[] = [];
+  for (const att of picked) {
+    const title = str(titleFromFilename(att.name)) || "ملف";
+    const m = await db.material.create({ data: { title, kind: kindFromContentType(att.contentType), folderId, order: order++ } });
+    await db.attachment.updateMany({ where: { id: att.id, userId: user.id, kind: "MATERIAL", refId: null }, data: { refId: m.id } });
+    titles.push(title);
+  }
+
+  // إشعارٌ واحد للدفعة كلها: خمسةُ ملفات لا تعني خمسَ رنّاتٍ في جيب المشارك
+  await notifyRole("PARTICIPANT", {
+    title: titles.length === 1 ? "مادة جديدة في المكتبة" : "مواد جديدة في المكتبة",
+    body: titles.join("، ").slice(0, 160),
+    url: "/app/materials",
+  });
+  revalidatePath("/admin/materials");
+  revalidatePath("/app/materials");
+  const lost = wanted && !folderId ? " — وقد حُذف المجلد فوُضعت في «بلا مجلد»" : "";
+  ok(back, `${titles.length === 1 ? `أُضيفت «${titles[0]}»` : `أُضيفت ${titles.length} مادة`} وأُشعر المشاركون${lost}`);
 }
 
 export async function deleteMaterial(formData: FormData) {
@@ -1333,15 +1396,17 @@ async function nextFolderOrder(): Promise<number> {
 
 export async function createFolder(formData: FormData) {
   await admin();
+  // العودة إلى حيث كان المدير، كبقية إجراءات المكتبة، لا إلى جذرها دائماً
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const name = str(formData.get("name"));
   const color = str(formData.get("color")) || "gray";
   const note = str(formData.get("note"));
-  if (!name) fail("/admin/materials", "اكتب اسم المجلد");
-  if (!isFolderColor(color)) fail("/admin/materials", "لون غير معروف");
+  if (!name) fail(back, "اكتب اسم المجلد");
+  if (!isFolderColor(color)) fail(back, "لون غير معروف");
   await db.materialFolder.create({ data: { name: name.slice(0, 60), color, note: note || null, order: await nextFolderOrder() } });
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
-  ok("/admin/materials", `أُنشئ مجلد «${name}»`);
+  ok(back, `أُنشئ مجلد «${name}»`);
 }
 
 export async function saveFolder(formData: FormData) {
@@ -1390,14 +1455,18 @@ export async function moveFolder(formData: FormData) {
  */
 export async function deleteFolder(formData: FormData) {
   await admin();
+  const back = safeBack(str(formData.get("back")), "/admin/materials");
   const id = str(formData.get("id"));
+  /** ومن حذف المجلد الذي هو داخله لا يُردّ إلى رابطه: يفتح مجلداً ذهب. فيُردّ إلى الجذر */
+  const inside = new URLSearchParams(back.split("?")[1] ?? "").get("folder") === id;
+  const to = inside ? "/admin/materials" : back;
   const folder = await db.materialFolder.findUnique({ where: { id }, select: { name: true } });
-  if (!folder) fail("/admin/materials", "المجلد غير موجود");
+  if (!folder) fail(to, "المجلد غير موجود");
   const moved = await db.material.updateMany({ where: { folderId: id }, data: { folderId: null } });
   await db.materialFolder.delete({ where: { id } });
   revalidatePath("/admin/materials");
   revalidatePath("/app/materials");
-  ok("/admin/materials", `حُذف مجلد «${folder.name}»${moved.count ? ` ونُقلت ${moved.count} مادة إلى «بلا مجلد»` : ""}`);
+  ok(to, `حُذف مجلد «${folder.name}»${moved.count ? ` ونُقلت ${moved.count} مادة إلى «بلا مجلد»` : ""}`);
 }
 
 /** نقل مادة إلى مجلد أو إخراجها منه — الحقل الفارغ يعني «بلا مجلد» */
