@@ -15,7 +15,7 @@ export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app/week", label: "بطاقات الأسابيع", icon: CalendarDays, group: "أسبوعي", tab: true, short: "الأسابيع" },
   { href: "/app/reading", label: "القراءة", icon: BookOpen, group: "أسبوعي", tab: true },
   { href: "/app/tasks", label: "المهام", icon: ClipboardList, group: "أسبوعي", tab: true },
-  { href: "/app/reports", label: "التقارير الأسبوعية", icon: FileText, group: "أسبوعي" },
+  { href: "/app/reports", label: "التقارير الأسبوعية", icon: FileText, group: "أسبوعي", tab: true, short: "التقارير" },
   { href: "/app/quizzes", label: "الاختبارات", icon: ListChecks, group: "أسبوعي" },
 
   { href: "/app/field", label: "المعايشة الميدانية", icon: Users, group: "مساري" },

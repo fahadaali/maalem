@@ -17,6 +17,11 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader title="التقارير الأسبوعية" subtitle="تقرير رقمي بقالب موحد يُسلَّم كل خميس قبل الساعة العاشرة مساءً (ملحق 1)." />
+      {/* السطر المقابل لما في صفحة المهام: الفرقُ مكتوبٌ على الصفحتين لا يُخمَّن */}
+      <p className="text-sm text-muted -mt-2 mb-4">
+        وهو غيرُ المهمة التطبيقية التي تُرفع وتُقيَّم من ستّ عشرة:{" "}
+        <Link href="/app/tasks" className="underline hover:text-ink">المهام الأسبوعية</Link>
+      </p>
       <div className="space-y-2">
         {activeWeeks.map((w) => {
           const r = byWeek.get(w.number);
