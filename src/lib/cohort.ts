@@ -1,10 +1,21 @@
 import { cache } from "react";
 import { db } from "./db";
 
-/** معرّف الدفعة النشطة — يُقرأ مرة واحدة في كل طلب */
+/**
+ * معرّف الدفعة النشطة — يُقرأ مرة واحدة في كل طلب.
+ *
+ * محروسٌ كأخته `activeCohort` أدناه، وللسبب نفسه: يُقرأ في مواضع كثيرة جداً
+ * عبر `cohortWhere`، فرميُه كان يُسقط الصفحة كلَّها على قاعدةٍ لم تُهيّأ بعد.
+ * ولا يُحرس `ensureCohort()` في `requireCohortId`: عدمُ حراسته هو ما يمنع إنشاء
+ * دفعةٍ مكرّرة عند عثرةٍ عابرة.
+ */
 export const activeCohortId = cache(async (): Promise<string | null> => {
-  const c = await db.cohort.findFirst({ where: { active: true }, select: { id: true } });
-  return c?.id ?? null;
+  try {
+    const c = await db.cohort.findFirst({ where: { active: true }, select: { id: true } });
+    return c?.id ?? null;
+  } catch {
+    return null;
+  }
 });
 
 /**

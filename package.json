@@ -15,7 +15,7 @@
     "postinstall": "prisma generate",
     "cf:build": "npx tsx scripts/build-boot.mts && node scripts/build-sw.mjs && node scripts/copy-pdf-worker.mjs && node scripts/sync-schema-sql.mjs && prisma generate && opennextjs-cloudflare build",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
-    "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
+    "cf:deploy": "npm run cf:build && npm run d1:migrate && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "d1:migrate:local": "wrangler d1 migrations apply maalem-db --local",
     "d1:migrate": "wrangler d1 migrations apply maalem-db --remote",
@@ -26,7 +26,7 @@
     "cf:upload": "opennextjs-cloudflare upload"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.20.6",
+    "@opennextjs/cloudflare": "1.20.6",
     "@prisma/adapter-d1": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
@@ -50,7 +50,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5",
-    "wrangler": "^4.129.0"
+    "wrangler": "4.129.0"
   },
   "engines": {
     "node": ">=22"

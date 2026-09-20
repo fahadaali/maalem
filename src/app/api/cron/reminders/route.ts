@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { notifyUsers } from "@/lib/notify";
 import { todayKey, weekdayIndex } from "@/lib/dates";
 import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
-import { getCronSecret } from "@/lib/secrets";
+import { peekCronSecret, secretMatches } from "@/lib/secrets";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 import { ensureSchema } from "@/lib/setup";
 
@@ -16,9 +16,14 @@ import { ensureSchema } from "@/lib/setup";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") ?? req.headers.get("authorization")?.replace("Bearer ", "");
+  /**
+   * الاستيثاق **قبل** الإقلاع. كان الإقلاع يسبقه، فكان أيُّ غريبٍ يطرق هذا
+   * الباب يُطلق ترحيلاً وبذراً — إغراقٌ بطلبٍ واحد. فصارت كلفةُ المجهول
+   * استعلاماً واحداً مخزَّناً في النسخة، وصفرَ عملٍ في القاعدة.
+   */
+  if (!(await secretMatches(key, await peekCronSecret()))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // والمجدول لا يمرّ بالجلسة التي تطبّق الترحيلات، فتُضمن هنا قبل لمس جداول قد تكون جديدة
   await ensureSchema();
-  const expected = await getCronSecret();
-  if (!key || key !== expected) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const now = new Date();
   const today = todayKey(now);
@@ -27,12 +32,19 @@ export async function GET(req: Request) {
   const week = await getWeekByNumber(weekNo);
   const sent: string[] = [];
 
+  /**
+   * المطالبة **قبل** العمل: إنشاءُ المفتاح هو القفل نفسه، فالقيد `UNIQUE` يردّ
+   * الثانية بلا سباق. وكانت العلامة تُكتب بعد العمل، فكان السقوط في منتصف
+   * الدفعة يُعيدها كلَّها في الاستدعاء التالي — ويصل ما وصل مرتين.
+   */
   const once = async (kind: string, fn: () => Promise<void>) => {
     const k = `reminder:${today}:${kind}`;
-    const exists = await db.setting.findUnique({ where: { key: k } });
-    if (exists) return;
+    try {
+      await db.setting.create({ data: { key: k, value: `claimed at ${Date.now()}` } });
+    } catch {
+      return; // أُرسل اليوم، أو استدعاءٌ آخر يُرسله الآن
+    }
     await fn();
-    await db.setting.create({ data: { key: k, value: `sent at ${Date.now()}` } });
     sent.push(kind);
   };
 

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { createSession } from "@/lib/auth";
 import { seedProgramData } from "@/lib/seed";
-import { applyMigrations, needsSetup, schemaReady } from "@/lib/setup";
+import { applyPending, migrationPlan, tooMuchForRequest, needsSetup, schemaReady, MIGRATE_COMMAND } from "@/lib/setup";
 import { ensureAllSecrets } from "@/lib/secrets";
 import { str } from "@/lib/utils";
 
@@ -20,8 +20,17 @@ export async function runSetup(formData: FormData) {
   if (password !== confirm) back("كلمتا المرور غير متطابقتين");
 
   if (!(await schemaReady())) {
+    const plan = await migrationPlan();
+    /**
+     * إنشاءُ القاعدة كاملةً من المتصفح — مئةٌ وثمانٍ وخمسون عبارة — يتجاوز سقفَ
+     * الطلبات الفرعية في العامل، فيموت في منتصفه ويترك قاعدةً مسمومة. فصار
+     * يدلّ على الأمر بدل أن يحاول. وأمرُ النشر يطبّقها قبل ذلك أصلاً، فلا يُتوقَّع
+     * بلوغُ هذا السطر إلا على نشرٍ لم يُحدَّث أمرُه بعد.
+     */
+    const tooMuch = tooMuchForRequest(plan);
+    if (tooMuch) back(`تعذّر إنشاء الجداول من المتصفح (${tooMuch}). طبّقها من سطر الأوامر: ${MIGRATE_COMMAND}`);
     try {
-      await applyMigrations();
+      await applyPending(plan);
     } catch (e) {
       back(`تعذّر إنشاء الجداول: ${(e as Error).message.slice(0, 300)}`);
     }
