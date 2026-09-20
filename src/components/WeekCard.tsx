@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "@/components/Link";
 import { Video } from "lucide-react";
 import { formatGregorian, keyToDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ export default function WeekCard({
 }) {
   const n = week.number;
   const rows = rowsFor(week);
+  // «—» في جدول البرنامج تعني «لا شيء هنا» لا نصّاً يُقرأ
+  const hasTask = !!week.task && week.task !== "—";
 
   return (
     <section className={cn("card p-0 overflow-hidden", current && "border-ink", className)}>
@@ -80,13 +83,31 @@ export default function WeekCard({
         <p className="px-5 py-5 text-lg">{week.session}</p>
       )}
 
-      {week.task && week.task !== "—" && (
-        <footer className="bg-paper-3 px-5 py-4 border-t border-line">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="text-xs text-muted">{deliverableLabel(n)}</span>
-            {state?.task && <StateBadge state={state.task} />}
-          </div>
-          <div className="font-medium mt-0.5">{week.task}</div>
+      {/*
+        تسليمان لا تسليم: المهمةُ ناتجٌ يُرفع ويُقيَّم من ستّ عشرة، والتقريرُ
+        تقريرٌ ذاتيٌّ عن الأسبوع كلِّه بلا درجة. وكانا سطراً واحداً تعلوه شارةُ
+        التقرير فوق نصّ المهمة، فيُقرأ أحدُهما على الآخر.
+      */}
+      {(hasTask || state?.report) && (
+        <footer className="bg-paper-3 px-5 py-4 border-t border-line space-y-3">
+          {hasTask && (
+            <div>
+              <span className="text-xs text-muted">{deliverableLabel(n)}</span>
+              <div className="font-medium mt-0.5">{week.task}</div>
+            </div>
+          )}
+          {/*
+            الشارةُ والرابطُ للمشارك وحده: `state` لا يُمرَّر في صفحة البرنامج
+            العامة، فتبقى هناك بطاقةً تُقرأ لا باباً إلى التطبيق.
+          */}
+          {state?.report && (
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <Link href={`/app/reports/${n}`} className="text-sm underline hover:text-ink">
+                التقرير الأسبوعي — الخميس قبل العاشرة مساءً
+              </Link>
+              <StateBadge state={state.report} />
+            </div>
+          )}
         </footer>
       )}
 
@@ -129,10 +150,15 @@ function kickerFor(w: LiveWeek): string {
   return "معالم التربية";
 }
 
+/**
+ * عنوانُ سطر المهمة. ومَوعدُ الخميس انتقل إلى سطر التقرير حيث هو قاعدةٌ ثابتة
+ * من الميثاق؛ وأما المهمة فلكلٍّ منها موعدُها الذي يضبطه المدير، فلا يُوعَد
+ * هنا بموعدٍ قد لا يكون موعدَها.
+ */
 function deliverableLabel(n: number): string {
   if (n === 13) return "التسليم النهائي";
   if (n === 14) return "ملاحظة";
-  return "المطلوب تسليمه — الخميس قبل العاشرة مساءً";
+  return "المهمة الأسبوعية";
 }
 
 function footerLabel(n: number, total: number): string {

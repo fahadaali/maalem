@@ -11,8 +11,14 @@ export type WeekState = {
   reading?: RowState;
   circle?: RowState;
   field?: RowState;
-  /** شريط التسليم أسفل البطاقة */
-  task?: RowState;
+  /**
+   * حالةُ التقرير الأسبوعي في ذيل البطاقة.
+   *
+   * كان اسمه `task`، وهو يُملأ من `weeklyReport` لا من المهام — فكانت البطاقة
+   * تضع شارةَ التقرير فوق نصّ المهمة تحت عنوان «المطلوب تسليمه»، فيقرأ المشاركُ
+   * «مهمتي سُلّمت» والمُسلَّمُ تقريره.
+   */
+  report?: RowState;
 };
 
 /** خمس بطاقات قراءة في الأسبوع — الأحد إلى الخميس */
@@ -87,10 +93,10 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
     // التقرير الأسبوعي مطلوب من الافتتاحي حتى الثاني عشر وحدها
     if (n >= 0 && n <= 12) {
       if (reported.has(n)) {
-        state.task = { done: true, label: "التقرير مسلَّم" };
+        state.report = { done: true, label: "التقرير مسلَّم" };
       } else {
         const left = daysUntil(reportDueFrom(w.gregorian), now);
-        state.task = { done: false, label: left >= 0 ? remaining(left) : "فات الموعد" };
+        state.report = { done: false, label: left >= 0 ? remaining(left) : "فات الموعد" };
       }
     }
 
