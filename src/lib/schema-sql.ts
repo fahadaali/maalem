@@ -51,5 +51,9 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   {
     "name": "0013_help_items.sql",
     "sql": "-- CreateTable\nCREATE TABLE \"HelpItem\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"audience\" TEXT NOT NULL DEFAULT 'ALL',\n    \"question\" TEXT NOT NULL,\n    \"answer\" TEXT NOT NULL,\n    \"href\" TEXT,\n    \"hrefLabel\" TEXT,\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n\n-- CreateIndex\nCREATE INDEX \"HelpItem_audience_order_idx\" ON \"HelpItem\"(\"audience\", \"order\");\n"
+  },
+  {
+    "name": "0014_week_tasks.sql",
+    "sql": "-- CreateTable\nCREATE TABLE \"WeekTask\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"cohortId\" TEXT,\n    \"week\" INTEGER NOT NULL,\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"title\" TEXT NOT NULL,\n    CONSTRAINT \"WeekTask_cohortId_fkey\" FOREIGN KEY (\"cohortId\") REFERENCES \"Cohort\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n);\n\n-- CreateTable\nCREATE TABLE \"WeeklyReportTask\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"reportId\" TEXT NOT NULL,\n    \"taskId\" TEXT NOT NULL,\n    \"title\" TEXT NOT NULL,\n    \"order\" INTEGER NOT NULL DEFAULT 0,\n    \"status\" TEXT NOT NULL,\n    \"note\" TEXT,\n    CONSTRAINT \"WeeklyReportTask_reportId_fkey\" FOREIGN KEY (\"reportId\") REFERENCES \"WeeklyReport\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"WeeklyReportTask_taskId_fkey\" FOREIGN KEY (\"taskId\") REFERENCES \"WeekTask\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n);\n\n-- CreateIndex\nCREATE INDEX \"WeekTask_cohortId_week_order_idx\" ON \"WeekTask\"(\"cohortId\", \"week\", \"order\");\n\n-- CreateIndex\nCREATE UNIQUE INDEX \"WeeklyReportTask_reportId_taskId_key\" ON \"WeeklyReportTask\"(\"reportId\", \"taskId\");\n"
   }
 ];

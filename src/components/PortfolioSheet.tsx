@@ -6,6 +6,7 @@ import { activeCohort } from "@/lib/cohort";
 import { getContinuous, getProjectRubric } from "@/lib/content";
 import { formatGregorian, formatHijri, formatShort } from "@/lib/dates";
 import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
+import { taskStatusLabel } from "@/lib/report";
 
 /**
  * ملف الإنجاز كاملاً في صفحة واحدة قابلة للطباعة والأرشفة.
@@ -20,7 +21,7 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
       include: {
         learningPlan: true,
         readingCards: { orderBy: { date: "asc" } },
-        weeklyReports: { orderBy: { week: "asc" } },
+        weeklyReports: { orderBy: { week: "asc" }, include: { tasks: { orderBy: { order: "asc" } } } },
         submissions: { include: { assignment: true }, orderBy: { submittedAt: "asc" } },
         fieldLogs: { orderBy: { date: "asc" } },
         quizAttempts: { include: { quiz: true } },
@@ -103,9 +104,14 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         {u.weeklyReports.map((r) => (
           <div key={r.id} className="mb-3 text-sm">
             <div className="font-medium">الأسبوع {r.week}</div>
-            <div><span className="text-muted">الورد: </span>{r.reading}</div>
-            <div><span className="text-muted">الفوائد: </span>{r.benefits}</div>
-            <div><span className="text-muted">المهمة: </span>{r.taskProgress}</div>
+            {/* الحقول التي لم يطلبها الأسبوع فارغةٌ في صفّه، فلا تُطبع عناوينُ بلا نصّ */}
+            {r.reading && <div><span className="text-muted">الورد: </span>{r.reading}</div>}
+            {r.benefits && <div><span className="text-muted">الفوائد: </span>{r.benefits}</div>}
+            {r.tasks.map((t) => (
+              <div key={t.id}><span className="text-muted">{t.title}: </span>{taskStatusLabel(t.status)}{t.note ? ` — ${t.note}` : ""}</div>
+            ))}
+            {/* تقريرٌ سُلّم قبل تفصيل المهام: نصّه الحرّ كما كتبه صاحبه */}
+            {r.tasks.length === 0 && r.taskProgress && <div><span className="text-muted">المهمة: </span>{r.taskProgress}</div>}
             {r.application && <div><span className="text-muted">تطبيق ميداني: </span>{r.application}</div>}
             {r.feedback && <div><span className="text-muted">تغذية راجعة: </span>{r.feedback}</div>}
           </div>

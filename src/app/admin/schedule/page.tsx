@@ -3,11 +3,11 @@ import { requireRole } from "@/lib/auth";
 import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { notifyWeekChange, saveWeek, saveScheduleTimes } from "../actions";
+import { notifyWeekChange, saveWeek, saveScheduleTimes, saveWeekTasks } from "../actions";
 import { scheduleTimes } from "@/lib/ics";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
-import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
+import { getWeeks, getWeekTasks, resolveCurrentWeek } from "@/lib/weeks";
 import { SCHEDULE_NOTE } from "@/lib/program";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
   const selected = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, cur);
   const w = weeks.find((x) => x.number === selected) ?? weeks[0];
   const times = await scheduleTimes();
+  const tasks = w ? await getWeekTasks(w.number) : [];
   // صورة البطاقة تُنسب إلى صفّ الأسبوع نفسه، فتنفصل بين الدفعات تلقائياً
   const cardFiles = w?.id ? await listAttachments({ kind: "WEEKCARD", refId: w.id }) : [];
 
@@ -90,15 +91,9 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
             <label className="label">رابط حلقة النقاش</label>
             <input name="remoteUrl" className="input" dir="ltr" placeholder="https://" defaultValue={w.remoteUrl ?? ""} />
           </div>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div className="field">
-              <label className="label">الورد القرائي</label>
-              <input name="reading" className="input" defaultValue={w.reading} />
-            </div>
-            <div className="field">
-              <label className="label">المهمة الأسبوعية</label>
-              <input name="task" className="input" defaultValue={w.task} />
-            </div>
+          <div className="field">
+            <label className="label">الورد القرائي</label>
+            <input name="reading" className="input" defaultValue={w.reading} />
           </div>
           <div className="field">
             <label className="label">المعايشة الميدانية (ساعة · يوم يختاره المشارك)</label>
@@ -109,6 +104,30 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
             <input name="note" className="input" defaultValue={w.note ?? ""} />
           </div>
           <SubmitButton>حفظ الأسبوع</SubmitButton>
+        </form>
+        {/* مفتاحٌ بالأسبوع كنموذج الأسبوع أعلاه، والعلّة هنا أشدّ: حقول هذا النموذج
+            مسمّاة بمعرّفات مهام الأسبوع المعروض، فلو بقيت مركَّبة عند التنقّل كُتب
+            نصُّ أسبوعٍ في مهامّ أسبوعٍ آخر. */}
+        <form key={w.number} action={saveWeekTasks} className="mt-3 border-t border-line pt-3">
+          <input type="hidden" name="number" value={w.number} />
+          <div className="text-sm font-medium mb-1">مهام الأسبوع</div>
+          <p className="text-xs text-muted mb-2">
+            يرصد المشارك حالة كل مهمة منها في تقريره الأسبوعي. حذف مهمة يكون بإفراغ حقلها ثم الحفظ،
+            ولا تُحذف مهمة رصدها المشاركون. ونصُّ «المهمة الأسبوعية» في بطاقة الأسبوع يُشتق من هذه القائمة.
+          </p>
+          <div className="space-y-2 mb-3">
+            {tasks.map((t, i) => (
+              <div key={t.id} className="flex gap-2 items-center">
+                <span className="text-xs text-muted w-5 shrink-0 tabular-nums">{i + 1}</span>
+                <input name={`title_${t.id}`} className="input" defaultValue={t.title} />
+              </div>
+            ))}
+          </div>
+          <div className="field">
+            <label className="label">مهمة جديدة</label>
+            <input name="newTask" className="input" placeholder="اترك الحقل فارغاً إن لم ترد إضافة مهمة" />
+          </div>
+          <SubmitButton secondary>حفظ المهام</SubmitButton>
         </form>
         {w?.id && (
           <div className="mt-3 border-t border-line pt-3">

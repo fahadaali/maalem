@@ -79,6 +79,7 @@ model Cohort {
   levels        CompletionLevel[]
   competencies  CompetencyDef[]
   bankQuestions BankQuestion[]
+  weekTasks     WeekTask[]
 }
 
 /// أسابيع البرنامج: تُبذر من الخطة وتبقى قابلة للتعديل من لوحة مدير المشروع
@@ -103,6 +104,23 @@ model ProgramWeek {
   updatedAt    DateTime @updatedAt
 
   @@unique([cohortId, number])
+}
+
+/// مهمة واحدة من مهام الأسبوع. كان الأسبوع نصّاً واحداً تُفصل مهامه بـ « + »،
+/// فصارت كل مهمة صفاً يرصد عليه المشارك حاله في تقريره الأسبوعي.
+/// تُفتح على (cohortId, week) كما تُفتح المهام والاختبارات، لا على صفّ الأسبوع:
+/// `getWeeks` تردّ الخطة الأصلية حين لا تكون القاعدة مبذورة، فلا معرّف لصفٍّ عندها.
+model WeekTask {
+  id       String  @id @default(cuid())
+  cohortId String?
+  cohort   Cohort? @relation(fields: [cohortId], references: [id])
+  week     Int
+  order    Int     @default(0)
+  title    String
+
+  reportEntries WeeklyReportTask[]
+
+  @@index([cohortId, week, order])
 }
 
 /// التقييم التشخيصي: قياس ذاتي للكفاءات الثماني قبل البرنامج وبعده
@@ -334,12 +352,14 @@ model ReadingCard {
 }
 
 model WeeklyReport {
-  id           String    @id @default(cuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  week         Int
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  week   Int
   reading      String
   benefits     String
+  /// نصّ المهام الحرّ قبل تفصيلها صفوفاً. يبقى لتُقرأ منه التقارير القديمة،
+  /// ويُكتب فيه فراغ في الجديدة — رصدها في `tasks`.
   taskProgress String
   fieldNote    String?
   quizResult   String?
@@ -349,7 +369,25 @@ model WeeklyReport {
   feedback     String?
   reviewedAt   DateTime?
 
+  tasks WeeklyReportTask[]
+
   @@unique([userId, week])
+}
+
+/// ما رصده المشارك على مهمة بعينها من مهام أسبوعه
+model WeeklyReportTask {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  taskId   String
+  task     WeekTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// نصّ المهمة كما كان وقت التسليم: التقرير وثيقةٌ لا تتبدّل بتعديلٍ لاحق على الجدول
+  title    String
+  order    Int          @default(0)
+  status   String // DONE | PARTIAL | NOT_DONE
+  note     String?
+
+  @@unique([reportId, taskId])
 }
 
 model Quiz {

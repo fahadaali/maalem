@@ -4,6 +4,7 @@ import { computeGradesFor } from "@/lib/grades";
 import { finalTotalOf, getContinuous } from "@/lib/content";
 import { ATTENDANCE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
+import { taskStatusLabel } from "@/lib/report";
 
 /** تصدير بيانات المنصة إلى ملفات CSV تفتحها برامج الجداول مباشرة */
 const KINDS = ["grades", "attendance", "tasks", "field", "reading", "reports"] as const;
@@ -63,9 +64,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
     rows = [["المشارك", "التاريخ", "الكتاب", "من صفحة", "إلى صفحة", "أهم فائدة", "سؤال للحلقة"]];
     for (const c of cards) rows.push([nameOf.get(c.userId) ?? c.userId, c.date.toISOString().slice(0, 10), c.book, c.fromPage, c.toPage, c.benefit, c.question ?? ""]);
   } else {
-    const reps = await db.weeklyReport.findMany({ where: ofCohort, orderBy: [{ week: "asc" }] });
-    rows = [["المشارك", "الأسبوع", "تاريخ التسليم", "الورد المنجز", "الفوائد", "المهمة", "المعايشة", "نتيجة الاختبار", "تطبيق ميداني", "صعوبة", "التغذية الراجعة"]];
-    for (const r of reps) rows.push([nameOf.get(r.userId) ?? r.userId, r.week, r.submittedAt.toISOString().slice(0, 10), r.reading, r.benefits, r.taskProgress, r.fieldNote ?? "", r.quizResult ?? "", r.application ?? "", r.difficulty ?? "", r.feedback ?? ""]);
+    const reps = await db.weeklyReport.findMany({ where: ofCohort, orderBy: [{ week: "asc" }], include: { tasks: { orderBy: { order: "asc" } } } });
+    rows = [["المشارك", "الأسبوع", "تاريخ التسليم", "الورد المنجز", "الفوائد", "مهام الأسبوع", "المعايشة", "نتيجة الاختبار", "تطبيق ميداني", "صعوبة", "التغذية الراجعة"]];
+    for (const r of reps) {
+      // التقارير المسلَّمة قبل تفصيل المهام لا رصد لها، فيُقرأ نصّها الحرّ كما كتبه صاحبه
+      const tasks = r.tasks.length
+        ? r.tasks.map((t) => `${t.title}: ${taskStatusLabel(t.status)}${t.note ? ` — ${t.note}` : ""}`).join(" | ")
+        : r.taskProgress;
+      rows.push([nameOf.get(r.userId) ?? r.userId, r.week, r.submittedAt.toISOString().slice(0, 10), r.reading, r.benefits, tasks, r.fieldNote ?? "", r.quizResult ?? "", r.application ?? "", r.difficulty ?? "", r.feedback ?? ""]);
+    }
   }
 
   const stamp = new Date().toISOString().slice(0, 10);

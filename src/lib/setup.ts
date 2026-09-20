@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { MIGRATIONS } from "./schema-sql";
 import { BUDGET, PROGRAM, WEEKS, BOOKS, CHARTER, CONTINUOUS_ASSESSMENT, PROJECT_RUBRIC, COMPLETION_LEVELS, COMPETENCIES } from "./program";
+import { splitTasks } from "./report";
 
 /** هل جدول المستخدمين موجود؟ */
 export async function schemaReady(): Promise<boolean> {
@@ -153,6 +154,18 @@ export async function ensureProgramData(cohortId: string): Promise<void> {
     for (const w of WEEKS.filter((x) => x.field)) {
       await db.programWeek.updateMany({ where: { cohortId, number: w.number, field: "" }, data: { field: w.field } });
     }
+  }
+  /**
+   * مهام الأسبوع صفوفاً: كان الأسبوع نصّاً واحداً تُفصل مهامه بـ « + »، فصار لكل
+   * مهمة صفٌّ يرصد عليه المشارك إنجازه. وSQL لا يشقّ النصوص، فالاشتقاق هنا حيث
+   * تُقرأ الصفوف — وبه تلحق الدفعات المبذورة قبل هذا الجدول بمهامّها في أول طلب
+   * بعد النشر، بلا تدخل يدوي. والحارس على الجدول كله لا على كل أسبوع: مديرٌ أفرغ
+   * مهامّ أسبوعٍ عمداً لا تُبعث له بالترحيل التالي.
+   */
+  if ((await db.weekTask.count({ where: { cohortId } })) === 0) {
+    const rows = await db.programWeek.findMany({ where: { cohortId }, select: { number: true, task: true } });
+    const data = rows.flatMap((w) => splitTasks(w.task).map((title, order) => ({ cohortId, week: w.number, order, title })));
+    if (data.length) await db.weekTask.createMany({ data });
   }
   if ((await db.programBook.count({ where: { cohortId } })) === 0) {
     await db.programBook.createMany({

@@ -25,7 +25,8 @@ export default async function ReportsPage() {
             <Link key={w.number} href={`/app/reports/${w.number}`} className="card flex items-center justify-between gap-3 hover:bg-paper-2">
               <div className="min-w-0">
                 <div className="font-medium">الأسبوع {w.label}</div>
-                <div className="text-xs text-muted truncate">{w.task} · موعد التسليم {formatShort(reportDueFrom(w.gregorian))}</div>
+                {/* أسبوعٌ بلا مهام يبقى له تقرير، فلا يُترك «·» معلّقاً بلا نصّ قبله */}
+                <div className="text-xs text-muted truncate">{w.task ? `${w.task} · ` : ""}موعد التسليم {formatShort(reportDueFrom(w.gregorian))}</div>
               </div>
               <div className="flex gap-1 shrink-0">
                 {r ? <Badge tone="ink">مسلّم</Badge> : future ? <Badge tone="soft">قادم</Badge> : <Badge>لم يُسلَّم</Badge>}
