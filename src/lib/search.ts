@@ -7,6 +7,9 @@ export type Hit = { group: string; title: string; snippet?: string; href: string
 
 const cut = (s: string | null | undefined, n = 140) => (s ? (s.length > n ? `${s.slice(0, n)}…` : s) : undefined);
 const like = (q: string) => ({ contains: q });
+/** مقتطف التقرير: الفوائد، فإن كان أسبوعه بلا ورد عرّفت به عناوينُ مهامه */
+const reportSnippet = (r: { benefits: string; tasks: { title: string }[] }) =>
+  cut(r.benefits || r.tasks.map((t) => t.title).join("، "));
 /** يُسقط التشكيل والتطويل من عبارة البحث، فـ«التّربية» تجد «التربية» */
 const clean = (q: string) => q.trim().replace(/[\u064B-\u0652\u0670\u0640]/g, "");
 
@@ -26,7 +29,8 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
     db.material.findMany({ where: { OR: [{ title: like(term) }, { author: like(term) }, { description: like(term) }] }, take: 10 }),
     db.sessionMinutes.findMany({ where: { ...scope, OR: [{ title: like(term) }, { minutes: like(term) }, { decisions: like(term) }, { guestName: like(term) }] }, take: 10 }),
     db.guest.findMany({ where: { ...scope, OR: [{ name: like(term) }, { topic: like(term) }, { notes: like(term) }] }, take: 10 }),
-    db.weeklyReport.findMany({ where: { userId: { in: ids }, OR: [{ benefits: like(term) }, { reading: like(term) }, { taskProgress: like(term) }, { difficulty: like(term) }, { application: like(term) }] }, take: 10 }),
+    // `taskProgress` للتقارير المسلَّمة قبل تفصيل المهام، و`tasks` لما بعدها
+    db.weeklyReport.findMany({ where: { userId: { in: ids }, OR: [{ benefits: like(term) }, { reading: like(term) }, { taskProgress: like(term) }, { difficulty: like(term) }, { application: like(term) }, { tasks: { some: { OR: [{ title: like(term) }, { note: like(term) }] } } }] }, include: { tasks: { select: { title: true } } }, take: 10 }),
     db.readingCard.findMany({ where: { userId: { in: ids }, OR: [{ book: like(term) }, { benefit: like(term) }, { question: like(term) }] }, take: 10 }),
     db.assignment.findMany({ where: { ...scope, OR: [{ title: like(term) }, { description: like(term) }] }, take: 10 }),
     db.quiz.findMany({ where: { ...scope, title: like(term) }, take: 10 }),
@@ -46,7 +50,7 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
   for (const m of materials) hits.push({ group: "مكتبة المواد", title: m.title, snippet: cut(m.description), meta: m.author ?? undefined, href: "/admin/materials" });
   for (const m of minutes) hits.push({ group: "محاضر اللقاءات", title: m.title ?? `محضر الأسبوع ${m.week}`, snippet: cut(m.minutes), href: "/admin/minutes" });
   for (const g of guests) hits.push({ group: "الخبراء والضيوف", title: g.name, snippet: cut(g.topic), href: "/admin/guests" });
-  for (const r of reports) hits.push({ group: "التقارير الأسبوعية", title: `${names.get(r.userId) ?? ""} — الأسبوع ${r.week}`, snippet: cut(r.benefits), href: `/admin/reports?week=${r.week}#r-${r.id}` });
+  for (const r of reports) hits.push({ group: "التقارير الأسبوعية", title: `${names.get(r.userId) ?? ""} — الأسبوع ${r.week}`, snippet: reportSnippet(r), href: `/admin/reports?week=${r.week}#r-${r.id}` });
   for (const c of cards) hits.push({ group: "بطاقات القراءة", title: `${names.get(c.userId) ?? ""} — ${c.book}`, snippet: cut(c.benefit), href: `/admin/participants/${c.userId}` });
   for (const a of assignments) hits.push({ group: "المهام", title: a.title, snippet: cut(a.description), meta: `الأسبوع ${a.week}`, href: `/admin/tasks/${a.id}` });
   for (const z of quizzes) hits.push({ group: "الاختبارات", title: z.title, meta: z.week != null ? `الأسبوع ${z.week}` : undefined, href: `/admin/quizzes/${z.id}` });
@@ -71,7 +75,7 @@ export async function searchParticipant(userId: string, q: string): Promise<Hit[
     db.assignment.findMany({ where: { ...scope, OR: [{ title: like(term) }, { description: like(term) }] }, take: 10 }),
     db.quiz.findMany({ where: { ...scope, published: true, title: like(term) }, take: 10 }),
     db.readingCard.findMany({ where: { userId, OR: [{ book: like(term) }, { benefit: like(term) }, { question: like(term) }] }, take: 10 }),
-    db.weeklyReport.findMany({ where: { userId, OR: [{ benefits: like(term) }, { reading: like(term) }, { taskProgress: like(term) }, { difficulty: like(term) }] }, take: 10 }),
+    db.weeklyReport.findMany({ where: { userId, OR: [{ benefits: like(term) }, { reading: like(term) }, { taskProgress: like(term) }, { difficulty: like(term) }, { tasks: { some: { OR: [{ title: like(term) }, { note: like(term) }] } } }] }, include: { tasks: { select: { title: true } } }, take: 10 }),
     db.reflection.findMany({ where: { userId, text: like(term) }, take: 10 }),
     db.fieldLog.findMany({ where: { userId, OR: [{ note: like(term) }, { mentorName: like(term) }] }, take: 10 }),
     db.graduationProject.findFirst({ where: { userId, OR: [{ topic: like(term) }, { problem: like(term) }] } }),
@@ -88,7 +92,7 @@ export async function searchParticipant(userId: string, q: string): Promise<Hit[
   for (const a of assignments) hits.push({ group: "المهام", title: a.title, snippet: cut(a.description), meta: `الأسبوع ${a.week}`, href: `/app/tasks/${a.id}` });
   for (const z of quizzes) hits.push({ group: "الاختبارات", title: z.title, href: `/app/quizzes/${z.id}` });
   for (const c of cards) hits.push({ group: "بطاقاتي القرائية", title: c.book, snippet: cut(c.benefit), href: "/app/reading" });
-  for (const r of reports) hits.push({ group: "تقاريري الأسبوعية", title: `الأسبوع ${r.week}`, snippet: cut(r.benefits), href: `/app/reports/${r.week}` });
+  for (const r of reports) hits.push({ group: "تقاريري الأسبوعية", title: `الأسبوع ${r.week}`, snippet: reportSnippet(r), href: `/app/reports/${r.week}` });
   for (const r of reflections) hits.push({ group: "دفتر التأمل", title: cut(r.text, 60) ?? "تدوينة", href: "/app/reflection" });
   for (const f of fieldLogs) hits.push({ group: "معايشتي الميدانية", title: f.mentorName, snippet: cut(f.note), href: "/app/field" });
   if (project) hits.push({ group: "مشروع التخرج", title: project.topic, snippet: cut(project.problem), href: "/app/project" });

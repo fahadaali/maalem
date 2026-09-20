@@ -70,6 +70,13 @@ const item = (kind: ActivityKind, r: Row, at: Date, title: string, detail?: stri
 
 const withUser = { user: { select: { name: true } } } as const;
 
+/**
+ * سطر التقرير في القائمة: الفوائد أولاً، فإن كان الأسبوع بلا ورد فلا فوائد فيه،
+ * وعندها تُعرِّف بالتقرير عناوينُ مهامه.
+ */
+const reportDetail = (r: { benefits: string; tasks: { title: string }[] }) =>
+  cut(r.benefits || r.tasks.map((t) => t.title).join("، "));
+
 export const ACTIVITY_KINDS: Record<string, Kind> = {
   // ——— ما يُدخله المشاركون ———
   READING_CARD: {
@@ -93,18 +100,31 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
   WEEKLY_REPORT: {
     label: "التقرير الأسبوعي",
     by: "PARTICIPANT",
-    undoNote: "يُحذف التقرير كاملاً فيستطيع المشارك تسليمه من جديد",
+    undoNote: "يُحذف التقرير كاملاً برصد مهامه، فيستطيع المشارك تسليمه من جديد",
     list: async (who, take) =>
-      (await db.weeklyReport.findMany({ where: { user: who }, include: withUser, orderBy: { submittedAt: "desc" }, take }))
-        .map((r) => item("WEEKLY_REPORT", r, r.submittedAt, `تقرير الأسبوع ${r.week}`, cut(r.benefits), "/admin/reports")),
+      (await db.weeklyReport.findMany({ where: { user: who }, include: { ...withUser, tasks: { select: { title: true } } }, orderBy: { submittedAt: "desc" }, take }))
+        .map((r) => item("WEEKLY_REPORT", r, r.submittedAt, `تقرير الأسبوع ${r.week}`, reportDetail(r), "/admin/reports")),
     undo: async (id) => {
-      const r = await db.weeklyReport.findUnique({ where: { id }, include: withUser });
+      // رصد المهام يُحذف تِبعاً للتقرير، فيُحفظ في اللقطة ليعود معه ولا يضيع صامتاً
+      const r = await db.weeklyReport.findUnique({ where: { id }, include: { ...withUser, tasks: true } });
       if (!r) return null;
       await db.weeklyReport.delete({ where: { id } });
-      return { label: `تقرير الأسبوع ${r.week}`, detail: cut(r.benefits), at: r.submittedAt, userId: r.userId, userName: r.user.name, payload: r };
+      return { label: `تقرير الأسبوع ${r.week}`, detail: reportDetail(r), at: r.submittedAt, userId: r.userId, userName: r.user.name, payload: r };
     },
     restore: async (p) => {
       await db.weeklyReport.create({ data: { id: s(p.id), userId: s(p.userId), week: n(p.week), reading: s(p.reading), benefits: s(p.benefits), taskProgress: s(p.taskProgress), fieldNote: sn(p.fieldNote), quizResult: sn(p.quizResult), application: sn(p.application), difficulty: sn(p.difficulty), submittedAt: d(p.submittedAt), feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
+      const entries = Array.isArray(p.tasks) ? (p.tasks as Record<string, unknown>[]) : [];
+      if (!entries.length) return;
+      /**
+       * مهمةٌ حُذفت من جدول الأسبوع بعد التراجع لا صفَّ لها تُنسب إليه، فيُتخطّى
+       * رصدها ولا يسقط استرجاع التقرير كلِّه من أجل واحدةٍ منها.
+       */
+      const alive = new Set(
+        (await db.weekTask.findMany({ where: { id: { in: entries.map((e) => s(e.taskId)) } }, select: { id: true } })).map((t) => t.id),
+      );
+      for (const e of entries.filter((e) => alive.has(s(e.taskId)))) {
+        await db.weeklyReportTask.create({ data: { id: s(e.id), reportId: s(e.reportId), taskId: s(e.taskId), title: s(e.title), order: n(e.order), status: s(e.status), note: sn(e.note) } });
+      }
     },
   },
 

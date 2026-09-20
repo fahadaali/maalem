@@ -39,6 +39,11 @@ export async function getWeekByNumber(n: number): Promise<LiveWeek | undefined> 
   return (await getWeeks()).find((w) => w.number === n);
 }
 
+/** مهام أسبوعٍ بعينه في الدفعة النشطة، مرتّبة كما رتّبها مدير المشروع */
+export async function getWeekTasks(week: number) {
+  return db.weekTask.findMany({ where: { week, ...(await cohortWhere()) }, orderBy: { order: "asc" } });
+}
+
 /**
  * رقم الأسبوع الحالي من تواريخ الأسابيع نفسها، فيتبع أي تعديل يجريه المدير:
  * -1 قبل البداية، ثم رقم آخر أسبوع بدأ تاريخه، و15 بعد الانتهاء.

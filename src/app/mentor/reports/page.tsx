@@ -4,22 +4,14 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
+import ReportTasks from "@/components/ReportTasks";
+import { REPORT_ROWS } from "@/lib/report";
 import { mentorReviewReport } from "../actions";
 import { formatDateTime } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "تقارير مجموعتي" };
-
-const ROWS = [
-  ["الورد القرائي المنجز", "reading"],
-  ["أبرز الفوائد", "benefits"],
-  ["المهمة الأسبوعية", "taskProgress"],
-  ["المعايشة الميدانية", "fieldNote"],
-  ["نتيجة الاختبار", "quizResult"],
-  ["تطبيق في الميدان", "application"],
-  ["صعوبة تحتاج دعماً", "difficulty"],
-] as const;
 
 export default async function MentorReportsPage({ searchParams }: { searchParams: Promise<{ week?: string; ok?: string; err?: string }> }) {
   const me = await requireRole("MENTOR");
@@ -31,7 +23,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
     db.user.findMany({ where: { mentorId: me.id, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const ids = mentees.map((m) => m.id);
-  const reports = await db.weeklyReport.findMany({ where: { week, userId: { in: ids } }, include: { user: true }, orderBy: { submittedAt: "asc" } });
+  const reports = await db.weeklyReport.findMany({ where: { week, userId: { in: ids } }, include: { user: true, tasks: { orderBy: { order: "asc" } } }, orderBy: { submittedAt: "asc" } });
   const submitted = new Set(reports.map((r) => r.userId));
   const due = await reportDueDate(week);
 
@@ -69,8 +61,9 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
                   action={r.reviewedAt ? <Badge tone="ink">روجِع</Badge> : <Badge>بانتظار المراجعة</Badge>}
                 >
                   <div className="text-xs text-muted mb-2">سُلّم {formatDateTime(r.submittedAt)}{r.submittedAt > due ? " — متأخراً" : ""}</div>
+                  <ReportTasks report={r} />
                   <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-3">
-                    {ROWS.map(([label, key]) => (r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null))}
+                    {REPORT_ROWS.map(([label, key]) => (r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null))}
                   </dl>
                   <form action={mentorReviewReport} className="border-t border-line pt-3">
                     <input type="hidden" name="id" value={r.id} />

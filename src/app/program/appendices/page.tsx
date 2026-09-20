@@ -15,6 +15,11 @@ export default async function AppendicesPage() {
           <li>الاسم / الأسبوع / التاريخ</li>
           {WEEKLY_REPORT_FIELDS.map((f) => <li key={f}>{f}</li>)}
         </ol>
+        <p className="text-xs text-muted mt-3">
+          مهام الأسبوع تُقرأ من جدول البرنامج، فلكل مهمة منها خانتها. ولا يُفتح من القالب
+          إلا ما يطلبه ذلك الأسبوع: فلا معايشة في الأسابيع التي لا معايشة فيها، ولا نتيجة
+          اختبار في أسبوع بلا اختبار.
+        </p>
       </Card>
       <Card title="ملحق 2: سلم تقدير المهمة الأسبوعية" className="mt-6">
         <div className="table-wrap">

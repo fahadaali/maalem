@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
+import ReportTasks from "@/components/ReportTasks";
+import { REPORT_ROWS } from "@/lib/report";
 import { reviewReport } from "../actions";
 import { formatDateTime } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
@@ -20,13 +22,10 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   const activeWeeks = await getActiveWeeks();
   const [participants, reports] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } }),
-    db.weeklyReport.findMany({ where: { week, user: await participantsWhere() }, include: { user: true }, orderBy: { submittedAt: "asc" } }),
+    db.weeklyReport.findMany({ where: { week, user: await participantsWhere() }, include: { user: true, tasks: { orderBy: { order: "asc" } } }, orderBy: { submittedAt: "asc" } }),
   ]);
   const byUser = new Map(reports.map((r) => [r.userId, r]));
   const due = await reportDueDate(week);
-  const rows = [
-    ["الورد القرائي المنجز", "reading"], ["أبرز الفوائد", "benefits"], ["المهمة الأسبوعية", "taskProgress"], ["المعايشة الميدانية", "fieldNote"], ["نتيجة الاختبار", "quizResult"], ["تطبيق في الميدان", "application"], ["صعوبة تحتاج دعماً", "difficulty"],
-  ] as const;
 
   return (
     <>
@@ -50,8 +49,9 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
           {reports.map((r) => (
             <Card key={r.id} title={r.user.name} action={<div className="flex gap-1">{r.submittedAt > due && <Badge>تأخر</Badge>}{r.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge>بانتظار المراجعة</Badge>}</div>}>
               <div id={`r-${r.id}`} className="text-xs text-muted mb-2">سُلّم {formatDateTime(r.submittedAt)}</div>
+              <ReportTasks report={r} />
               <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-3">
-                {rows.map(([label, key]) => r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null)}
+                {REPORT_ROWS.map(([label, key]) => r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null)}
               </dl>
               <form action={reviewReport} className="border-t border-line pt-3">
                 <input type="hidden" name="id" value={r.id} />

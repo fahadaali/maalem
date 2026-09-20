@@ -7,7 +7,8 @@ import { isPreview, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
-import { currentWeekNumber } from "@/lib/weeks";
+import { currentWeekNumber, getWeekByNumber, getWeekTasks } from "@/lib/weeks";
+import { isTaskStatus, publishedQuizWeeks, reportSections } from "@/lib/report";
 import { removeAttachments } from "@/lib/attachments";
 import { num, str } from "@/lib/utils";
 import { SURVEY_QUESTIONS } from "@/lib/program";
@@ -66,22 +67,53 @@ export async function saveWeeklyReport(formData: FormData) {
   const week = num(formData.get("week"), -1);
   const path = `/app/reports/${week}`;
   if (week < 0 || week > 12) fail("/app/reports", "أسبوع غير صحيح");
+  const info = await getWeekByNumber(week);
+  if (!info) fail("/app/reports", "أسبوع غير موجود");
+
+  /**
+   * المهام تُقرأ من جدول أسبوع الدفعة لا من مفاتيح النموذج: لو اعتُمدت المفاتيح
+   * لأمكن مشاركاً أن يرصد على مهمة أسبوعٍ آخر أو دفعةٍ أخرى بمفتاحٍ يصنعه بيده.
+   */
+  const [tasks, quizWeeks] = await Promise.all([getWeekTasks(week), publishedQuizWeeks()]);
+  const show = reportSections(info, { quizWeeks, taskCount: tasks.length });
+
+  const entries = tasks.map((t) => ({
+    taskId: t.id,
+    title: t.title,
+    order: t.order,
+    status: str(formData.get(`status_${t.id}`)),
+    note: str(formData.get(`note_${t.id}`)) || null,
+  }));
+  if (entries.some((e) => !isTaskStatus(e.status))) fail(path, "اختر حالة كل مهمة من مهام الأسبوع");
+
+  /**
+   * ما لم يُرسم لا يُكتب: الحقول التي لا يطلبها الأسبوع تُفرَّغ هنا، فلا يُطالَب
+   * المشارك بحقلٍ لم يره، ولا يُدسّ نصٌّ في حقلٍ أُغلق عليه.
+   */
   const data = {
-    reading: str(formData.get("reading")),
-    benefits: str(formData.get("benefits")),
-    taskProgress: str(formData.get("taskProgress")),
-    fieldNote: str(formData.get("fieldNote")) || null,
-    quizResult: str(formData.get("quizResult")) || null,
-    application: str(formData.get("application")) || null,
-    difficulty: str(formData.get("difficulty")) || null,
+    reading: show.reading ? str(formData.get("reading")) : "",
+    benefits: show.reading ? str(formData.get("benefits")) : "",
+    // العمود القديم يبقى ولا يُكتب فيه جديد: التقارير السابقة وحدها تُقرأ منه
+    taskProgress: "",
+    fieldNote: show.field ? str(formData.get("fieldNote")) || null : null,
+    quizResult: show.quiz ? str(formData.get("quizResult")) || null : null,
+    application: show.reflect ? str(formData.get("application")) || null : null,
+    difficulty: show.reflect ? str(formData.get("difficulty")) || null : null,
   };
-  if (!data.reading || !data.benefits || !data.taskProgress) fail(path, "الورد المنجز والفوائد والمهمة الأسبوعية حقول إلزامية");
-  const existing = await db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } } });
-  await db.weeklyReport.upsert({
+  if (show.reading && (!data.reading || !data.benefits)) fail(path, "الورد المنجز والفوائد حقلان إلزاميان");
+
+  const existing = await db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, select: { id: true } });
+  const report = await db.weeklyReport.upsert({
     where: { userId_week: { userId: user.id, week } },
     create: { userId: user.id, week, ...data },
     update: { ...data, submittedAt: new Date() },
   });
+  // الرصد يُستبدل كاملاً عند كل تسليم، في دفعة واحدة فلا يمرّ التقرير بحالٍ نصفه قديم
+  await db.$transaction([
+    db.weeklyReportTask.deleteMany({ where: { reportId: report.id } }),
+    ...(entries.length ? [db.weeklyReportTask.createMany({ data: entries.map((e) => ({ ...e, reportId: report.id })) })] : []),
+  ]);
+
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
   }

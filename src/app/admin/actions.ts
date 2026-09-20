@@ -535,7 +535,7 @@ export async function saveWeek(formData: FormData) {
       session: str(formData.get("session")),
       circle: str(formData.get("circle")),
       reading: str(formData.get("reading")),
-      task: str(formData.get("task")),
+      // نصّ المهام لا يُكتب هنا: يشتقّه `saveWeekTasks` من قائمة المهام نفسها
       field: str(formData.get("field")),
       meetingPlace: str(formData.get("meetingPlace")) || null,
       remoteUrl: remoteUrl || null,
@@ -548,6 +548,62 @@ export async function saveWeek(formData: FormData) {
   revalidatePath("/app");
   revalidatePath("/app/week");
   ok(`/admin/schedule?week=${number}`, "تم تحديث الأسبوع");
+}
+
+// ——— مهام الأسبوع: صفٌّ لكل مهمة، يرصد عليه المشارك إنجازه في تقريره الأسبوعي ———
+export async function saveWeekTasks(formData: FormData) {
+  await admin();
+  const number = num(formData.get("number"), -99);
+  const path = `/admin/schedule?week=${number}`;
+  if (number === -99) fail("/admin/schedule", "أسبوع غير صحيح");
+  const cohortId = await requireCohortId();
+  if (!(await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true } }))) fail("/admin/schedule", "أسبوع غير موجود");
+
+  const rows = await db.weekTask.findMany({ where: { cohortId, week: number }, orderBy: { order: "asc" } });
+  const titleOf = (id: string) => str(formData.get(`title_${id}`));
+  const added = str(formData.get("newTask"));
+  const removing = rows.filter((r) => !titleOf(r.id));
+
+  /**
+   * إفراغ الحقل حذفٌ للمهمة، كما في بنود الميثاق. لكن مهمةً رصد عليها المشاركون
+   * يُشير إليها رصدُهم في تقاريرهم، وحذفها يمحوه معها. فيُرفض الحذف قبل أي كتابة
+   * ويُسمّى عدد من رصدوا عليها، ليعلم المدير ما كان سيضيع فيصحّح نصّها بدل محوها.
+   */
+  if (removing.length) {
+    const counts = await db.weeklyReportTask.groupBy({
+      by: ["taskId"],
+      where: { taskId: { in: removing.map((r) => r.id) } },
+      _count: { _all: true },
+    });
+    const blocked = counts.find((c) => c._count._all > 0);
+    if (blocked) {
+      const t = removing.find((r) => r.id === blocked.taskId);
+      fail(path, `لا تُحذف مهمة رصدها المشاركون: «${t?.title ?? ""}» رصدها ${blocked._count._all} في تقاريرهم. عدّل نصّها إن أردت تصحيحه.`);
+    }
+  }
+
+  const kept = rows.filter((r) => titleOf(r.id));
+  const titles = [...kept.map((r) => titleOf(r.id)), ...(added ? [added] : [])];
+
+  await db.$transaction([
+    ...(removing.length ? [db.weekTask.deleteMany({ where: { id: { in: removing.map((r) => r.id) } } })] : []),
+    // يُعاد الترقيم كاملاً، فلا تبقى فجوة بعد حذف مهمة من الوسط
+    ...kept.map((r, i) => db.weekTask.update({ where: { id: r.id }, data: { title: titleOf(r.id), order: i } })),
+    ...(added ? [db.weekTask.create({ data: { cohortId, week: number, order: kept.length, title: added } })] : []),
+    /**
+     * نصّ المهمة في صفّ الأسبوع يُشتق من القائمة ولا يُكتب بيد: بطاقة الأسبوع،
+     * وقائمة التقارير، وتقويم المشارك، وتذكير الأربعاء — كلها تقرأ منه، فيبقى
+     * مطابقاً للقائمة بلا مسٍّ لتلك المواضع.
+     */
+    db.programWeek.update({ where: { cohortId_number: { cohortId, number } }, data: { task: titles.join(" + ") } }),
+  ]);
+
+  revalidatePath("/admin/schedule");
+  revalidatePath("/program/schedule");
+  revalidatePath("/app");
+  revalidatePath("/app/week");
+  revalidatePath("/app/reports");
+  ok(path, titles.length ? `حُفظت مهام الأسبوع (${titles.length})` : "حُفظ الأسبوع بلا مهام");
 }
 
 export async function notifyWeekChange(formData: FormData) {
