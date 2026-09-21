@@ -20,6 +20,10 @@ const MAX_SCALE = 3;
 /** ما يُرسم حول الشاشة، وما يُفرَّغ بعده: كتابٌ من مئتي صفحة لا تحتمل ذاكرةُ الجوال لوحاتِه كلها */
 const NEAR_PX = 800;
 const KEEP = 4;
+/** سكونٌ قبل حفظ الموضع: التمرير يغيّر الصفحة عشرات المرات في الثانية الواحدة */
+const SAVE_IDLE_MS = 2500;
+/** كم يبقى سطرُ «عُدتَ إلى صفحة…» قبل أن يزول من نفسه */
+const RESUMED_MS = 7000;
 
 /**
  * عارض PDF داخل المنصة: صفحاتٌ متصلة يُمرَّر بينها، تُرسم على canvas.
@@ -30,7 +34,7 @@ const KEEP = 4;
  * وتُجلب الحزمة عند أول فتح ملف لا مع كل صفحة: استيرادٌ ديناميكي يُخرجها إلى
  * قطعة منفصلة تحت ‎_next/static المخزَّن سنة كاملة.
  */
-export default function PdfViewer({ url }: { url: string }) {
+export default function PdfViewer({ url, docId, startPage }: { url: string; docId?: string; startPage?: number }) {
   const docRef = useRef<PdfDoc | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   /** لوحة كل صفحة بمرجعها، ومهمّة رسمها الجارية، وجيلُ آخر طلب رسم لها */
@@ -63,6 +67,22 @@ export default function PdfViewer({ url }: { url: string }) {
   const [scale, setScale] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** أُستؤنفت القراءة من صفحةٍ محفوظة: يُعرض سطرُ العودة إلى الأول */
+  const [resumed, setResumed] = useState(0);
+  /** آخر صفحةٍ أُرسلت إلى الخادم. تبدأ بالمحفوظة فلا يُعاد حفظُ ما هو محفوظ */
+  const saved = useRef(startPage ?? 0);
+  /** هل وثب العارضُ إلى الموضع المحفوظ؟ مرةً واحدة لكل فتحة */
+  const jumped = useRef(false);
+  /**
+   * آخرُ قيمةٍ للصفحة وعددِها، يقرؤها مستمعُ المغادرة. وهو مُركَّبٌ مرةً واحدة
+   * على `docId` وحده — لا على كل تغيّر صفحة، وإلا رُكّب وفُكّ مع كل تمريرة —
+   * فلا يرى الحالةَ الأحدث إلا من مرجع.
+   */
+  const currentRef = useRef(1);
+  const pagesRef = useRef(0);
+
+  currentRef.current = current;
+  pagesRef.current = pages;
 
   // تحميل الوثيقة مرة واحدة
   useEffect(() => {
@@ -209,8 +229,6 @@ export default function PdfViewer({ url }: { url: string }) {
           const n = Number((e.target as HTMLElement).dataset.page);
           if (e.isIntersecting) near.add(n); else near.delete(n);
         }
-        const focus = Math.min(...(near.size ? [...near] : [current]));
-        if (Number.isFinite(focus)) setCurrent(focus);
         for (const n of near) void drawPage(n);
         for (const [n, slot] of slots.current) {
           if (![...near].some((m) => Math.abs(m - n) <= KEEP) && slot.drawn !== 0) {
@@ -231,9 +249,35 @@ export default function PdfViewer({ url }: { url: string }) {
     );
     for (const slot of slots.current.values()) io.observe(slot.el);
     return () => io.disconnect();
-    // current مقصودٌ خارج التبعيات: يتغيّر مع كل تمريرة ولا يُعاد المراقب لأجله
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, drawPage]);
+
+  /**
+   * مؤشّرُ الصفحة الجارية: مراقبٌ ثانٍ **بلا هامش**.
+   *
+   * وكان يُشتقّ من مراقب الرسم نفسه، وهامشُه ثمانُمئة بكسل حول الشاشة — فيعدّ
+   * «قريباً» ما هو فوق الشاشة بصفحةٍ أو صفحتين، وأصغرُ القريب هو المعروض عنده.
+   * فكان العدّاد يقول 23 والقارئ على 25. وما كان خطأً في عدّادٍ يُقرأ صار خطأً
+   * يُكتب حين ارتبط به حفظُ الموضع: تُحفظ صفحةٌ أدنى مما بلغ القارئ، فيتراجع
+   * موضعُه مع كل فتحة.
+   */
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || !pages) return;
+    const seen = new Set<number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const n = Number((e.target as HTMLElement).dataset.page);
+          if (e.isIntersecting) seen.add(n); else seen.delete(n);
+        }
+        // أعلى صفحةٍ ظاهرةٍ فعلاً هي التي يقرؤها: ما تحتها لم يبلغه بعد
+        if (seen.size) setCurrent(Math.min(...seen));
+      },
+      { root: box, rootMargin: "0px" },
+    );
+    for (const slot of slots.current.values()) io.observe(slot.el);
+    return () => io.disconnect();
+  }, [pages]);
 
   // تغيّر التكبير أو عرض النافذة: يُعاد رسم ما هو معروض، ويبقى موضع القراءة
   useEffect(() => {
@@ -252,6 +296,76 @@ export default function PdfViewer({ url }: { url: string }) {
     window.addEventListener("resize", onResize);
     return () => { clearTimeout(t); window.removeEventListener("resize", onResize); };
   }, [scale, loading, error, drawPage]);
+
+  /**
+   * الوثوبُ إلى الموضع المحفوظ. مرةً واحدة بعد أن تُركَّب عقدُ الصفحات — وهي
+   * تُركَّب كلُّها دفعةً واحدة بمقاسٍ مُقدَّر — فلا ينتظر رسماً. والمقاسُ تقديرٌ
+   * من الصفحة الأولى، فالهبوطُ في مستندٍ مختلف الأحجام تقريبيٌّ يصحّحه الرسم.
+   */
+  useEffect(() => {
+    if (jumped.current || loading || error || !pages) return;
+    const target = Math.min(Math.max(startPage ?? 1, 1), pages);
+    if (target <= 1) { jumped.current = true; return; }
+    const el = slots.current.get(target)?.el;
+    if (!el) return;
+    jumped.current = true;
+    el.scrollIntoView({ block: "start" });
+    setResumed(target);
+  }, [loading, error, pages, startPage]);
+
+  // سطرُ العودة يزول من نفسه: تنبيهٌ لا يبقى معلّقاً فوق الصفحة
+  useEffect(() => {
+    if (!resumed) return;
+    const t = setTimeout(() => setResumed(0), RESUMED_MS);
+    return () => clearTimeout(t);
+  }, [resumed]);
+
+  /**
+   * حفظُ الموضع بعد سكون. ولا يُكتب صفٌّ لمن فتح وأغلق بلا قراءة: `saved` تبدأ
+   * بالموضع المحفوظ، فلا يُرسل شيءٌ حتى تتغيّر الصفحة عمّا فُتح عليه.
+   */
+  useEffect(() => {
+    // ولا قبل أن يستقرّ الوثوب إلى الموضع المحفوظ: وإلا حُفظت الصفحةُ الأولى فوقه
+    if (!docId || loading || error || !pages || !jumped.current || current === saved.current) return;
+    const t = setTimeout(() => {
+      saved.current = current;
+      void fetch("/api/reading-progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: docId, page: current, pages }),
+        keepalive: true,
+      }).catch(() => {});
+    }, SAVE_IDLE_MS);
+    return () => clearTimeout(t);
+  }, [current, pages, docId, loading, error]);
+
+  /**
+   * وعند المغادرة يُرسل ما لم تبلغه مهلةُ السكون بعد. و`sendBeacon` لا `fetch`:
+   * المتصفح يقتل طلبات الصفحة المغادِرة، والحزمةُ وحدها تنجو منها. و`pagehide`
+   * لا `beforeunload`: الأخير لا يقع في سفاري iOS، وهو أكثرُ ما يُقرأ عليه.
+   */
+  useEffect(() => {
+    if (!docId) return;
+    const flush = () => {
+      const page = currentRef.current;
+      if (!page || !pagesRef.current || page === saved.current) return;
+      saved.current = page;
+      const body = new Blob([JSON.stringify({ id: docId, page, pages: pagesRef.current })], { type: "application/json" });
+      try {
+        navigator.sendBeacon("/api/reading-progress", body);
+      } catch {
+        /* متصفحٌ لا يدعمها: يبقى ما حفظته مهلةُ السكون */
+      }
+    };
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [docId]);
 
   if (error) return <p className="p-6 text-center text-sm text-muted">{error}</p>;
 
@@ -277,6 +391,26 @@ export default function PdfViewer({ url }: { url: string }) {
           </div>
         )}
       </div>
+
+      {/*
+        من فُتح له الكتابُ في وسطه يجب أن يعرف لمَ، وأن يجد طريق العودة في نقرة —
+        وإلا ظنّ العارضَ مختلاً. ويزول السطرُ من نفسه فلا يزاحم القراءة.
+      */}
+      {resumed > 0 && (
+        <div className="shrink-0 border-t border-line bg-paper-3 flex items-center justify-between gap-2 px-3 py-2 text-xs">
+          <span className="text-muted">عُدتَ إلى صفحة {resumed}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              slots.current.get(1)?.el.scrollIntoView({ block: "start" });
+              setResumed(0);
+            }}
+          >
+            ابدأ من الأول
+          </button>
+        </div>
+      )}
 
       {pages > 0 && (
         <div
