@@ -34,22 +34,33 @@ export default {
   },
   async scheduled(event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
     const base = env.APP_URL || "https://maalem.local";
-    // الجدول اليومي يشغّل تذكيرات البرنامج الثابتة، والجدول الساعي يرسل التذكيرات المخصصة في مواعيدها،
-    // وجدولُ العشر دقائق يصرّف طابور الإشعارات إلى الأجهزة والبريد.
-    // الساعة الرابعة يطابقها الجدولان معاً، فلا يُرسل اليوميُّ المخصصةَ كي لا تُرسل مرتين.
-    const paths =
-      event.cron === "0 4 * * *" ? ["/api/cron/reminders"]
-      : event.cron === "*/10 * * * *" ? ["/api/cron/drain"]
-      : ["/api/cron/dispatch"];
+    /**
+     * جدولان اثنان لا ثلاثة: سقفُ خطة Workers المجانية خمسةُ جداول **للحساب
+     * كله** لا للعامل الواحد، فثالثُها يردّه النشر ويسقط معه. فحمل الجدولُ
+     * الساعيُّ عملين: التذكيراتِ الثابتة في الرابعة — 07:00 بتوقيت الرياض،
+     * موعدَها الذي لم يتغير — والمخصصةَ في سائر الساعات.
+     *
+     * وعملٌ واحد في كل استدعاء لا عملان: ميزانيةُ الخمسين طلباً فرعياً تُحسب
+     * للاستدعاء كاملاً، وجمعُ العملين يبلغها في الرابعة — يومَ يكون الإرسال
+     * أكثرَ ما يكون — و`once` في نقطة التذكيرات يختم اليوم قبل العمل، فما
+     * سقط منه لا يُعاد. فتُزاح المخصصةُ في تلك الساعة وحدَها إلى 04:10 على
+     * جدول العشر دقائق، ويصرَّف الطابور بعدها في 04:20.
+     */
+    const at = new Date(event.scheduledTime);
+    const [hour, minute] = [at.getUTCHours(), at.getUTCMinutes()];
+    // خانةُ العشر دقائق لا دقيقتها: الإطلاق قد يتأخر عن موعده دقائق
+    const tenPast = minute >= 10 && minute < 20;
+    const path =
+      event.cron === "*/10 * * * *" ? (hour === 4 && tenPast ? "/api/cron/dispatch" : "/api/cron/drain")
+      : hour === 4 ? "/api/cron/reminders"
+      : "/api/cron/dispatch";
     ctx.waitUntil(
       (async () => {
         const key = await cronSecret(env);
         if (!key) return; // المنصة لم تُعدّ بعد
-        for (const path of paths) {
-          const req = new Request(`${base}${path}?key=${encodeURIComponent(key)}`);
-          const res = await nextApp.fetch(req, env, ctx);
-          if (!res.ok) log("cron.rejected", { cron: event.cron, path, status: res.status });
-        }
+        const req = new Request(`${base}${path}?key=${encodeURIComponent(key)}`);
+        const res = await nextApp.fetch(req, env, ctx);
+        if (!res.ok) log("cron.rejected", { cron: event.cron, path, status: res.status });
       })().catch((e: unknown) => {
         // رفضٌ غير ملتقَط في `waitUntil` يُسقط الاستدعاء المجدول كله بلا أثرٍ مقروء
         log("cron.failed", { cron: event.cron, reason: String((e as Error)?.message ?? e) });
