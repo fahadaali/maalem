@@ -1,4 +1,5 @@
 import { requireParticipantView } from "@/lib/auth";
+import ResumeReading, { type ResumeItem } from "@/components/ResumeReading";
 import { db } from "@/lib/db";
 import { ChevronLeft } from "lucide-react";
 import Link from "@/components/Link";
@@ -13,14 +14,31 @@ import { folderHex } from "@/lib/folders";
 export const metadata = { title: "مكتبة المواد" };
 
 export default async function MaterialsPage({ searchParams }: { searchParams: Promise<{ folder?: string }> }) {
-  await requireParticipantView();
+  const user = await requireParticipantView();
   const { folder } = await searchParams;
-  const [materials, files, folders] = await Promise.all([
+  const [materials, files, folders, progress] = await Promise.all([
     db.material.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
     db.attachment.findMany({ where: { kind: "MATERIAL" }, orderBy: { createdAt: "asc" } }),
     db.materialFolder.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
+    db.readingProgress.findMany({ where: { userId: user.id }, orderBy: { updatedAt: "desc" }, take: 3 }),
   ]);
   const filesOf = (id: string) => files.filter((x) => x.refId === id).map(toItem);
+
+  /**
+   * آخرُ ما قُرئ. أسماءُ الملفات تُلتمس أولاً بين مرفقات المكتبة المجلوبة سلفاً،
+   * فلا تُستعلم إلا لما قُرئ خارجها. وما حُذف ملفُه يسقط من العرض بلا خطأ.
+   */
+  const named = new Map(files.map((f) => [f.id, f.name]));
+  const missing = progress.map((p) => p.attachmentId).filter((id) => !named.has(id));
+  if (missing.length) {
+    for (const a of await db.attachment.findMany({ where: { id: { in: missing } }, select: { id: true, name: true } })) {
+      named.set(a.id, a.name);
+    }
+  }
+  const resume: ResumeItem[] = progress.flatMap((p) => {
+    const name = named.get(p.attachmentId);
+    return name ? [{ id: p.attachmentId, name, page: p.page, pages: p.pages }] : [];
+  });
 
   /**
    * التنظيم كما وضعه مدير المشروع: المجلد وعاءٌ يُفتح لا عنوانٌ فوق مواده، فالصفحة
@@ -52,6 +70,7 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
         title={open ? open.name : "مكتبة المواد"}
         subtitle={open ? (open.note || "مواد هذا المجلد.") : "كتب البرنامج وقوالبه وأدلته. حمّلها أو افتح رابطها."}
       />
+      {!open && <ResumeReading items={resume} from="/app/materials" />}
       {materials.length === 0 ? (
         <Empty>لم تُضف مواد بعد. سيضعها مدير المشروع هنا.</Empty>
       ) : open ? (

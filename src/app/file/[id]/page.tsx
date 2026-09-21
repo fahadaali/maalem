@@ -3,6 +3,7 @@ import { Download, X } from "lucide-react";
 import Link from "@/components/Link";
 import PdfViewer from "@/components/PdfViewerLoader";
 import { authorizeAttachment, toItem } from "@/lib/attachments";
+import { db } from "@/lib/db";
 import { homeFor } from "@/lib/auth";
 
 export const metadata = { title: "عرض الملف", robots: { index: false, follow: false } };
@@ -38,6 +39,16 @@ export default async function FilePage({
   const item = toItem(auth.att);
   const isPdf = item.contentType === "application/pdf";
   const isImage = item.contentType.startsWith("image/");
+  /**
+   * موضعُ القراءة المحفوظ. يُقرأ في الخادم ويُمرَّر خاصيّةً، فلا يحتاج العارض
+   * رحلةً إلى الخادم عند الفتح — ولا يُستعلم إلا لما له صفحاتٌ تُحفظ.
+   */
+  const progress = isPdf
+    ? await db.readingProgress.findUnique({
+        where: { userId_attachmentId: { userId: auth.user.id, attachmentId: id } },
+        select: { page: true },
+      })
+    : null;
   // وجهة الرجوع من الرابط، ولا تُقبل إلا داخل المنصة فلا تصير قفزةً إلى موقع خارجي
   const back = from && /^\/(app|admin|mentor)(\/|\?|$)/.test(from) ? from : homeFor(auth.user.role);
 
@@ -83,7 +94,7 @@ export default async function FilePage({
       </div>
 
       {isPdf ? (
-        <PdfViewer url={item.url} />
+        <PdfViewer url={item.url} docId={id} startPage={progress?.page} />
       ) : isImage ? (
         <div className="flex-1 overflow-auto p-3 pt-14 md:pt-3 flex items-start justify-center">
           {/* محسِّن next/image لا يعمل على العامل بلا إعداد، والمرفق لا يُخزَّن في شبكة التوزيع أصلاً */}

@@ -34,6 +34,7 @@ model User {
   notifications     Notification[]
   attendance        Attendance[]
   readingCards      ReadingCard[]
+  readingProgress   ReadingProgress[]
   weeklyReports     WeeklyReport[]
   quizAttempts      QuizAttempt[]
   submissions       Submission[]
@@ -354,6 +355,23 @@ model ReadingCard {
   createdAt DateTime @default(now())
 
   @@index([userId, date])
+}
+
+/// موضعُ القراءة في ملفٍ بعينه: يُحفظ في الحساب لا في الجهاز، فيُستأنف من أيّ جهاز
+model ReadingProgress {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// معرّف المرفق. بلا علاقةٍ أجنبية — كـ`Attachment.refId` نفسه — فإنفاذُ
+  /// المفاتيح الأجنبية على D1 ليس مضموناً، والتنظيفُ صريحٌ عند حذف الملف.
+  attachmentId String
+  page         Int
+  /// عددُ صفحات الملف، يُحفظ ليُقرأ «42 من 103» بلا فتح الملف
+  pages        Int
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, attachmentId])
+  @@index([userId, updatedAt])
 }
 
 model WeeklyReport {
