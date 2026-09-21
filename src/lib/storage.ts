@@ -25,7 +25,16 @@ export function safeKey(userId: string, name: string) {
   return `${userId}/${Date.now()}-${rand}.${ext}`;
 }
 
-export async function putObject(key: string, body: ArrayBuffer, contentType: string) {
+/**
+ * يكتب المرفوع كما وصل. و`Blob` هو المُمرَّر لا `ArrayBuffer`: قراءةُ
+ * `file.arrayBuffer()` تصنع **نسخةً ثانية** من الملف كاملاً في ذاكرة العامل —
+ * فوق النسخة التي صنعها `formData()` أصلاً — وحدُّ الذاكرة 128 ميغابايت، فملفٌ
+ * من خمسين كان يبلغ المئة فيسقط الطلب بـ1102. وR2 يقبل `Blob` مباشرة فيقرؤه
+ * بنفسه، والنسخةُ الثانية تزول.
+ *
+ * والمحليُّ يبقى على `Buffer`: لا حدَّ ذاكرةٍ في Node، والقرصُ يحتاج بايتات.
+ */
+export async function putObject(key: string, body: Blob, contentType: string) {
   const bucket = r2();
   if (bucket) {
     await bucket.put(key, body, { httpMetadata: { contentType } });
@@ -33,7 +42,7 @@ export async function putObject(key: string, body: ArrayBuffer, contentType: str
   }
   const file = path.join(LOCAL_DIR, key);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, Buffer.from(body));
+  await fs.writeFile(file, Buffer.from(await body.arrayBuffer()));
 }
 
 export async function getObject(key: string): Promise<{ body: ReadableStream | Buffer; contentType?: string; size?: number } | null> {
