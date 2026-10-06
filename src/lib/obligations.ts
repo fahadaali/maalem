@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { keyToDate, reportDueFrom } from "./dates";
+import { keyToDate, reportDueFrom, todayKey } from "./dates";
 import { resolveCurrentWeek, weekResolver, type LiveWeek } from "./weeks";
 import { dueFor, loadParticipant, loadParticipantsOnce, loadProgram, type ParticipantRows, type ProgramData } from "./participant-data";
 import { readingByWeek, readingDeadline, weekQuota } from "./reading-quota";
@@ -124,16 +124,26 @@ export function overdueLabel(days: number): string {
   return `متأخر ${days} يوماً`;
 }
 
-/** أيام التأخر صراحةً — لا بتقريب `daysUntil` إلى أعلى فيقرأ «متأخر 0 يوم» */
+/** الأيام بين تاريخين بأيام التقويم في الرياض لا بفترات أربعٍ وعشرين ساعة */
+function calendarDays(from: Date, to: Date): number {
+  return Math.round((keyToDate(todayKey(to)).getTime() - keyToDate(todayKey(from)).getTime()) / DAY);
+}
+
+/** أيام التأخر بأيام التقويم: ما فات مساء أمس متأخرٌ يوماً، وما فات صباح اليوم «فات موعده اليوم» */
 export function daysLate(due: Date, now: Date): number {
-  return Math.floor((now.getTime() - due.getTime()) / DAY);
+  return Math.max(0, calendarDays(due, now));
+}
+
+/** الأيام الباقية بأيام التقويم: موعدٌ الليلة «التسليم اليوم»، وغداً «بقي يوم واحد» */
+export function daysLeft(due: Date, now: Date): number {
+  return Math.max(0, calendarDays(now, due));
 }
 
 /** سطر العدّاد تحت البند: كم بقي، أو كم تأخّر عن موعده (الأصلي للمُرجَع) */
 export function timingLabel(o: Pick<Obligation, "dueAt" | "state">, now: Date): string {
   if (!o.dueAt || o.state === "done") return "";
   if (o.dueAt.getTime() < now.getTime()) return overdueLabel(daysLate(o.dueAt, now));
-  return remaining(Math.max(0, Math.ceil((o.dueAt.getTime() - now.getTime()) / DAY)));
+  return remaining(daysLeft(o.dueAt, now));
 }
 
 /** «ساعة» و«ساعتان» و«3 ساعات» */
@@ -156,8 +166,8 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
   const curWeek = byNumber.get(cur);
   // نهاية الأسبوع الجاري: ما موعده قبلها «مطلوب هذا الأسبوع»، وما بعدها «قادم»
   const horizon = curWeek ? weekEnd(curWeek).getTime() : cur < 0 && w0 ? weekEnd(w0).getTime() : now.getTime();
-  // المنضمّ بعد بدء البرنامج لا يُطالَب بما فات قبل انضمامه
-  const joinWeek = weekResolver(weeks)(rows.user.createdAt) ?? -1;
+  // المنضمّ بعد بدء البرنامج لا يُطالَب بما فات موعده قبل انضمامه — بالموعد لا برقم
+  // الأسبوع، فمن انضمّ الجمعة لا يُطالَب بتقرير أسبوعه الذي انقضى خميسه
   const joinedAt = rows.user.createdAt.getTime();
 
   const returns = rows.returns;
@@ -201,7 +211,8 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
       title: a.title,
       week: a.week,
       dueAt: due,
-      state: stateOf(!!s, due, a.week),
+      // المطويّة لا تتمّ بالتسليم وحده: ما يُكتب في وحدته (الخطة، المشروع…) مطلوبٌ معه
+      state: stateOf(!!s && related.every((r) => r.done), due, a.week),
       href: `/app/tasks/${a.id}`,
       action: s ? "افتح" : "سلّم الآن",
       related: related.length ? related : undefined,
@@ -216,8 +227,9 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
   const reportOf = new Map(rows.reports.map((r) => [r.week, r]));
   const tasksOf = (n: number) => program.weekTasks.filter((t) => t.week === n).map((t) => t.title);
   for (const w of weeks) {
-    if (w.number < 0 || w.number > 12 || w.number < joinWeek) continue;
+    if (w.number < 0 || w.number > 12) continue;
     const due = reportDueFrom(w.gregorian);
+    if (due.getTime() < joinedAt) continue;
     const r = reportOf.get(w.number);
     const tasks = tasksOf(w.number);
     let o: Obligation = {
@@ -239,7 +251,7 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
 
   // ——— الورد القرائي: بندٌ تراكمي واحد يُستدرك بالقراءة لا بتأريخ بطاقةٍ قديمة ———
   const returnedCards = returnedIds(returns, "READING_CARD");
-  const byWeek = readingByWeek(rows.cards, weeks, returnedCards).filter((r) => r.week >= joinWeek);
+  const byWeek = readingByWeek(rows.cards, weeks, returnedCards).filter((r) => readingDeadline(byNumber.get(r.week)!).getTime() >= joinedAt);
   if (byWeek.length) {
     const read = rows.cards.filter((c) => !returnedCards.has(c.id)).reduce((s, c) => s + Math.max(0, c.toPage - c.fromPage + 1), 0);
     let cumulative = 0;
@@ -297,7 +309,8 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
       group: "reading",
       title: `بطاقة قراءة — ${c.book} (ص ${c.fromPage}–${c.toPage})`,
       week: wk?.number,
-      dueAt: wk ? readingDeadline(wk) : null,
+      // الموعد الذي ذُكر في إشعار الإرجاع نفسه
+      dueAt: originalDue("READING_CARD", { date: c.date }, rows, weeks),
       state: "returned",
       href: `/app/reading?edit=${c.id}#card-${c.id}`,
       action: "عدّل وأعد التقديم",
@@ -309,10 +322,10 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
   const attempted = new Set(rows.attempts.map((a) => a.quizId));
   for (const q of program.quizzes) {
     if (!q.published || q.questions === 0) continue;
-    if (q.week != null && q.week < joinWeek) continue;
     const wk = q.week != null ? byNumber.get(q.week) : undefined;
     // اختبارٌ بلا أسبوع لا موعد له ولا يتأخر
     const due = wk ? weekEnd(wk) : null;
+    if (due && due.getTime() < joinedAt) continue;
     const done = attempted.has(q.id);
     items.push({
       key: `quiz:${q.id}`,
@@ -328,25 +341,39 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
     });
   }
 
-  // ——— المعايشة الميدانية: ساعةٌ في كل أسبوعٍ فيه معايشة، تراكمياً ———
-  const fieldWeeks = weeks.filter((w) => w.field && w.number >= Math.max(0, joinWeek) && w.number <= 12).sort((a, b) => a.number - b.number);
+  // ——— المعايشة الميدانية: ساعات البرنامج موزّعةً على أسابيع المعايشة، تراكمياً ———
+  // المطلوب ما تقيسه الدرجة: ساعةٌ عن كل أسبوع تطويري (12 في الجدول الأصلي)، تُقضى
+  // في أسابيع المعايشة (الثالث حتى الثاني عشر) — فيُطلب بعد الأسبوع k من n أسابيعها
+  // round(الساعات × k ÷ n): 1، 2، 4، 5، 6، 7، 8، 10، 11، 12.
+  const allFieldWeeks = weeks.filter((w) => w.field && w.number >= 0 && w.number <= 12).sort((a, b) => a.number - b.number);
+  const fieldHours = weeks.filter((w) => w.number >= 1 && w.number <= 12).length || 12;
+  const requiredBy = (k: number) => (allFieldWeeks.length ? Math.round((fieldHours * k) / allFieldWeeks.length) : 0);
+  const skipped = allFieldWeeks.filter((w) => weekEnd(w).getTime() < joinedAt).length;
+  const fieldWeeks = allFieldWeeks.slice(skipped);
   if (fieldWeeks.length) {
     const returnedLogs = returnedIds(returns, "FIELD_LOG");
     const logged = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id)).reduce((s, f) => s + f.hours, 0);
     const pending = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id) && !f.approvedAt).reduce((s, f) => s + f.hours, 0);
+    // ما فات قبل انضمامه لا يُطالَب به
+    const base = requiredBy(skipped);
     let soFar = 0;
     let missedSince: Date | null = null;
     let current: LiveWeek | undefined;
-    for (const w of fieldWeeks) {
+    let currentNeed = 0;
+    for (const [i, w] of fieldWeeks.entries()) {
+      const need = requiredBy(skipped + i + 1) - base;
       if (weekEnd(w).getTime() <= now.getTime()) {
-        soFar += 1;
+        soFar = need;
         if (!missedSince && logged < soFar) missedSince = weekEnd(w);
-      } else if (!current) current = w;
+      } else if (!current) {
+        current = w;
+        currentNeed = need;
+      }
     }
-    const total = fieldWeeks.length;
+    const total = fieldHours - base;
     const behind = Math.max(0, soFar - logged);
     const inProgress = cur >= 0 && !!current && current.number <= cur;
-    const needed = soFar + (inProgress ? 1 : 0);
+    const needed = inProgress ? currentNeed : soFar;
     const state: ObligationState = logged >= total ? "done" : behind > 0 ? "overdue" : inProgress ? (logged >= needed ? "done" : "due") : "upcoming";
     items.push({
       key: "field",
@@ -454,7 +481,9 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
     });
   }
   if (w13) {
-    const due = keyToDate(w13.gregorian);
+    // «رابط النسخة النهائية والعرض (الأسبوع 13)» والتسليم النهائي لملف الإنجاز مهمة الأسبوع
+    // الختامي: موعدهما نهايته، فيكونان «مطلوبَين هذا الأسبوع» فيه لا متأخرَين من أول يومه
+    const due = weekEnd(w13);
     const done = !!p && (p.status === "FINAL" || p.status === "JUDGED" || !!p.finalLink);
     items.push({ key: "project:final", kind: "PROJECT", group: "other", title: "النسخة النهائية لمشروع التخرج", week: 13, dueAt: due, state: stateOf(done, due, 13), href: "/app/project", action: "ارفع النسخة النهائية", doneLabel: p?.status === "JUDGED" ? "حُكِّم" : "سُلِّمت" });
     items.push({ key: "portfolio", kind: "PORTFOLIO", group: "other", title: "التسليم النهائي لملف الإنجاز", week: 13, dueAt: due, state: stateOf(!!rows.user.portfolioSubmittedAt, due, 13), href: "/app/portfolio", action: "راجع وسلّم" });

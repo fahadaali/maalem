@@ -2,7 +2,7 @@ import { cache } from "react";
 import { db } from "./db";
 import { activeCohortId, cohortWhere } from "./cohort";
 import { getWeeks, type LiveWeek } from "./weeks";
-import type { OpenReturn } from "./returns";
+import { returnedIds, type OpenReturn } from "./returns";
 
 /**
  * سجلات المشارك كلها في رحلة واحدة إلى القاعدة، تتقاسمها الدرجة وحالات الأسابيع
@@ -203,6 +203,29 @@ export function loadParticipantsOnce(ids: string[]): Promise<Map<string, Partici
 export const loadParticipant = cache(async (userId: string): Promise<ParticipantRows | null> => {
   return (await loadParticipants([userId])).get(userId) ?? null;
 });
+
+/**
+ * ما ينتظر مراجعة المدير من إدخالات المشارك — لشارة الملف وتبويباته وكشف المشاركين
+ * معاً، فلا تفترق أعدادها. والمُرجَع ينتظر صاحبه لا المدير، فلا يُعدّ هنا.
+ */
+export function waitingCounts(rows: ParticipantRows) {
+  const ret = (kind: Parameters<typeof returnedIds>[1]) => returnedIds(rows.returns, kind);
+  const subs = ret("SUBMISSION");
+  const reports = ret("WEEKLY_REPORT");
+  const cards = ret("READING_CARD");
+  const logs = ret("FIELD_LOG");
+  const plan = !!rows.plan && !rows.plan.reviewedAt && !ret("LEARNING_PLAN").has(rows.plan.id);
+  const c = {
+    submissions: rows.submissions.filter((s) => !s.gradedAt && !subs.has(s.id)).length,
+    reports: rows.reports.filter((r) => !r.reviewedAt && !reports.has(r.id)).length,
+    cards: rows.cards.filter((x) => !x.reviewedAt && !cards.has(x.id)).length,
+    plan: plan ? 1 : 0,
+    fieldLogs: rows.fieldLogs.filter((f) => !f.approvedAt && !logs.has(f.id)).length,
+  };
+  const work = c.submissions + c.reports;
+  const reading = c.cards + c.plan;
+  return { ...c, work, reading, field: c.fieldLogs, total: work + reading + c.fieldLogs };
+}
 
 /** الموعد الساري لمشاركٍ في مهمة: الأبعد من موعدها وتمديده المعتمد — فالتمديد لا يقصّر موعداً */
 export function dueFor(a: { id: string; dueAt: Date }, extensions: Map<string, Date>): Date {

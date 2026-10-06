@@ -79,7 +79,11 @@ export async function cancelReturn(formData: FormData) {
   const owner = await itemOwner(kind, id);
   if (!owner) fail("/admin/participants", "الإدخال غير موجود");
   const back = backTo(formData, owner.userId, kind, id);
-  await closeReturns(kind, [id], "CANCELLED");
+  // صفحةٌ قديمة بعد أن أعاده صاحبه، أو نقرةٌ ثانية: لا إشعار عن إرجاعٍ لم يعد قائماً
+  if (!(await closeReturns(kind, [id], "CANCELLED"))) {
+    refresh(owner.userId);
+    fail(back, "لا إرجاع مفتوح على هذا الإدخال — لعلّ صاحبه أعاده");
+  }
   await notifyUsers([owner.userId], { title: "أُلغي إرجاعٌ يخصّك", body: `${owner.title}: لم يعد مطلوباً تعديله.`, url: owner.href });
   refresh(owner.userId);
   ok(back, "أُلغي الإرجاع");
@@ -191,10 +195,16 @@ export async function reviewItem(formData: FormData) {
   const owner = await itemOwner(kind, id);
   if (!owner) fail("/admin/participants", "الإدخال غير موجود");
   const back = backTo(formData, owner.userId, kind, id);
+  // المُرجَع ينتظر صاحبه: اعتمادُه الآن يُبقي الإرجاع مفتوحاً على عنصرٍ معتمد
+  if (await findOpenReturn(kind, id)) fail(back, "هذا الإدخال مُرجَع لصاحبه — يُراجَع بعد أن يعيده، أو ألغِ الإرجاع أولاً");
   const feedback = str(formData.get("feedback")) || null;
   const data = { feedback, reviewedAt: new Date() };
   if (kind === "READING_CARD") await db.readingCard.update({ where: { id }, data });
-  else await db.learningPlan.update({ where: { id }, data });
+  else {
+    // «آخر تحديث» للخطة تحديثُ صاحبها لا مراجعة المدير: يُثبَّت فلا يرفعه `@updatedAt`
+    const plan = await db.learningPlan.findUnique({ where: { id }, select: { updatedAt: true } });
+    await db.learningPlan.update({ where: { id }, data: { ...data, updatedAt: plan?.updatedAt } });
+  }
   if (feedback) await notifyUsers([owner.userId], { title: `ملاحظة مدير المشروع على ${owner.title}`, body: feedback.slice(0, 140), url: kind === "READING_CARD" ? `/app/reading#card-${id}` : "/app/plan" });
   refresh(owner.userId);
   ok(back, "حُفظت المراجعة");

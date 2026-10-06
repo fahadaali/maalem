@@ -28,11 +28,12 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
   ]);
   const attRows = await db.attachment.findMany({ where: { kind: "FIELD", userId: user.id }, orderBy: { createdAt: "asc" } });
   const [expected, preview] = await Promise.all([programExpectations(), isPreview()]);
-  const approved = logs.filter((l) => l.approvedAt).reduce((s, l) => s + l.hours, 0);
-  const pending = logs.filter((l) => !l.approvedAt).reduce((s, l) => s + l.hours, 0);
   const last = logs[0];
   const [rows, program] = await Promise.all([loadParticipant(user.id), loadProgram()]);
   const returnOf = (id: string) => openReturnFor(rows?.returns ?? [], "FIELD_LOG", id);
+  // المُرجَع لا يُحسب في ساعاتك حتى تعيده — كما في درجتك و«مهامي»
+  const approved = logs.filter((l) => l.approvedAt && !returnOf(l.id)).reduce((s, l) => s + l.hours, 0);
+  const pending = logs.filter((l) => !l.approvedAt && !returnOf(l.id)).reduce((s, l) => s + l.hours, 0);
   // سجلٌ يُعدَّل: ما لم يُعتمد بعد، أو ما أُرجع إلى صاحبه بعد اعتماده
   const editable = (l: (typeof logs)[number]) => !l.approvedAt || !!returnOf(l.id);
   const editing = edit ? logs.find((l) => l.id === edit && editable(l)) : undefined;

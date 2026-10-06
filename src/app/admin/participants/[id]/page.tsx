@@ -8,9 +8,8 @@ import FocusItem from "@/components/FocusItem";
 import { computeGrades } from "@/lib/grades";
 import { finalTotalOf } from "@/lib/content";
 import { ROLE_LABELS, cn } from "@/lib/utils";
-import { emptyParticipant, loadParticipant, loadProgram } from "@/lib/participant-data";
+import { emptyParticipant, loadParticipant, loadProgram, waitingCounts } from "@/lib/participant-data";
 import { obligationsFrom } from "@/lib/obligations";
-import { returnedIds } from "@/lib/returns";
 import { FILE_TABS, isFileTab, type FileTab } from "@/lib/items";
 import { parsePanel } from "./parts";
 import { FieldTab, JournalTab, LogTab, OverviewTab, QuizzesTab, ReadingTab, WorkTab, type Ctx } from "./tabs";
@@ -48,13 +47,9 @@ export default async function ParticipantFile({
   const ctx: Ctx = { userId: u.id, name: u.name, panel: parsePanel(sp), now, rows, program, obligations };
 
   // ما ينتظر مراجعة المدير في كل تبويب — من الصفوف المجلوبة، بلا استعلام زائد
-  const returnedSubs = returnedIds(rows.returns, "SUBMISSION");
-  const waiting: Partial<Record<FileTab, number>> = {
-    work: rows.submissions.filter((s) => !s.gradedAt && !returnedSubs.has(s.id)).length + rows.reports.filter((r) => !r.reviewedAt).length,
-    reading: rows.cards.filter((c) => !c.reviewedAt).length + (rows.plan && !rows.plan.reviewedAt ? 1 : 0),
-    field: rows.fieldLogs.filter((f) => !f.approvedAt).length,
-  };
-  const waitingTotal = (waiting.work ?? 0) + (waiting.reading ?? 0) + (waiting.field ?? 0);
+  const counts = waitingCounts(rows);
+  const waiting: Partial<Record<FileTab, number>> = { work: counts.work, reading: counts.reading, field: counts.field };
+  const waitingTotal = counts.total;
   const total = u.finalGrade ? finalTotalOf(u.finalGrade) : grades?.total;
 
   return (

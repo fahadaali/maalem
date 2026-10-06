@@ -98,9 +98,10 @@ async function clearReview(kind: ReturnKind, id: string): Promise<void> {
  * يُغلق إرجاعات سجلاتٍ حُذفت — بالتراجع أو بحذف صاحبها أو بحذف المهمة — فلا
  * يبقى بندٌ «مُرجَع» في «مهامي» لسجلٍّ لم يعد موجوداً.
  */
-export async function closeReturns(kind: ReturnKind, ids: string[], resolution: "DELETED" | "CANCELLED" = "DELETED"): Promise<void> {
-  if (ids.length === 0) return;
-  await db.itemReturn.updateMany({ where: { kind, recordId: { in: ids }, resolvedAt: null }, data: { resolvedAt: new Date(), resolution } });
+export async function closeReturns(kind: ReturnKind, ids: string[], resolution: "DELETED" | "CANCELLED" = "DELETED"): Promise<number> {
+  if (ids.length === 0) return 0;
+  const r = await db.itemReturn.updateMany({ where: { kind, recordId: { in: ids }, resolvedAt: null }, data: { resolvedAt: new Date(), resolution } });
+  return r.count;
 }
 
 /** الإرجاعات المفتوحة على مجموعة سجلات من نوعٍ واحد — لشارة «مُرجَع» في صفحات المراجعة */

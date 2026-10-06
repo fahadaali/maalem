@@ -7,7 +7,7 @@ import { formatShort } from "@/lib/dates";
 type Ev = { period: string; regularity: number; engagement: number; application: number; conduct: number; growth: number; notes: string | null; updatedAt: Date };
 
 /** استمارة تقييم المشرف المرافق — أداة قياس المعايشة الميدانية في الخطة */
-export default function MentorEvalForm({ userId, name, existing, readOnly }: { userId: string; name: string; existing: Ev[]; readOnly?: boolean }) {
+export default function MentorEvalForm({ userId, name, existing, readOnly, back }: { userId: string; name: string; existing: Ev[]; readOnly?: boolean; back?: string }) {
   const periods = ["منتصف البرنامج", "ختامي"];
   const avgOf = (e: Ev) => ((e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5).toFixed(1);
   return (
@@ -34,6 +34,7 @@ export default function MentorEvalForm({ userId, name, existing, readOnly }: { u
               <form action={saveMentorEvaluation} className="mt-2">
                 <input type="hidden" name="userId" value={userId} />
                 <input type="hidden" name="period" value={period} />
+                {back && <input type="hidden" name="back" value={back} />}
                 <div className="table-wrap">
                   <table className="table">
                     <thead><tr><th>المعيار</th>{PARTICIPATION_SCALE.map((x) => <th key={x.value} className="text-center">{x.value}</th>)}</tr></thead>

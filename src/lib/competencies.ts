@@ -37,15 +37,16 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
   const returnedLogs = returnedIds(rows.returns, "FIELD_LOG");
   const returnedSubs = returnedIds(rows.returns, "SUBMISSION");
   const returnedActs = returnedIds(rows.returns, "LEADERSHIP");
+  const returnedReports = returnedIds(rows.returns, "WEEKLY_REPORT");
   const reading = readingTotals(rows.cards, program.weeks, new Date(), returnedIds(rows.returns, "READING_CARD"));
   const fieldLogs = rows.fieldLogs.filter((f) => f.approvedAt && !returnedLogs.has(f.id));
   const attempts = rows.attempts;
   const tadabbur = rows.tadabbur;
-  const reports = rows.reports.length;
+  const reports = rows.reports.filter((r) => !returnedReports.has(r.id)).length;
   const counted = rows.activities.filter((a) => !returnedActs.has(a.id));
   const activities = counted.length;
   const evals = counted.flatMap((a) => a.evaluations);
-  const plan = rows.plan;
+  const plan = rows.plan && !returnedIds(rows.returns, "LEARNING_PLAN").has(rows.plan.id) ? rows.plan : null;
   const competencyOf = new Map(program.assignments.map((a) => [a.id, a.competency]));
   const submissions = rows.submissions
     .filter((s) => s.gradedAt && !returnedSubs.has(s.id))

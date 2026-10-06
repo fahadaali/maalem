@@ -50,7 +50,9 @@ export async function GET(req: Request) {
     sent.push(kind);
   };
 
-  const participants = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
+  const participantRows = await db.user.findMany({ where: await participantsWhere(), select: { id: true, createdAt: true } });
+  const participants = participantRows.map((u) => u.id);
+  const joinedAt = new Map(participantRows.map((u) => [u.id, u.createdAt]));
   const admins = (await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } })).map((u) => u.id);
 
   if (week && weekNo >= 0 && weekNo <= 13) {
@@ -103,10 +105,10 @@ export async function GET(req: Request) {
         ]);
         const exclude = new Set(returned.map((r) => r.recordId));
         // نصاب ما مضى من الأسابيع، وأيامُ هذا الأسبوع حتى اليوم (الأحد = 0)
-        const expected = (cs: typeof cards) => readingTotals(cs, weeks, now, exclude).requiredSoFar + q.daily * (wd + 1);
+        // والمنضمّ متأخراً لا يُحسب عليه ما انقضى قبل انضمامه
         const behind = participants.filter((p) => {
-          const mine = cards.filter((c) => c.userId === p);
-          return readingTotals(mine, weeks, now, exclude).read < expected(mine);
+          const t = readingTotals(cards.filter((c) => c.userId === p), weeks, now, exclude, joinedAt.get(p));
+          return t.read < t.requiredSoFar + q.daily * (wd + 1);
         });
         await notifyUsers(behind, { title: "الورد القرائي اليوم", body: `نصاب اليوم نحو ${pagesText(q.daily)} — سجّلها في بطاقتك مع أهم فائدة.`, url: "/app/reading" });
       });

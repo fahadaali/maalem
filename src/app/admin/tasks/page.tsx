@@ -7,7 +7,7 @@ import FormMessage from "@/components/FormMessage";
 import { createAssignment, createMissingAssignments } from "../actions";
 import { loadProgram } from "@/lib/participant-data";
 import { missingAssignments, weekName } from "@/lib/obligations";
-import { reportDueFrom } from "@/lib/dates";
+import { keyToDate, reportDueFrom, todayKey } from "@/lib/dates";
 import { formatShort, toLocalInput } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { getCompetencies } from "@/lib/content";
@@ -27,11 +27,12 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
   const program = await loadProgram();
   const missing = missingAssignments(program);
   const now = Date.now();
-  // موعدٌ افتراضي لا يُولد متأخراً: خميس أسبوعها، أو بعد أسبوع من اليوم إن كان خميسها قد مضى
+  // موعدٌ افتراضي لا يُولد متأخراً: خميس أسبوعها إن لم يمضِ، وإلا بعد أسبوع من اليوم في العاشرة مساءً
   const defaultDue = (week: number) => {
     const w = activeWeeks.find((x) => x.number === week);
-    const thursday = w ? reportDueFrom(w.gregorian).getTime() : now;
-    return new Date(Math.max(thursday, now + 7 * 86400000));
+    const thursday = w ? reportDueFrom(w.gregorian).getTime() : 0;
+    if (thursday > now) return new Date(thursday);
+    return new Date(keyToDate(todayKey(new Date(now + 7 * 86400000))).getTime() + 22 * 3600000);
   };
 
   return (

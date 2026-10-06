@@ -86,7 +86,7 @@ export function ItemActions({
   return (
     <ItemMenu label={`خيارات ${label}`}>
       {kind && editable && <MenuLink href={l.open("edit")} icon={<Pencil size={15} />}>تعديل</MenuLink>}
-      {kind && reviewable && <MenuLink href={l.open("review")} icon={<MessageSquareText size={15} />}>مراجعة وملاحظة</MenuLink>}
+      {kind && reviewable && !returned && <MenuLink href={l.open("review")} icon={<MessageSquareText size={15} />}>مراجعة وملاحظة</MenuLink>}
       {extra}
       {kind && returnable && !returned && <MenuLink href={l.open("ret")} icon={<RotateCcw size={15} />}>إرجاع للتعديل</MenuLink>}
       {kind && returned && (
@@ -94,10 +94,10 @@ export function ItemActions({
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="back" value={l.back} />
-          <button type="submit" role="menuitem" className={row}>
+          <SubmitButton ghost role="menuitem" className={`${row} !rounded-none !justify-start`} pendingText="جارٍ الإلغاء…">
             <Undo2 size={15} />
             <span>إلغاء الإرجاع</span>
-          </button>
+          </SubmitButton>
         </form>
       )}
       {activity && (
@@ -105,7 +105,7 @@ export function ItemActions({
           <input type="hidden" name="kind" value={activity} />
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="back" value={`/admin/participants/${userId}?tab=${tab}`} />
-          <SubmitButton ghost className={`${row} !rounded-none !justify-start`} pendingText="جارٍ الحذف…" confirm={`حذف ${label}؟\n\nتُحفظ لقطته في سجل التراجع بمركز الأنشطة فيُعاد منها، ويُشعَر صاحبه.`}>
+          <SubmitButton ghost role="menuitem" className={`${row} !rounded-none !justify-start`} pendingText="جارٍ الحذف…" confirm={`حذف ${label}؟\n\nتُحفظ لقطته في سجل التراجع بمركز الأنشطة فيُعاد منها، ويُشعَر صاحبه.`}>
             <Trash2 size={15} />
             <span>حذف</span>
           </SubmitButton>
@@ -120,7 +120,7 @@ export function MenuAction({ action, fields, children, confirm }: { action: (f: 
   return (
     <form action={action}>
       {Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-      <SubmitButton ghost className={`${row} !rounded-none !justify-start`} pendingText="…" confirm={confirm}>
+      <SubmitButton ghost role="menuitem" className={`${row} !rounded-none !justify-start`} pendingText="…" confirm={confirm}>
         <CheckCheck size={15} />
         <span>{children}</span>
       </SubmitButton>

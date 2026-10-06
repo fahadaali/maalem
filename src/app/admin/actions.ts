@@ -24,6 +24,8 @@ import { seedAssignmentsFor } from "@/lib/seed";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 import { closeReturns } from "@/lib/items";
+import { missingAssignments } from "@/lib/obligations";
+import { loadProgram } from "@/lib/participant-data";
 import { isReturnKind } from "@/lib/returns";
 import { isFolderColor } from "@/lib/folders";
 import { MAX_BATCH_FILES, kindFromContentType, titleFromFilename } from "@/lib/files";
@@ -60,7 +62,8 @@ export async function createUser(formData: FormData) {
 export async function updateUser(formData: FormData) {
   const me = await admin();
   const id = str(formData.get("id"));
-  const path = `/admin/participants/${id}`;
+  // نموذج الحساب في تبويب «السجل والحساب» من الملف — وإليه يعود
+  const path = `/admin/participants/${id}?tab=log`;
   const name = str(formData.get("name"));
   const phone = str(formData.get("phone"));
   const email = str(formData.get("email"));
@@ -87,7 +90,7 @@ export async function addFeedbackSession(formData: FormData) {
   const userId = str(formData.get("userId"));
   const notes = str(formData.get("notes"));
   const dateKey = str(formData.get("date"));
-  const path = `/admin/participants/${userId}`;
+  const path = `/admin/participants/${userId}?tab=log`;
   if (!notes) fail(path, "اكتب ملاحظات الجلسة");
   await db.feedbackSession.create({ data: { userId, notes, date: dateKey ? keyToDate(dateKey) : new Date() } });
   await notifyUsers([userId], { title: "تغذية راجعة فردية", body: notes.slice(0, 120), url: "/app/portfolio" });
@@ -172,13 +175,17 @@ export async function createMissingAssignments(formData: FormData) {
     if (!r.title || r.week < 0 || r.week > 12) fail("/admin/tasks", "بندٌ ناقص في القائمة");
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.due)) fail("/admin/tasks", `حدّد موعد «${r.title}»`);
   }
+  // ما زال ناقصاً الآن؟ نموذجٌ قديم في تبويبٍ آخر من المتصفح، أو نقرةٌ ثانية، يُنشئ المهمة مرتين
+  const still = missingAssignments(await loadProgram());
+  const fresh = rows.filter((r) => still.some((m) => m.week === r.week && m.title === r.title));
+  if (fresh.length === 0) ok("/admin/tasks", "أُنشئت هذه المهام من قبل");
   await db.assignment.createMany({
-    data: rows.map((r) => ({ cohortId, title: r.title, week: r.week, dueAt: new Date(r.due + "+03:00"), description: `من مهام الأسبوع ${r.week} في جدول البرنامج.` })),
+    data: fresh.map((r) => ({ cohortId, title: r.title, week: r.week, dueAt: new Date(r.due + "+03:00"), description: `من مهام الأسبوع ${r.week} في جدول البرنامج.` })),
   });
-  await notifyRole("PARTICIPANT", { title: rows.length === 1 ? "مهمة جديدة" : `${rows.length} مهام جديدة`, body: rows.map((r) => r.title).join("، ").slice(0, 140), url: "/app/tasks?type=tasks" });
+  await notifyRole("PARTICIPANT", { title: fresh.length === 1 ? "مهمة جديدة" : `${fresh.length} مهام جديدة`, body: fresh.map((r) => r.title).join("، ").slice(0, 140), url: "/app/tasks?type=tasks" });
   revalidatePath("/admin/tasks");
   revalidatePath("/app", "layout");
-  ok("/admin/tasks", `أُنشئت ${rows.length} مهمة وأُشعر المشاركون`);
+  ok("/admin/tasks", `أُنشئت ${fresh.length} مهمة وأُشعر المشاركون`);
 }
 
 export async function updateAssignment(formData: FormData) {
@@ -381,6 +388,8 @@ export async function updateProjectAdmin(formData: FormData) {
   if (!p) fail("/admin/projects", "المشروع غير موجود");
   if (!["PROPOSED", "APPROVED", "DRAFT", "FINAL", "JUDGED"].includes(status)) fail("/admin/projects", "حالة غير صحيحة");
   await db.graduationProject.update({ where: { id }, data: { status, mentorName: mentorName || null, adminNote: adminNote || null } });
+  // المحكَّم لا يُعدَّل، فإرجاعٌ مفتوح عليه لا يُغلقه صاحبه أبداً ويبقى في عدّاده
+  if (status === "JUDGED" && (await closeReturns("PROJECT", [id], "CANCELLED"))) revalidatePath("/app", "layout");
   if (status === "APPROVED" && p.status === "PROPOSED") await notifyUsers([p.userId], { title: "اعتماد موضوع مشروع التخرج", body: `${p.topic}${mentorName ? " — المرشد: " + mentorName : ""}`, url: "/app/project" });
   else if (adminNote && adminNote !== p.adminNote) await notifyUsers([p.userId], { title: "ملاحظة على مشروع التخرج", body: adminNote.slice(0, 120), url: "/app/project" });
   revalidatePath(`/admin/participants/${p.userId}`);
@@ -405,6 +414,9 @@ export async function judgeProject(formData: FormData) {
   }
   const judgeNote = str(formData.get("judgeNote"));
   await db.graduationProject.update({ where: { id }, data: { ...data, judgeNote: judgeNote || null, status: "JUDGED" } });
+  // المحكَّم لا يُعدَّل، فإرجاعٌ مفتوح عليه لا يُغلقه صاحبه أبداً ويبقى في عدّاده
+  if (await closeReturns("PROJECT", [id], "CANCELLED")) revalidatePath("/app", "layout");
+  revalidatePath(`/admin/participants/${p.userId}`);
   const total = Object.values(data).reduce((a, b) => a + b, 0);
   const projectMax = rubric.reduce((a, r) => a + r.points, 0);
   await notifyUsers([p.userId], { title: "نتيجة تحكيم مشروع التخرج", body: `${total} من ${projectMax}`, url: "/app/project" });
@@ -1033,7 +1045,7 @@ export async function saveMentorEvaluation(formData: FormData) {
     update: data,
   });
   await notifyUsers([userId], { title: "تقييم المشرف المرافق", body: `سُجّل تقييم ${period} لمعايشتك الميدانية`, url: "/app/field" });
-  revalidatePath(back);
+  revalidatePath(back.split(/[?#]/)[0]);
   ok(back, `تم حفظ تقييم ${participant.name}`);
 }
 
@@ -1447,8 +1459,19 @@ export async function restoreActivity(formData: FormData) {
     fail(back, "تعذّرت الإعادة — لعلّ إدخالاً جديداً حلّ مكانه. راجعه في صفحته أولاً");
   }
   await db.undoEntry.update({ where: { id }, data: { restoredAt: new Date() } });
+  // وإن كان مُرجَعاً لصاحبه حين حُذف عاد مُرجَعاً: الإرجاع الذي أُغلق مع الحذف نفسه
+  if (isReturnKind(row.kind)) {
+    const closed = await db.itemReturn.findFirst({
+      where: { kind: row.kind, recordId: row.recordId, resolution: "DELETED", resolvedAt: { gte: new Date(row.undoneAt.getTime() - 1000), lte: new Date(row.undoneAt.getTime() + 60000) } },
+      orderBy: { resolvedAt: "desc" },
+      select: { id: true },
+    });
+    if (closed) await db.itemReturn.update({ where: { id: closed.id }, data: { resolvedAt: null, resolution: null } });
+  }
   if (row.userId) {
     await notifyUsers([row.userId], { title: "أُعيد إدخالك", body: `${row.label} — عاد كما كان.` });
+    revalidatePath("/app", "layout");
+    revalidatePath(`/admin/participants/${row.userId}`);
   }
   revalidatePath("/admin/activity");
   ok(back, `أُعيد «${row.label}»`);

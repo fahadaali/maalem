@@ -39,22 +39,32 @@ function normalize(text: string): string {
     .replace(/\s+إلى\s+/g, "-");
 }
 
+/** مدى صفحات: «10» أو «10-20» أو «10-ص 20» (من «من ص 10 إلى ص 20» بعد التوحيد) */
+const RANGE = String.raw`\d+(?:\s*-\s*(?:ص\.?|صفحة)?\s*\d+)?`;
+/** مدى تالٍ بعد فاصلة بلا «ص» تسبقه: «ص 10-20، 30-40» — بشرطةٍ فقط، فلا يُقرأ «، 5 بطاقات» صفحة */
+const NEXT = String.raw`\s*[،,]\s*(?:و\s*)?(?:ص\.?\s*)?\d+\s*-\s*(?:ص\.?|صفحة)?\s*\d+`;
+const PAGES_RE = new RegExp(String.raw`(?:ص\.?|صفحة|صفحات)\s*(${RANGE}(?:${NEXT})*)`, "g");
+
 /**
- * صفحات النص: كلُّ «ص 71–132» أو «صفحة 50» فيه. المدى المعكوس يُقلب، والصفحة
- * المفردة صفحة واحدة. ولا يُقرأ رقمٌ لا تسبقه «ص» — «الأسبوع 3» ليس صفحة.
+ * صفحات النص: كلُّ «ص 71–132» أو «صفحة 50» أو «من ص 10 إلى ص 20» فيه، وما تلاها
+ * من مدياتٍ بفاصلة («ص 10–20، 30–40»). المدى المعكوس يُقلب، والصفحة المفردة صفحة
+ * واحدة. ولا يُقرأ رقمٌ لا تسبقه «ص» — «الأسبوع 3» ليس صفحة.
  */
 export function pagesInText(text: string): number | null {
   const t = normalize(text);
-  const re = /(?:ص\.?|صفحة|صفحات)\s*(\d+)(?:\s*-\s*(\d+))?/g;
   let total = 0;
   let found = false;
-  for (const m of t.matchAll(re)) {
-    const a = Number(m[1]);
-    const b = m[2] != null ? Number(m[2]) : a;
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    if (lo < 1) continue;
-    total += hi - lo + 1;
-    found = true;
+  for (const m of t.matchAll(PAGES_RE)) {
+    for (const part of m[1].split(/\s*[،,]\s*/)) {
+      const nums = (part.match(/\d+/g) ?? []).map(Number);
+      if (nums.length === 0) continue;
+      const a = nums[0];
+      const b = nums[1] ?? a;
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      if (lo < 1) continue;
+      total += hi - lo + 1;
+      found = true;
+    }
   }
   return found ? total : null;
 }
@@ -139,9 +149,9 @@ export type ReadingTotals = {
  * حُصر كل أسبوع في نصابه لما نفعه ذلك شيئاً.
  *
  * «ما مضى» يُعدّ بأسبوعٍ انتهى خميسُه: الأسبوع الجاري لا يُطالَب بنصابه كاملاً
- * إلا بعد انقضاء أيام وِرده.
+ * إلا بعد انقضاء أيام وِرده. و`joinedAt` يُسقط من «ما مضى» ما انقضى قبل الانضمام.
  */
-export function readingTotals(cards: CardRow[], weeks: LiveWeek[], now: Date, exclude?: ReadonlySet<string>): ReadingTotals {
+export function readingTotals(cards: CardRow[], weeks: LiveWeek[], now: Date, exclude?: ReadonlySet<string>, joinedAt?: Date): ReadingTotals {
   let read = 0;
   for (const c of cards) if (!exclude?.has(c.id)) read += cardPages(c);
   let required = 0;
@@ -150,7 +160,9 @@ export function readingTotals(cards: CardRow[], weeks: LiveWeek[], now: Date, ex
     const q = weekQuota(w);
     if (!q) continue;
     required += q.pages;
-    if (readingDeadline(w).getTime() <= now.getTime()) requiredSoFar += q.pages;
+    const deadline = readingDeadline(w).getTime();
+    // المنضمّ بعد بدء البرنامج لا يُعدّ متأخراً بوِرد ما انقضى قبل انضمامه — كما في «مهامي»
+    if (deadline <= now.getTime() && (!joinedAt || deadline >= joinedAt.getTime())) requiredSoFar += q.pages;
   }
   return { read, required, requiredSoFar, ratio: required > 0 ? Math.min(read / required, 1) : 0 };
 }

@@ -7,8 +7,7 @@ import FormMessage from "@/components/FormMessage";
 import { createUser, importParticipants } from "../actions";
 import { computeGradesFor } from "@/lib/grades";
 import { obligationsForMany } from "@/lib/obligations";
-import { returnedIds } from "@/lib/returns";
-import { loadParticipantsOnce } from "@/lib/participant-data";
+import { loadParticipantsOnce, waitingCounts } from "@/lib/participant-data";
 import { ROLE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -25,15 +24,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
   const [grades, obligations, rows] = await Promise.all([computeGradesFor(ids), obligationsForMany(ids), loadParticipantsOnce(ids)]);
   const waiting = (id: string) => {
     const r = rows.get(id);
-    if (!r) return 0;
-    const returned = returnedIds(r.returns, "SUBMISSION");
-    return (
-      r.submissions.filter((s) => !s.gradedAt && !returned.has(s.id)).length +
-      r.reports.filter((x) => !x.reviewedAt).length +
-      r.cards.filter((c) => !c.reviewedAt).length +
-      (r.plan && !r.plan.reviewedAt ? 1 : 0) +
-      r.fieldLogs.filter((f) => !f.approvedAt).length
-    );
+    return r ? waitingCounts(r).total : 0;
   };
 
   return (

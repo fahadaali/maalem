@@ -1,5 +1,5 @@
 import { formatDateTime } from "@/lib/dates";
-import { daysLate, overdueLabel } from "@/lib/obligations";
+import { daysLate, daysLeft, overdueLabel } from "@/lib/obligations";
 import { remaining } from "@/lib/week-state";
 
 /**
@@ -17,7 +17,7 @@ export default function ReturnedBanner({ note, by, due, now = new Date(), action
       </div>
       {due && (
         <div className="text-xs mt-2">
-          {late ? `${overdueLabel(daysLate(due, now))} عن موعده الأصلي` : remaining(Math.ceil((due.getTime() - now.getTime()) / 86400000))}
+          {late ? `${overdueLabel(daysLate(due, now))} عن موعده الأصلي` : remaining(daysLeft(due, now))}
           {" "}({formatDateTime(due)}). لا يُحتسب في درجتك حتى تعيده.
         </div>
       )}

@@ -11,7 +11,7 @@ import { formatDateTime, formatShort } from "@/lib/dates";
 import { getActiveWeeks, resolveCurrentWeek, getWeeks, weekResolver } from "@/lib/weeks";
 import { cardPages, equivalentDays, isLargeAmount, weekQuota } from "@/lib/reading-quota";
 import { daysLabel, cn, pagesText } from "@/lib/utils";
-import { itemAnchor } from "@/lib/items";
+import { itemAnchor, openReturnsOf } from "@/lib/items";
 import { weekName } from "@/lib/obligations";
 
 export const metadata = { title: "القراءة والخطط" };
@@ -44,7 +44,10 @@ export default async function AdminReadingPage({ searchParams }: { searchParams:
 
   if (tab === "plans") {
     const plans = await db.learningPlan.findMany({ where: { userId: { in: ids } }, orderBy: { updatedAt: "desc" } });
-    const sorted = [...plans].sort((a, b) => Number(!!a.reviewedAt) - Number(!!b.reviewedAt));
+    const returnedPlans = await openReturnsOf("LEARNING_PLAN", plans.map((p) => p.id));
+    // لم تُراجَع أولاً، ثم المُرجَعة (تنتظر أصحابها)، ثم المراجَعة
+    const rankPlan = (p: (typeof plans)[number]) => (returnedPlans.has(p.id) ? 1 : p.reviewedAt ? 2 : 0);
+    const sorted = [...plans].sort((a, b) => rankPlan(a) - rankPlan(b));
     const missing = participants.filter((p) => !plans.some((x) => x.userId === p.id));
     return (
       <>
@@ -58,7 +61,7 @@ export default async function AdminReadingPage({ searchParams }: { searchParams:
               <Card
                 key={p.id}
                 title={<Link href={`/admin/participants/${p.userId}?tab=reading#${itemAnchor("LEARNING_PLAN", p.id)}`} prefetch={false} className="hover:underline">{nameOf.get(p.userId)}</Link>}
-                action={p.reviewedAt ? <Badge tone="ink">رُوجعت</Badge> : <Badge>لم تُراجَع</Badge>}
+                action={returnedPlans.has(p.id) ? <Badge tone="ink">مُرجَعة لصاحبها</Badge> : p.reviewedAt ? <Badge tone="ink">رُوجعت</Badge> : <Badge>لم تُراجَع</Badge>}
               >
                 <div className="text-xs text-muted mb-2">آخر تحديث {formatDateTime(p.updatedAt)}</div>
                 <dl className="space-y-2 text-sm">
@@ -66,13 +69,20 @@ export default async function AdminReadingPage({ searchParams }: { searchParams:
                   <div><dt className="text-xs text-muted">الخطة الأسبوعية</dt><dd className="whitespace-pre-wrap">{p.weeklyPlan || "—"}</dd></div>
                   <div><dt className="text-xs text-muted">مراجعة المحفوظ</dt><dd className="whitespace-pre-wrap">{p.memorization || "—"}</dd></div>
                 </dl>
-                <form action={reviewItem} className="mt-3 flex flex-wrap gap-2 items-center">
-                  <input type="hidden" name="kind" value="LEARNING_PLAN" />
-                  <input type="hidden" name="id" value={p.id} />
-                  <input type="hidden" name="back" value="/admin/reading?tab=plans" />
-                  <input name="feedback" className="input flex-1 min-w-48" placeholder="ملاحظة لصاحبها (اختيارية)" defaultValue={p.feedback ?? ""} />
-                  <SubmitButton secondary className="btn-sm">{p.reviewedAt ? "تحديث المراجعة" : "اعتماد الخطة"}</SubmitButton>
-                </form>
+                {returnedPlans.has(p.id) ? (
+                  <div className="text-sm mt-3 border-s-2 border-ink ps-2">
+                    <div className="text-xs text-muted">أُرجعت لصاحبها بملاحظة — تُراجَع بعد أن يعيدها</div>
+                    <div className="whitespace-pre-wrap">{returnedPlans.get(p.id)!.note}</div>
+                  </div>
+                ) : (
+                  <form action={reviewItem} className="mt-3 flex flex-wrap gap-2 items-center">
+                    <input type="hidden" name="kind" value="LEARNING_PLAN" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="hidden" name="back" value="/admin/reading?tab=plans" />
+                    <input name="feedback" className="input flex-1 min-w-48" placeholder="ملاحظة لصاحبها (اختيارية)" defaultValue={p.feedback ?? ""} />
+                    <SubmitButton secondary className="btn-sm">{p.reviewedAt ? "تحديث المراجعة" : "اعتماد الخطة"}</SubmitButton>
+                  </form>
+                )}
               </Card>
             ))}
           </div>

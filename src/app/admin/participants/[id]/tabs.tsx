@@ -21,7 +21,7 @@ import { buildTimeline } from "@/lib/timeline";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { getCompetencies, getContinuous, getProjectRubric } from "@/lib/content";
 import { weekResolver } from "@/lib/weeks";
-import { dueFor, type ParticipantRows, type ProgramData } from "@/lib/participant-data";
+import { dueFor, waitingCounts, type ParticipantRows, type ProgramData } from "@/lib/participant-data";
 import { cardPages, equivalentDays, isLargeAmount, readingByWeek, readingTotals, weekQuota } from "@/lib/reading-quota";
 import { daysLate, overdueLabel, weekName, type Obligation, type ObligationsResult } from "@/lib/obligations";
 import { itemAnchor, type FileTab } from "@/lib/items";
@@ -83,13 +83,13 @@ export async function OverviewTab({ ctx, grades }: { ctx: Ctx; grades: GradeBrea
   const parts: Record<string, number> = { attendance: grades.attendance, reading: grades.reading, quizzes: grades.quizzes, tasks: grades.tasks, field: grades.field, leadership: grades.leadership };
   const items = obligations?.items ?? [];
   const pressing = items.filter((o) => o.state === "returned" || o.state === "overdue" || o.state === "due");
-  const returnedSubs = returnedIds(rows.returns, "SUBMISSION");
+  const w = waitingCounts(rows);
   const review = [
-    { n: rows.submissions.filter((s) => !s.gradedAt && !returnedSubs.has(s.id)).length, label: "تسليمات بانتظار التقييم", tab: "work" },
-    { n: rows.reports.filter((r) => !r.reviewedAt).length, label: "تقارير بانتظار المراجعة", tab: "work" },
-    { n: rows.cards.filter((c) => !c.reviewedAt).length, label: "بطاقات قراءة لم تُراجَع", tab: "reading" },
-    { n: rows.plan && !rows.plan.reviewedAt ? 1 : 0, label: "خطة التعلم لم تُراجَع", tab: "reading" },
-    { n: rows.fieldLogs.filter((f) => !f.approvedAt).length, label: "سجلات معايشة بانتظار الاعتماد", tab: "field" },
+    { n: w.submissions, label: "تسليمات بانتظار التقييم", tab: "work" },
+    { n: w.reports, label: "تقارير بانتظار المراجعة", tab: "work" },
+    { n: w.cards, label: "بطاقات قراءة لم تُراجَع", tab: "reading" },
+    { n: w.plan, label: "خطة التعلم لم تُراجَع", tab: "reading" },
+    { n: w.fieldLogs, label: "سجلات معايشة بانتظار الاعتماد", tab: "field" },
   ].filter((r) => r.n > 0);
 
   return (
@@ -282,7 +282,7 @@ export async function ReadingTab({ ctx }: { ctx: Ctx }) {
     db.learningPlan.findUnique({ where: { userId } }),
   ]);
   const returned = returnedIds(rows.returns, "READING_CARD");
-  const totals = readingTotals(cards, program.weeks, now, returned);
+  const totals = readingTotals(cards, program.weeks, now, returned, rows.user.createdAt);
   const perWeek = readingByWeek(cards, program.weeks, returned);
   const weekOf = weekResolver(program.weeks);
   const quotaOf = new Map(program.weeks.map((w) => [w.number, weekQuota(w)]));
@@ -425,7 +425,8 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
     getProjectRubric(),
   ]);
   const withLogFiles = await withFiles(logs);
-  const hours = logs.reduce((s, l) => s + (l.approvedAt ? l.hours : 0), 0);
+  // المُرجَع لا يُحسب حتى يعيده صاحبه — كما في درجته
+  const hours = logs.reduce((s, l) => s + (l.approvedAt && !openReturnFor(rows.returns, "FIELD_LOG", l.id) ? l.hours : 0), 0);
   const projectReturn = project ? openReturnFor(rows.returns, "PROJECT", project.id) : undefined;
   const avg = (e: { c1: number; c2: number; c3: number; c4: number; c5: number }[]) => (e.length ? (e.reduce((s, x) => s + (x.c1 + x.c2 + x.c3 + x.c4 + x.c5) / 5, 0) / e.length).toFixed(1) : "—");
   const projectBack = project ? itemLinks(userId, "field", "PROJECT", project.id).back : "";
@@ -462,7 +463,7 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
         )}
       </section>
 
-      <MentorEvalForm userId={userId} name={name} existing={evals} />
+      <MentorEvalForm userId={userId} name={name} existing={evals} back={`/admin/participants/${userId}?tab=field`} />
 
       <section>
         <h2 className="text-xl mb-3">الدور القيادي</h2>

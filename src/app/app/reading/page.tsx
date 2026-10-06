@@ -11,9 +11,9 @@ import { getBookTitles, bookProgress } from "@/lib/content";
 import { formatShort, todayKey } from "@/lib/dates";
 import { resolveCurrentWeek, weekResolver } from "@/lib/weeks";
 import { loadParticipant, loadProgram } from "@/lib/participant-data";
-import { cardPages, daysLabel, equivalentDays, readingByWeek, readingDeadline, readingTotals, weekQuota } from "@/lib/reading-quota";
+import { cardPages, daysLabel, equivalentDays, readingByWeek, readingTotals, weekQuota } from "@/lib/reading-quota";
 import { pagesText } from "@/lib/utils";
-import { daysLate, overdueLabel, weekName } from "@/lib/obligations";
+import { daysLate, originalDue, overdueLabel, weekName } from "@/lib/obligations";
 import { openReturnFor, returnedIds } from "@/lib/returns";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -42,7 +42,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
   const quota = week ? weekQuota(week) : null;
   const perWeek = readingByWeek(cards, weeks, returned);
   const thisWeek = perWeek.find((r) => r.week === cur);
-  const totals = readingTotals(cards, weeks, now, returned);
+  const totals = readingTotals(cards, weeks, now, returned, rows?.user.createdAt);
   const behind = Math.max(0, totals.requiredSoFar - totals.read);
   const weekOf = weekResolver(weeks);
   const quotaOf = new Map(weeks.map((w) => [w.number, weekQuota(w)]));
@@ -80,7 +80,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
             {returnedCards.map((c) => {
               const r = openReturnFor(returns, "READING_CARD", c.id)!;
               const wk = byNumber.get(weekOf(c.date) ?? -99);
-              const due = wk ? readingDeadline(wk) : null;
+              const due = originalDue("READING_CARD", { date: c.date }, rows ?? { extensions: new Map() }, weeks);
               return (
                 <li key={c.id} className="py-2 flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
