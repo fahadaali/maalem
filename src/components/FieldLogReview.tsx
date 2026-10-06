@@ -6,7 +6,11 @@ import Attachments, { type AttachmentItem } from "@/components/Attachments";
 
 type Log = { id: string; date: Date; hours: number; mentorName: string; note: string; approvedAt: Date | null; user: { name: string }; files?: AttachmentItem[] };
 
-export default function FieldLogReview({ pending, approved, back }: { pending: Log[]; approved: Log[]; back: string }) {
+/**
+ * `returned`: سجلاتٌ أرجعها مدير المشروع إلى أصحابها — تبقى بختم اعتمادها ولا
+ * تُحتسب حتى يُعيدها صاحبها، فتُوسم هنا كي لا تُقرأ «معتمدة» وهي معلّقة عنده.
+ */
+export default function FieldLogReview({ pending, approved, back, returned }: { pending: Log[]; approved: Log[]; back: string; returned?: Set<string> }) {
   return (
     <>
       <h2 className="text-lg mb-2">بانتظار الاعتماد</h2>
@@ -15,6 +19,7 @@ export default function FieldLogReview({ pending, approved, back }: { pending: L
           {pending.map((l) => (
             <Card key={l.id}>
               <div className="flex flex-wrap gap-2 text-xs text-muted mb-1">
+                {returned?.has(l.id) && <Badge tone="ink">مُرجَع لصاحبه</Badge>}
                 <span className="font-medium text-ink text-sm">{l.user.name}</span><span>{formatShort(l.date)}</span><span>{l.hours} ساعة</span><span>مع {l.mentorName}</span>
               </div>
               <div className="text-sm mb-2">{l.note}</div>
@@ -30,7 +35,7 @@ export default function FieldLogReview({ pending, approved, back }: { pending: L
       <h2 className="text-lg mt-8 mb-2">سجلات معتمدة مؤخراً</h2>
       {approved.length === 0 ? <Empty>لا سجلات معتمدة بعد.</Empty> : (
         <ul className="space-y-1 text-sm">
-          {approved.map((l) => <li key={l.id} className="card py-2 flex justify-between gap-2"><span className="truncate">{l.user.name} · {formatShort(l.date)} · {l.hours} س · {l.mentorName}</span><Badge tone="ink">معتمد</Badge></li>)}
+          {approved.map((l) => <li key={l.id} className="card py-2 flex justify-between gap-2"><span className="truncate">{l.user.name} · {formatShort(l.date)} · {l.hours} س · {l.mentorName}</span>{returned?.has(l.id) ? <Badge>مُرجَع لصاحبه</Badge> : <Badge tone="ink">معتمد</Badge>}</li>)}
         </ul>
       )}
     </>

@@ -8,6 +8,9 @@ import { saveWeeklyReport } from "../../actions";
 import { formatDateTime, keyToDate } from "@/lib/dates";
 import { getWeekByNumber, getWeekTasks, reportDueDate } from "@/lib/weeks";
 import { TASK_STATUS, publishedQuizWeeks, reportSections } from "@/lib/report";
+import { loadParticipant } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "التقرير الأسبوعي" };
 
@@ -31,6 +34,8 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   ]);
   // لا يُفتح من النموذج إلا ما يطلبه الأسبوع: حقلٌ فارغٌ لا يُطلب يُقرأ إنذاراً لا خبراً
   const show = reportSections(info, { quizWeeks, taskCount: tasks.length });
+  const returned = report ? openReturnFor((await loadParticipant(user.id))?.returns ?? [], "WEEKLY_REPORT", report.id) : undefined;
+  const due = await reportDueDate(week);
   const saved = new Map(report?.tasks.map((t) => [t.taskId, t]) ?? []);
   // نطاق الصفحات من بطاقات الكتاب الأخير وحده، فلا يُخلط كتابان في سطر واحد
   const latestBook = cards[0]?.book;
@@ -41,8 +46,9 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   return (
     <>
       <BackLink href="/app/reports">التقارير الأسبوعية</BackLink>
-      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(await reportDueDate(week))}`} />
+      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(due)}`} />
       <FormMessage ok={ok} err={err} />
+      {returned && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={due} />}
       {report?.feedback && (
         <Alert tone="success">
           <div className="font-medium mb-1">تغذية راجعة من مدير المشروع</div>

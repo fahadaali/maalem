@@ -13,6 +13,7 @@ import { getCompetencies } from "@/lib/content";
 import Attachments from "@/components/Attachments";
 import { attachmentsByUser } from "@/lib/attachments";
 import { participantsWhere } from "@/lib/cohort";
+import { openReturnsOf } from "@/lib/items";
 
 export const metadata = { title: "تقييم مهمة" };
 
@@ -30,6 +31,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   const extensions = await extensionsFor(a.id);
   const submittedIds = new Set(a.submissions.map((s) => s.userId));
   const missing = participants.filter((p) => !submittedIds.has(p.id));
+  const returned = await openReturnsOf("SUBMISSION", a.submissions.map((s) => s.id));
 
   return (
     <>
@@ -46,7 +48,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
             const total = s.gradedAt ? (s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0) : null;
             const defaults: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: late ? (s.punctuality ?? 2) : (s.punctuality ?? 3) };
             return (
-              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{extensions.has(s.userId) && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
+              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{extensions.has(s.userId) && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{returned.has(s.id) && <Badge>مُرجَع لصاحبه</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
                 <div className="text-xs text-muted mb-1">سُلّم {formatDateTime(s.submittedAt)}</div>
                 <div className="text-sm whitespace-pre-wrap mb-2">{s.content}</div>
                 {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}

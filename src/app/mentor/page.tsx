@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Progress, Empty } from "@/components/ui";
 import FormMessage from "@/components/FormMessage";
 import FieldLogReview from "@/components/FieldLogReview";
+import { openReturnsOf } from "@/lib/items";
 import MentorEvalForm from "@/components/MentorEvalForm";
 import { withFiles } from "@/lib/attachments";
 import { programExpectations } from "@/lib/content";
@@ -46,7 +47,7 @@ export default async function MentorHome({ searchParams }: { searchParams: Promi
       )}
 
       <h2 className="text-xl mb-2">سجلات المعايشة</h2>
-      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/mentor" />
+      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/mentor" returned={new Set((await openReturnsOf("FIELD_LOG", [...pending, ...approved].map((l) => l.id))).keys())} />
     </>
   );
 }

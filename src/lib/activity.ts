@@ -129,6 +129,42 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     },
   },
 
+  LEARNING_PLAN: {
+    label: "خطة التعلم",
+    by: "PARTICIPANT",
+    undoNote: "تُحذف خطة التعلم فيكتبها من جديد",
+    list: async (who, take) =>
+      (await db.learningPlan.findMany({ where: { user: who }, include: withUser, orderBy: { updatedAt: "desc" }, take }))
+        .map((r) => item("LEARNING_PLAN", r, r.updatedAt, "خطة التعلم الشخصية", cut(r.goals))),
+    undo: async (id) => {
+      const r = await db.learningPlan.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.learningPlan.delete({ where: { id } });
+      return { label: "خطة التعلم الشخصية", detail: cut(r.goals), at: r.updatedAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.learningPlan.create({ data: { id: s(p.id), userId: s(p.userId), goals: s(p.goals), weeklyPlan: s(p.weeklyPlan), memorization: s(p.memorization), feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
+    },
+  },
+
+  TADABBUR: {
+    label: "وقفة تدبرية",
+    by: "PARTICIPANT",
+    undoNote: "تُحذف الوقفة من سجل وقفاته",
+    list: async (who, take) =>
+      (await db.tadabburStop.findMany({ where: { user: who }, include: withUser, orderBy: { createdAt: "desc" }, take }))
+        .map((r) => item("TADABBUR", r, r.createdAt, `وقفة تدبرية — ${r.topic}`, `الأسبوع ${r.week}${r.notes ? ` · ${cut(r.notes)}` : ""}`)),
+    undo: async (id) => {
+      const r = await db.tadabburStop.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.tadabburStop.delete({ where: { id } });
+      return { label: `وقفة تدبرية — ${r.topic}`, detail: `الأسبوع ${r.week}`, at: r.createdAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.tadabburStop.create({ data: { id: s(p.id), userId: s(p.userId), week: n(p.week), topic: s(p.topic), notes: sn(p.notes), createdAt: d(p.createdAt) } });
+    },
+  },
+
   REFLECTION: {
     label: "التأمل",
     by: "PARTICIPANT",

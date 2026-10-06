@@ -6,6 +6,7 @@ import FieldLogReview from "@/components/FieldLogReview";
 import { withFiles } from "@/lib/attachments";
 import { participantsWhere } from "@/lib/cohort";
 import { programExpectations } from "@/lib/content";
+import { openReturnsOf } from "@/lib/items";
 
 export const metadata = { title: "اعتماد المعايشة" };
 
@@ -22,7 +23,7 @@ export default async function AdminFieldPage({ searchParams }: { searchParams: P
     <>
       <PageHeader title="اعتماد سجلات المعايشة الميدانية" subtitle={`يعتمد المشرف المرافق أو مدير المشروع كل سجل. المطلوب ${expected.fieldHours} ساعة موثقة لكل مشارك.`} />
       <FormMessage ok={ok} err={err} />
-      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/admin/field" />
+      <FieldLogReview pending={await withFiles(pending)} approved={approved} back="/admin/field" returned={new Set((await openReturnsOf("FIELD_LOG", [...pending, ...approved].map((l) => l.id))).keys())} />
     </>
   );
 }

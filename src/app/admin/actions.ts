@@ -22,22 +22,15 @@ import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
+import { closeReturns } from "@/lib/items";
+import { isReturnKind } from "@/lib/returns";
 import { isFolderColor } from "@/lib/folders";
 import { MAX_BATCH_FILES, kindFromContentType, titleFromFilename } from "@/lib/files";
 import { isHelpAudience } from "@/lib/help";
+// العودة برسالة تضع المعامل قبل المرساة، فتعود الإجراءات إلى عنصرها في ملف المشارك
+import { ok, fail, safeBack } from "@/lib/redirects";
 
-function ok(path: string, msg: string): never {
-  redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
-}
-function fail(path: string, msg: string): never {
-  redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(msg)}`);
-}
 const admin = () => requireRole("ADMIN");
-
-/** وجهة العودة من حقل مخفي: تُقبل داخل مناطق المنصة فقط، لا رابطاً خارجياً */
-function safeBack(raw: string, fallback: string): string {
-  return /^\/(admin|mentor|app)(\/|\?|$)/.test(raw) ? raw : fallback;
-}
 
 /** الترتيب التالي لسؤال في اختبار: بعد أعلى ترتيب قائم، فلا يتكرر الترتيب بعد حذف سؤال من الوسط */
 async function nextQuestionOrder(quizId: string): Promise<number> {
@@ -140,7 +133,9 @@ export async function reviewReport(formData: FormData) {
   if (!(await db.weeklyReport.findUnique({ where: { id }, select: { id: true } }))) fail("/admin/reports", "التقرير غير موجود");
   const r = await db.weeklyReport.update({ where: { id }, data: { feedback: feedback || null, reviewedAt: new Date() } });
   if (feedback) await notifyUsers([r.userId], { title: `تغذية راجعة على تقرير الأسبوع ${r.week}`, body: feedback.slice(0, 120), url: `/app/reports/${r.week}` });
-  ok(`/admin/reports?week=${r.week}`, "تم حفظ المراجعة");
+  // ومن ملف المشارك يعود إليه عند التقرير نفسه
+  revalidatePath(`/admin/participants/${r.userId}`);
+  ok(safeBack(str(formData.get("back")), `/admin/reports?week=${r.week}`), "تم حفظ المراجعة");
 }
 
 // ——— المهام ———
@@ -174,8 +169,10 @@ export async function updateAssignment(formData: FormData) {
 export async function deleteAssignment(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
-  // مرفقات التسليمات لا يحذفها تسلسل القاعدة، فتُحذف هنا مع ملفاتها
+  // مرفقات التسليمات لا يحذفها تسلسل القاعدة، فتُحذف هنا مع ملفاتها — وإرجاعاتها المفتوحة تُغلق
   await removeAttachments("SUBMISSION", id);
+  const subs = await db.submission.findMany({ where: { assignmentId: id }, select: { id: true } });
+  await closeReturns("SUBMISSION", subs.map((x) => x.id));
   await db.assignment.deleteMany({ where: { id } });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تم حذف المهمة");
@@ -187,11 +184,12 @@ export async function gradeSubmission(formData: FormData) {
   const vals = ["completeness", "referencing", "application", "punctuality"].map((k) => num(formData.get(k)));
   const s = await db.submission.findUnique({ where: { id }, include: { assignment: true } });
   if (!s) fail("/admin/tasks", "التسليم غير موجود");
-  const path = `/admin/tasks/${s.assignmentId}`;
+  const path = safeBack(str(formData.get("back")), `/admin/tasks/${s.assignmentId}`);
   if (vals.some((v) => v < 1 || v > 4)) fail(path, "قيّم كل معيار من 1 إلى 4");
   const feedback = str(formData.get("feedback"));
   await db.submission.update({ where: { id }, data: { completeness: vals[0], referencing: vals[1], application: vals[2], punctuality: vals[3], feedback: feedback || null, gradedAt: new Date() } });
   await notifyUsers([s.userId], { title: `تم تقييم: ${s.assignment.title}`, body: `الدرجة ${vals.reduce((a, b) => a + b, 0)} من 16${feedback ? " — " + feedback.slice(0, 80) : ""}`, url: `/app/tasks/${s.assignmentId}` });
+  revalidatePath(`/admin/participants/${s.userId}`);
   ok(path, "تم حفظ التقييم وإشعار المشارك");
 }
 
@@ -338,6 +336,7 @@ export async function rejectFieldLog(formData: FormData) {
   if (me.role === "MENTOR" && log.user.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
   await removeAttachments("FIELD", id);
   await db.fieldLog.deleteMany({ where: { id } });
+  await closeReturns("FIELD_LOG", [id]);
   await notifyUsers([log.userId], { title: "لم يُعتمد سجل معايشة", body: reason || `سجل ${log.hours} ساعة لم يُعتمد. راجع المشرف المرافق.`, url: "/app/field" });
   revalidatePath(back);
   redirect(back);
@@ -356,7 +355,8 @@ export async function updateProjectAdmin(formData: FormData) {
   await db.graduationProject.update({ where: { id }, data: { status, mentorName: mentorName || null, adminNote: adminNote || null } });
   if (status === "APPROVED" && p.status === "PROPOSED") await notifyUsers([p.userId], { title: "اعتماد موضوع مشروع التخرج", body: `${p.topic}${mentorName ? " — المرشد: " + mentorName : ""}`, url: "/app/project" });
   else if (adminNote && adminNote !== p.adminNote) await notifyUsers([p.userId], { title: "ملاحظة على مشروع التخرج", body: adminNote.slice(0, 120), url: "/app/project" });
-  ok("/admin/projects", "تم تحديث المشروع");
+  revalidatePath(`/admin/participants/${p.userId}`);
+  ok(safeBack(str(formData.get("back")), "/admin/projects"), "تم تحديث المشروع");
 }
 
 export async function judgeProject(formData: FormData) {
@@ -380,7 +380,7 @@ export async function judgeProject(formData: FormData) {
   const total = Object.values(data).reduce((a, b) => a + b, 0);
   const projectMax = rubric.reduce((a, r) => a + r.points, 0);
   await notifyUsers([p.userId], { title: "نتيجة تحكيم مشروع التخرج", body: `${total} من ${projectMax}`, url: "/app/project" });
-  ok("/admin/projects", "تم حفظ التحكيم وإشعار المشارك");
+  ok(safeBack(str(formData.get("back")), "/admin/projects"), "تم حفظ التحكيم وإشعار المشارك");
 }
 
 // ——— الإشعارات ———
@@ -842,10 +842,12 @@ export async function resetQuizAttempt(formData: FormData) {
   const quizId = str(formData.get("quizId"));
   const userId = str(formData.get("userId"));
   const reason = str(formData.get("reason"));
-  if (!reason) fail(`/admin/quizzes/${quizId}`, "اكتب سبب إعادة الفتح");
+  const back = safeBack(str(formData.get("back")), `/admin/quizzes/${quizId}`);
+  if (!reason) fail(back, "اكتب سبب إعادة الفتح");
   await db.quizAttempt.deleteMany({ where: { quizId, userId } });
   await notifyUsers([userId], { title: "أُعيد فتح اختبار لك", body: reason, url: `/app/quizzes/${quizId}` });
-  ok(`/admin/quizzes/${quizId}`, "أُعيد فتح الاختبار وأُشعر المشارك");
+  revalidatePath(`/admin/participants/${userId}`);
+  ok(back, "أُعيد فتح الاختبار وأُشعر المشارك");
 }
 
 // ——— وثائق الإتمام وإفادات الحضور ———
@@ -966,7 +968,7 @@ export async function saveMentorEvaluation(formData: FormData) {
   const me = await requireRole("MENTOR", "ADMIN");
   const userId = str(formData.get("userId"));
   const period = str(formData.get("period"));
-  const back = me.role === "MENTOR" ? "/mentor" : `/admin/participants/${userId}`;
+  const back = me.role === "MENTOR" ? "/mentor" : safeBack(str(formData.get("back")), `/admin/participants/${userId}`);
   if (!EVAL_PERIODS.includes(period)) fail(back, "فترة تقييم غير صحيحة");
   const participant = await db.user.findUnique({ where: { id: userId }, select: { mentorId: true, role: true, name: true } });
   if (!participant || participant.role !== "PARTICIPANT") fail(back, "المشارك غير موجود");
@@ -1324,7 +1326,7 @@ export async function decideExcuse(formData: FormData) {
   });
   revalidatePath("/admin/excuses");
   revalidatePath("/admin/attendance");
-  ok("/admin/excuses", approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
+  ok(safeBack(str(formData.get("back")), "/admin/excuses"), approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
 }
 
 // ——— مركز الأنشطة: التراجع والإعادة ———
@@ -1354,13 +1356,35 @@ export async function undoActivity(formData: FormData) {
       payload: JSON.stringify(snap.payload), at: snap.at, undoneBy: me.name,
     },
   });
+  // سجلٌ حُذف لا يبقى عليه إرجاعٌ مفتوح يظهر في «مهامي» بنداً لا وجود له
+  if (isReturnKind(kind)) await closeReturns(kind, [id]);
   await notifyUsers([snap.userId], {
     title: "تراجَع مدير المشروع عن إدخال يخصّك",
     body: `${spec.label}: ${snap.label}. ${spec.undoNote}.`,
+    url: UNDO_URL[kind] ?? "/app/tasks",
   });
   revalidatePath("/admin/activity");
+  if (snap.userId) revalidatePath(`/admin/participants/${snap.userId}`);
   ok(back, `تم التراجع عن «${snap.label}» — تجده في سجل التراجع لإعادته`);
 }
+
+/** صفحة المشارك التي يُعاد منها إدخالٌ تُرُوجِع عنه — رابط إشعار التراجع */
+const UNDO_URL: Record<string, string> = {
+  READING_CARD: "/app/reading",
+  WEEKLY_REPORT: "/app/reports",
+  SUBMISSION: "/app/tasks?type=tasks",
+  FIELD_LOG: "/app/field",
+  LEADERSHIP: "/app/leadership",
+  PROJECT: "/app/project",
+  REFLECTION: "/app/reflection",
+  QUIZ_ATTEMPT: "/app/quizzes",
+  DIAGNOSTIC: "/app/diagnostic",
+  EXCUSE: "/app/excuses",
+  PORTFOLIO: "/app/portfolio",
+  CHARTER: "/app/charter",
+  LEARNING_PLAN: "/app/plan",
+  TADABBUR: "/app/plan",
+};
 
 /** إعادة ما تُرُوجِع عنه من لقطته، كما كان بمعرّفه نفسه */
 export async function restoreActivity(formData: FormData) {

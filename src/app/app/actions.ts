@@ -146,11 +146,13 @@ export async function saveWeeklyReport(formData: FormData) {
     ...(entries.length ? [db.weeklyReportTask.createMany({ data: entries.map((e) => ({ ...e, reportId: report.id })) })] : []),
   ]);
 
+  // تقريرٌ أُرجع إليه فأعاده: يُغلق الإرجاع ويعود إلى طابور المراجعة، ويُشعَر المدير
+  const resubmitted = existing ? await markResubmitted("WEEKLY_REPORT", existing.id, user) : false;
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
   }
   revalidatePath("/app", "layout");
-  ok(path, "تم حفظ التقرير الأسبوعي");
+  ok(path, resubmitted ? "أُعيد التقرير إلى مدير المشروع" : "تم حفظ التقرير الأسبوعي");
 }
 
 // ——— الاختبارات التكوينية ———
@@ -185,15 +187,17 @@ export async function submitAssignment(formData: FormData) {
   const assignment = await db.assignment.findFirst({ where: { id: assignmentId, ...(await cohortWhere()) } });
   if (!assignment) fail("/app/tasks", "المهمة غير موجودة");
   const existing = await db.submission.findUnique({ where: { assignmentId_userId: { assignmentId, userId: user.id } } });
-  if (existing?.gradedAt) fail(path, "تم تقييم هذه المهمة ولا يمكن تعديلها");
+  // المقيَّمة مقفلة على صاحبها — إلا أن يُرجعها المدير إليه للتعديل
+  if (existing?.gradedAt && !(await findOpenReturn("SUBMISSION", existing.id))) fail(path, "تم تقييم هذه المهمة ولا يمكن تعديلها");
   await db.submission.upsert({
     where: { assignmentId_userId: { assignmentId, userId: user.id } },
     create: { assignmentId, userId: user.id, content, link: link || null },
     update: { content, link: link || null, submittedAt: new Date() },
   });
+  const resubmitted = existing ? await markResubmitted("SUBMISSION", existing.id, user) : false;
   if (!existing) await notifyAdmins({ title: "تسليم مهمة", body: `${user.name} سلّم: ${assignment!.title}`, url: `/admin/tasks/${assignmentId}` });
   revalidatePath("/app", "layout");
-  ok(path, "تم تسليم المهمة");
+  ok(path, resubmitted ? "أُعيدت المهمة إلى مدير المشروع لتقييمها من جديد" : "تم تسليم المهمة");
 }
 
 // ——— المعايشة الميدانية ———
@@ -219,8 +223,32 @@ export async function deleteFieldLog(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const { count } = await db.fieldLog.deleteMany({ where: { id, userId: user.id, approvedAt: null } });
-  if (count) await removeAttachments("FIELD", id);
+  if (count) {
+    await removeAttachments("FIELD", id);
+    await closeReturns("FIELD_LOG", [id]);
+  }
   revalidatePath("/app", "layout");
+}
+
+/** تعديل سجل معايشة لم يُعتمد بعد، أو أُرجع إلى صاحبه بعد اعتماده */
+export async function updateFieldLog(formData: FormData) {
+  const user = await participant();
+  const id = str(formData.get("id"));
+  const path = `/app/field?edit=${encodeURIComponent(id)}`;
+  const log = await db.fieldLog.findFirst({ where: { id, userId: user.id }, select: { approvedAt: true } });
+  if (!log) fail("/app/field", "السجل غير موجود");
+  if (log.approvedAt && !(await findOpenReturn("FIELD_LOG", id))) fail("/app/field", "اعتُمد هذا السجل فأُقفل");
+  const dateKey = str(formData.get("date")) || todayKey();
+  const hours = num(formData.get("hours"));
+  const mentorName = str(formData.get("mentorName"));
+  const note = str(formData.get("note"));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) fail(path, "تاريخ غير صحيح");
+  if (hours <= 0 || hours > 12) fail(path, "أدخل عدد ساعات صحيحاً");
+  if (!mentorName || !note) fail(path, "اسم المشرف المرافق والملاحظة حقلان إلزاميان");
+  await db.fieldLog.update({ where: { id }, data: { date: keyToDate(dateKey), hours, mentorName, note } });
+  const resubmitted = await markResubmitted("FIELD_LOG", id, user);
+  revalidatePath("/app", "layout");
+  ok("/app/field", resubmitted ? "أُعيد السجل إلى الاعتماد" : "تم تعديل السجل");
 }
 
 // ——— الدور القيادي وتقييم الأقران ———
@@ -241,8 +269,10 @@ export async function updateLeadershipReport(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const report = str(formData.get("report"));
-  await db.leadershipActivity.updateMany({ where: { id, userId: user.id }, data: { report: report || null } });
-  ok("/app/leadership", "تم تحديث تقرير النشاط");
+  const { count } = await db.leadershipActivity.updateMany({ where: { id, userId: user.id }, data: { report: report || null } });
+  const resubmitted = count ? await markResubmitted("LEADERSHIP", id, user) : false;
+  revalidatePath("/app", "layout");
+  ok("/app/leadership", resubmitted ? "أُعيد النشاط إلى مدير المشروع" : "تم تحديث تقرير النشاط");
 }
 
 export async function submitPeerEvaluation(formData: FormData) {
@@ -288,8 +318,9 @@ export async function saveProject(formData: FormData) {
   if (!existing || changedTopic) await notifyAdmins({ title: "موضوع مشروع تخرج", body: `${user.name}: ${topic}`, url: "/admin/projects" });
   else if (status === "DRAFT" && existing.status !== "DRAFT") await notifyAdmins({ title: "مسودة مشروع تخرج", body: `${user.name} سلّم مسودة المشروع`, url: "/admin/projects" });
   else if (status === "FINAL" && existing.status !== "FINAL") await notifyAdmins({ title: "النسخة النهائية لمشروع التخرج", body: `${user.name} سلّم النسخة النهائية`, url: "/admin/projects" });
+  const resubmitted = existing ? await markResubmitted("PROJECT", existing.id, user) : false;
   revalidatePath("/app", "layout");
-  ok("/app/project", "تم حفظ بيانات المشروع");
+  ok("/app/project", resubmitted ? "أُعيد المشروع إلى مدير المشروع" : "تم حفظ بيانات المشروع");
 }
 
 // ——— خطة التعلم الشخصية والوقفات التدبرية ———
@@ -299,13 +330,15 @@ export async function saveLearningPlan(formData: FormData) {
   const weeklyPlan = str(formData.get("weeklyPlan"));
   const memorization = str(formData.get("memorization"));
   if (!goals) fail("/app/plan", "اكتب أهداف خطتك الفصلية");
-  await db.learningPlan.upsert({
+  const plan = await db.learningPlan.upsert({
     where: { userId: user.id },
     create: { userId: user.id, goals, weeklyPlan, memorization },
     update: { goals, weeklyPlan, memorization },
   });
+  // خطةٌ أُرجعت فأعادها صاحبها تعود إلى مراجعة المدير ويُشعَر بها
+  const resubmitted = await markResubmitted("LEARNING_PLAN", plan.id, user);
   revalidatePath("/app", "layout");
-  ok("/app/plan", "تم حفظ خطة التعلم");
+  ok("/app/plan", resubmitted ? "أُعيدت الخطة إلى مدير المشروع" : "تم حفظ خطة التعلم");
 }
 
 export async function addTadabbur(formData: FormData) {

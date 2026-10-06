@@ -11,6 +11,9 @@ import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
 import { cohortWhere } from "@/lib/cohort";
 import { extensionsFor } from "@/lib/deadlines";
+import { loadParticipant } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "مهمة" };
 
@@ -21,11 +24,14 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   const a = await db.assignment.findFirst({ where: { id, ...(await cohortWhere()) }, include: { submissions: { where: { userId: user.id } } } });
   if (!a) notFound();
   const s = a.submissions[0];
-  // تأجيل معتمد يمدّ موعد التسليم لصاحبه
-  const dueAt = (await extensionsFor(a.id, [user.id])).get(user.id) ?? a.dueAt;
+  // تأجيل معتمد يمدّ موعد التسليم لصاحبه — ولا يقصّره إن جاء قبله
+  const ext = (await extensionsFor(a.id, [user.id])).get(user.id);
+  const dueAt = ext && ext > a.dueAt ? ext : a.dueAt;
   const extended = dueAt.getTime() !== a.dueAt.getTime();
-  const files = await listAttachments({ kind: "SUBMISSION", refId: a.id, userId: user.id });
-  const graded = !!s?.gradedAt;
+  const [files, rows] = await Promise.all([listAttachments({ kind: "SUBMISSION", refId: a.id, userId: user.id }), loadParticipant(user.id)]);
+  // المُرجَعة إليه تنفتح للتعديل ولو كانت مقيَّمة، وتقييمها السابق يبقى ظاهراً مرجعاً
+  const returned = s ? openReturnFor(rows?.returns ?? [], "SUBMISSION", s.id) : undefined;
+  const graded = !!s?.gradedAt && !returned;
   const scores = graded ? { completeness: s!.completeness, referencing: s!.referencing, application: s!.application, punctuality: s!.punctuality } : null;
   const total = scores ? Object.values(scores).reduce((x, y) => (x ?? 0) + (y ?? 0), 0) : null;
 
@@ -34,8 +40,9 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       <BackLink href="/app/tasks">مهامي</BackLink>
       <PageHeader title={a.title} subtitle={`الأسبوع ${a.week} · موعد التسليم ${formatDateTime(dueAt)}${extended ? " (مُدَّد لك)" : ""}${a.competency ? ` · ${a.competency}` : ""}`} />
       <FormMessage ok={ok} err={err} />
+      {returned && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={dueAt} />}
       {a.description && <div className="card card-muted text-sm mb-4 whitespace-pre-wrap">{a.description}</div>}
-      {graded && (
+      {s?.gradedAt && (
         <Alert tone="success">
           <div className="font-medium mb-2">نتيجة التقييم: {total} من 16</div>
           <ul className="text-sm space-y-0.5">
@@ -61,7 +68,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
             <label className="label">المرفقات (الشاهد)</label>
             <Attachments kind="SUBMISSION" refId={a.id} initial={files} readOnly={graded} />
           </div>
-          {!graded && <SubmitButton>{s ? "تحديث التسليم" : "تسليم"}</SubmitButton>}
+          {!graded && <SubmitButton>{returned ? "أعد التسليم إلى مدير المشروع" : s ? "تحديث التسليم" : "تسليم"}</SubmitButton>}
           {s && <span className="text-xs text-muted ms-3">آخر تسليم: {formatDateTime(s.submittedAt)}</span>}
         </form>
       </Card>
