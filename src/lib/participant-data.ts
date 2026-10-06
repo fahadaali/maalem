@@ -62,12 +62,13 @@ export type ParticipantRows = {
     cohortId: string | null;
     createdAt: Date;
     charterAcceptedAt: Date | null;
+    charterName: string | null;
     surveyDoneAt: Date | null;
     portfolioSubmittedAt: Date | null;
   };
-  attendance: { week: number; type: string; status: string; participation: number | null; circleScore: number | null }[];
-  cards: { id: string; date: Date; book: string; fromPage: number; toPage: number; reviewedAt: Date | null }[];
-  attempts: { quizId: string; score: number; total: number }[];
+  attendance: { week: number; type: string; status: string; participation: number | null; circleScore: number | null; note: string | null }[];
+  cards: { id: string; date: Date; book: string; fromPage: number; toPage: number; reviewedAt: Date | null; createdAt: Date }[];
+  attempts: { quizId: string; score: number; total: number; createdAt: Date }[];
   submissions: {
     id: string;
     assignmentId: string;
@@ -77,10 +78,11 @@ export type ParticipantRows = {
     referencing: number | null;
     application: number | null;
     punctuality: number | null;
+    feedback: string | null;
   }[];
   reports: { id: string; week: number; submittedAt: Date; reviewedAt: Date | null }[];
-  fieldLogs: { id: string; date: Date; hours: number; approvedAt: Date | null }[];
-  activities: { id: string; title: string; createdAt: Date; evaluations: { c1: number; c2: number; c3: number; c4: number; c5: number }[] }[];
+  fieldLogs: { id: string; date: Date; hours: number; approvedAt: Date | null; approvedBy: string | null; createdAt: Date; mentorName: string; note: string }[];
+  activities: { id: string; title: string; createdAt: Date; report: string | null; evaluations: { c1: number; c2: number; c3: number; c4: number; c5: number }[] }[];
   /** معرّفات الأنشطة التي قيّمها هذا المشارك */
   evaluated: Set<string>;
   project: {
@@ -94,6 +96,7 @@ export type ParticipantRows = {
     design: number | null;
     integration: number | null;
     presentation: number | null;
+    createdAt: Date;
   } | null;
   mentorEvals: { regularity: number; engagement: number; application: number; conduct: number; growth: number }[];
   plan: { id: string; updatedAt: Date; reviewedAt: Date | null } | null;
@@ -105,7 +108,7 @@ export type ParticipantRows = {
   extensions: Map<string, Date>;
 };
 
-const SUBMISSION_SELECT = { id: true, userId: true, assignmentId: true, submittedAt: true, gradedAt: true, completeness: true, referencing: true, application: true, punctuality: true } as const;
+const SUBMISSION_SELECT = { id: true, userId: true, assignmentId: true, submittedAt: true, gradedAt: true, completeness: true, referencing: true, application: true, punctuality: true, feedback: true } as const;
 
 /**
  * صفوف مجموعة مشاركين باستعلام واحد لكل جدول، مهما كان عددهم. المشارك الواحد
@@ -116,20 +119,21 @@ export async function loadParticipants(ids: string[]): Promise<Map<string, Parti
   if (ids.length === 0) return out;
   const inIds = { userId: { in: ids } };
   const [users, attendance, cards, attempts, submissions, reports, fieldLogs, activities, peerEvals, projects, mentorEvals, plans, tadabbur, diagnostics, returns, extensions] = await Promise.all([
-    db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, role: true, cohortId: true, createdAt: true, charterAcceptedAt: true, surveyDoneAt: true, portfolioSubmittedAt: true } }),
-    db.attendance.findMany({ where: inIds, select: { userId: true, week: true, type: true, status: true, participation: true, circleScore: true } }),
-    db.readingCard.findMany({ where: inIds, orderBy: { date: "asc" }, select: { id: true, userId: true, date: true, book: true, fromPage: true, toPage: true, reviewedAt: true } }),
-    db.quizAttempt.findMany({ where: inIds, select: { userId: true, quizId: true, score: true, total: true } }),
+    // وما يقرؤه سجل النشاط أيضاً (التواريخ والملاحظات)، فلا يعيد جلبه بأربعة عشر استعلاماً
+    db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, role: true, cohortId: true, createdAt: true, charterAcceptedAt: true, charterName: true, surveyDoneAt: true, portfolioSubmittedAt: true } }),
+    db.attendance.findMany({ where: inIds, select: { userId: true, week: true, type: true, status: true, participation: true, circleScore: true, note: true } }),
+    db.readingCard.findMany({ where: inIds, orderBy: { date: "asc" }, select: { id: true, userId: true, date: true, book: true, fromPage: true, toPage: true, reviewedAt: true, createdAt: true } }),
+    db.quizAttempt.findMany({ where: inIds, select: { userId: true, quizId: true, score: true, total: true, createdAt: true } }),
     db.submission.findMany({ where: inIds, select: SUBMISSION_SELECT }),
     db.weeklyReport.findMany({ where: inIds, select: { id: true, userId: true, week: true, submittedAt: true, reviewedAt: true } }),
-    db.fieldLog.findMany({ where: inIds, select: { id: true, userId: true, date: true, hours: true, approvedAt: true } }),
-    db.leadershipActivity.findMany({ where: inIds, orderBy: { createdAt: "asc" }, select: { id: true, userId: true, title: true, createdAt: true } }),
+    db.fieldLog.findMany({ where: inIds, select: { id: true, userId: true, date: true, hours: true, approvedAt: true, approvedBy: true, createdAt: true, mentorName: true, note: true } }),
+    db.leadershipActivity.findMany({ where: inIds, orderBy: { createdAt: "asc" }, select: { id: true, userId: true, title: true, createdAt: true, report: true } }),
     // ما قيّموه وما قُيّموا به في استعلام واحد: شرطُ العلاقة في `where` يُضمّ في العبارة نفسها
     db.peerEvaluation.findMany({
       where: { OR: [{ evaluatorId: { in: ids } }, { activity: { userId: { in: ids } } }] },
       select: { activityId: true, evaluatorId: true, c1: true, c2: true, c3: true, c4: true, c5: true },
     }),
-    db.graduationProject.findMany({ where: inIds, select: { id: true, userId: true, status: true, topic: true, draftLink: true, finalLink: true, clarity: true, grounding: true, design: true, integration: true, presentation: true } }),
+    db.graduationProject.findMany({ where: inIds, select: { id: true, userId: true, status: true, topic: true, draftLink: true, finalLink: true, clarity: true, grounding: true, design: true, integration: true, presentation: true, createdAt: true } }),
     db.mentorEvaluation.findMany({ where: inIds, select: { userId: true, regularity: true, engagement: true, application: true, conduct: true, growth: true } }),
     db.learningPlan.findMany({ where: inIds, select: { id: true, userId: true, updatedAt: true, reviewedAt: true } }),
     db.tadabburStop.groupBy({ by: ["userId"], where: inIds, _count: { _all: true } }),
@@ -180,7 +184,7 @@ export async function loadParticipants(ids: string[]): Promise<Map<string, Parti
 /** صفوفٌ فارغة لحسابٍ لا سجلات له أو لم يُعثر عليه: الدرجة صفر لا خطأ */
 export function emptyParticipant(id: string): ParticipantRows {
   return {
-    user: { id, name: "—", role: "PARTICIPANT", cohortId: null, createdAt: new Date(0), charterAcceptedAt: null, surveyDoneAt: null, portfolioSubmittedAt: null },
+    user: { id, name: "—", role: "PARTICIPANT", cohortId: null, createdAt: new Date(0), charterAcceptedAt: null, charterName: null, surveyDoneAt: null, portfolioSubmittedAt: null },
     attendance: [], cards: [], attempts: [], submissions: [], reports: [], fieldLogs: [], activities: [], evaluated: new Set(),
     project: null, mentorEvals: [], plan: null, tadabbur: 0, diagnostics: [], returns: [], extensions: new Map(),
   };
