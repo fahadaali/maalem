@@ -39,10 +39,16 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
           <Link key={w.number} href={`/admin/attendance?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number === 13 ? "الختامي" : w.number}</Link>
         ))}
       </div>
-      <Card title={`الأسبوع ${info.label} · ${info.hijri}`}>
+      {/*
+        مفتاحٌ واحد بالأسبوع على البطاقة كلها لا على كل نموذج فيها: التنقّل بين
+        الأسابيع يجري في مكانه، ونموذجان شقيقان بمفتاحٍ واحد يُسقطان أحدهما من
+        مطابقة React فلا يُزال — فيبقى نموذج «نسخ الحضور» للأسبوع السابق فوق
+        الجديد بأسبوعه القديم، ويتراكم مع كل نقرة.
+      */}
+      <Card key={week} title={`الأسبوع ${info.label} · ${info.hijri}`}>
         <div className="text-xs text-muted mb-3">اللقاء: {info.session}</div>
         {week > 0 && (
-          <form key={week} action={copyAttendanceFromWeek} className="flex flex-wrap items-end gap-2 mb-3 pb-3 border-b border-line">
+          <form action={copyAttendanceFromWeek} className="flex flex-wrap items-end gap-2 mb-3 pb-3 border-b border-line">
             <input type="hidden" name="week" value={week} />
             <div>
               <label className="label">نسخ الحضور من أسبوع سابق</label>
@@ -57,7 +63,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
           </form>
         )}
         <AttendanceQuickFill />
-        <form key={week} action={saveAttendance} data-attendance>
+        <form action={saveAttendance} data-attendance>
           <input type="hidden" name="week" value={week} />
           <div className="table-wrap">
             <table className="table">

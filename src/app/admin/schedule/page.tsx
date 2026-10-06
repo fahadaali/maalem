@@ -55,11 +55,18 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
           </Link>
         ))}
       </div>
-      <Card title={`الأسبوع ${w.label}`} action={w.number === cur ? <span className="badge badge-ink">الأسبوع الحالي</span> : undefined}>
-        {/* مفتاحٌ بالأسبوع: التنقّل بين الأسابيع من طرف العميل يبقي حقول النموذج
-            مركَّبة، فلا يتبع نصُّ textarea ذو القيمة الأسبوعَ الجديد ويبقى على أول
-            أسبوع رُسم — فيُحفظ محتوى أسبوعٍ في صفّ أسبوعٍ آخر. */}
-        <form key={w.number} action={saveWeek}>
+      {/*
+        مفتاحٌ بالأسبوع على البطاقة كلها: التنقّل بين الأسابيع من طرف العميل يبقي
+        حقول النموذج مركَّبة، فلا يتبع نصُّ textarea ذو القيمة الأسبوعَ الجديد ويبقى
+        على أول أسبوع رُسم — فيُحفظ محتوى أسبوعٍ في صفّ أسبوعٍ آخر.
+
+        وكان المفتاح على كل نموذج على حدة، والنموذجان شقيقان بالمفتاح نفسه: فيُسقط
+        React أحدهما من مطابقته فلا يُزيله، ويبقى نموذج الأسبوع السابق فوق الجديد —
+        يتراكم مع كل نقرة، ويحفظ في أسبوعه القديم. والمفتاح الواحد على الحاوية يُعيد
+        رسم البطاقة بنماذجها كلها مع كل أسبوع.
+      */}
+      <Card key={w.number} title={`الأسبوع ${w.label}`} action={w.number === cur ? <span className="badge badge-ink">الأسبوع الحالي</span> : undefined}>
+        <form action={saveWeek}>
           <input type="hidden" name="number" value={w.number} />
           <div className="grid md:grid-cols-2 gap-3">
             <div className="field">
@@ -105,10 +112,10 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
           </div>
           <SubmitButton>حفظ الأسبوع</SubmitButton>
         </form>
-        {/* مفتاحٌ بالأسبوع كنموذج الأسبوع أعلاه، والعلّة هنا أشدّ: حقول هذا النموذج
-            مسمّاة بمعرّفات مهام الأسبوع المعروض، فلو بقيت مركَّبة عند التنقّل كُتب
-            نصُّ أسبوعٍ في مهامّ أسبوعٍ آخر. */}
-        <form key={w.number} action={saveWeekTasks} className="mt-3 border-t border-line pt-3">
+        {/* ومفتاح البطاقة يشمل هذا النموذج، والعلّة فيه أشدّ: حقوله مسمّاة بمعرّفات
+            مهام الأسبوع المعروض، فلو بقيت مركَّبة عند التنقّل كُتب نصُّ أسبوعٍ في
+            مهامّ أسبوعٍ آخر. */}
+        <form action={saveWeekTasks} className="mt-3 border-t border-line pt-3">
           <input type="hidden" name="number" value={w.number} />
           <div className="text-sm font-medium mb-1">مهام الأسبوع</div>
           <p className="text-xs text-muted mb-2">
