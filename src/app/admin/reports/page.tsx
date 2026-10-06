@@ -1,4 +1,4 @@
-import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
@@ -31,11 +31,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
     <>
       <PageHeader title="مراجعة التقارير الأسبوعية" subtitle={`الأسبوع ${week} · موعد التسليم ${formatDateTime(due)}`} />
       <FormMessage ok={sp.ok} err={sp.err} />
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {activeWeeks.map((w) => (
-          <Link key={w.number} href={`/admin/reports?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number}</Link>
-        ))}
-      </div>
+      <WeekChips weeks={activeWeeks} selected={week} current={await currentWeekNumber()} href={(n) => `/admin/reports?week=${n}`} />
       <div className="flex flex-wrap gap-1 mb-4">
         {participants.map((p) => {
           const r = byUser.get(p.id);

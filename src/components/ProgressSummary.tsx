@@ -17,7 +17,7 @@ export default async function ProgressSummary({ userId, fallbackAssignments }: {
         <Stat label="المجموع الحالي" value={`${grades.total}`} hint={`من ${max} · ${grades.level}`} href="/app/portfolio" />
         <Stat label="صفحات الورد" value={grades.stats.readingPages} hint={`من ${grades.stats.readingRequired} في الجدول`} href="/app/reading" />
         <Stat label="ساعات المعايشة" value={grades.stats.fieldHours} hint={`من ${expected.fieldHours} معتمدة`} href="/app/field" />
-        <Stat label="المهام المسلّمة" value={`${grades.stats.submitted}/${grades.stats.assignments || fallbackAssignments}`} hint={`تم تقييم ${grades.stats.graded}`} href="/app/tasks" />
+        <Stat label="المهام المسلّمة" value={`${grades.stats.submitted}/${grades.stats.assignments || fallbackAssignments}`} hint={`تم تقييم ${grades.stats.graded}`} href="/app/tasks?type=tasks" />
       </div>
       <Card title={`التقييم المستمر (${grades.maxes.continuous})`}>
         <div className="space-y-3">

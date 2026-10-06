@@ -34,7 +34,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     { label: "خطة التعلم الشخصية", value: plan ? "مسلّمة" : "لم تُسلَّم", href: "/app/plan" },
     { label: "الورد القرائي", value: `${g.stats.readingPages} / ${g.stats.readingRequired} صفحة · ${g.stats.cards} بطاقة`, href: "/app/reading" },
     { label: "التقارير الأسبوعية", value: `${g.stats.reportsSubmitted} / ${expected.reports}`, href: "/app/reports" },
-    { label: "المهام المسلّمة", value: `${g.stats.submitted} / ${g.stats.assignments}`, href: "/app/tasks" },
+    { label: "المهام المسلّمة", value: `${g.stats.submitted} / ${g.stats.assignments}`, href: "/app/tasks?type=tasks" },
     { label: "الاختبارات", value: `${g.stats.quizCount} اختبار · متوسط ${g.stats.quizAvgPct}%`, href: "/app/quizzes" },
     { label: "سجل المعايشة", value: `${g.stats.fieldHours} ساعة معتمدة`, href: "/app/field" },
     { label: "الدور القيادي", value: `${g.stats.leadershipActivities} نشاط · تقييم ${g.stats.peerAvg}/5`, href: "/app/leadership" },

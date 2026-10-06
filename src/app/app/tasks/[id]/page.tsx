@@ -31,7 +31,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
 
   return (
     <>
-      <BackLink href="/app/tasks">المهام</BackLink>
+      <BackLink href="/app/tasks">مهامي</BackLink>
       <PageHeader title={a.title} subtitle={`الأسبوع ${a.week} · موعد التسليم ${formatDateTime(dueAt)}${extended ? " (مُدَّد لك)" : ""}${a.competency ? ` · ${a.competency}` : ""}`} />
       <FormMessage ok={ok} err={err} />
       {a.description && <div className="card card-muted text-sm mb-4 whitespace-pre-wrap">{a.description}</div>}

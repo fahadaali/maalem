@@ -7,7 +7,8 @@ import WarmTabs from "./WarmTabs";
 import AppBadge from "@/components/AppBadge";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
-import { db, optional } from "@/lib/db";
+import { optional } from "@/lib/db";
+import { unreadCount } from "@/lib/notify";
 import LogoutButton from "@/components/LogoutButton";
 
 /**
@@ -17,9 +18,19 @@ import LogoutButton from "@/components/LogoutButton";
  */
 export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; tab?: boolean; tabOnly?: boolean; short?: string; group?: string };
 
-export default async function AppShell({ user, items, children, base }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string }) {
+/**
+ * `badges`: عدّادٌ على بندٍ بعينه في القائمة والتبويبات، بمساره — كالمتأخر على «مهامي».
+ * يحسبه هيكل الدور ويمرّره رقماً، فلا يعرف الهيكل معنى ما يعدّه.
+ */
+export default async function AppShell({ user, items, children, base, badges }: { user: SessionUser; items: NavItem[]; children: ReactNode; base: string; badges?: Record<string, number> }) {
   // شارةُ الإشعارات زينة، وهذا الهيكل ترسمه الأدوار الثلاثة كلُّها: تعذُّرُ قراءتها يُسقط الشارة لا الصفحة
-  const unread = await optional(() => db.notification.count({ where: { userId: user.id, readAt: null } }), 0, "shell.badge-skipped");
+  const unread = await optional(() => unreadCount(user.id), 0, "shell.badge-skipped");
+  const pill = (n: number | undefined, className: string) =>
+    n ? (
+      <span className={`min-w-[18px] h-[18px] px-1 rounded-full bg-ink text-paper text-[10px] flex items-center justify-center font-bold ${className}`} aria-label={`${n} بحاجة إلى عملك`}>
+        {n > 99 ? "99+" : n}
+      </span>
+    ) : null;
   const tabs = items.filter((i) => i.tab);
   const sideItems = items.filter((i) => !i.tabOnly);
   // المجموعات بترتيب ورودها في القائمة، وما لا مجموعة له يتصدّر بلا عنوان
@@ -59,6 +70,8 @@ export default async function AppShell({ user, items, children, base }: { user: 
                   <NavLink key={i.href} href={i.href} exact={i.exact}>
                     <i.icon size={18} strokeWidth={1.75} />
                     <span>{i.label}</span>
+                    {/* على الخلفية الداكنة للبند النشط تنقلب الشارة كي تُقرأ */}
+                    {pill(badges?.[i.href], "ms-auto nav-pill")}
                   </NavLink>
                 ))}
               </div>
@@ -114,9 +127,10 @@ export default async function AppShell({ user, items, children, base }: { user: 
         <nav className="shell-tabs fixed bottom-0 inset-x-0 z-20 bg-paper border-t border-line" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}>
           {/* تبويبات الجوال هي المسارات الساخنة: تُسخَّن بالتتابع وعند اللمس، لا دفعةً واحدة */}
           {tabs.map((i) => (
-            <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link">
+            <NavLink key={i.href} href={i.href} exact={i.exact} prefetch className="tabbar-link relative">
               <i.icon size={20} strokeWidth={1.75} />
               <span>{i.short ?? i.label}</span>
+              {pill(badges?.[i.href], "absolute top-0.5 start-1/2 ms-2")}
             </NavLink>
           ))}
         </nav>

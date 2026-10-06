@@ -1,4 +1,5 @@
 import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
@@ -38,13 +39,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
         <Empty>لم يُربط بك مشاركون بعد.</Empty>
       ) : (
         <>
-          <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-            {weeks.map((w) => (
-              <Link key={w.number} href={`/mentor/reports?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>
-                {w.number === 0 ? "الافتتاحي" : w.number}
-              </Link>
-            ))}
-          </div>
+          <WeekChips weeks={weeks} selected={week} current={await currentWeekNumber()} href={(n) => `/mentor/reports?week=${n}`} />
           <div className="flex flex-wrap gap-1 mb-4">
             {mentees.map((m) => (
               <span key={m.id} className={cn("badge", submitted.has(m.id) && "badge-ink")}>{m.name}: {submitted.has(m.id) ? "مسلّم" : "لم يسلّم"}</span>

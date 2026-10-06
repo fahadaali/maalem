@@ -1,4 +1,4 @@
-import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { PageHeader, Card } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -9,7 +9,8 @@ import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
 import { getWeeks, getWeekTasks, resolveCurrentWeek } from "@/lib/weeks";
 import { SCHEDULE_NOTE } from "@/lib/program";
-import { cn } from "@/lib/utils";
+import { DEFAULT_WEEKLY_PAGES, weekQuota } from "@/lib/reading-quota";
+import type { LiveWeek } from "@/lib/weeks";
 
 export const metadata = { title: "جدول البرنامج" };
 
@@ -48,13 +49,7 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
           <SubmitButton secondary>حفظ المواعيد</SubmitButton>
         </form>
       </Card>
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {weeks.map((x) => (
-          <Link key={x.number} href={`/admin/schedule?week=${x.number}`} className={cn("badge shrink-0", x.number === selected && "badge-ink", x.number === cur && x.number !== selected && "border-ink")}>
-            {x.number === 0 ? "الافتتاحي" : x.number === 13 ? "الختامي" : x.number === 14 ? "احتياطي" : x.number}
-          </Link>
-        ))}
-      </div>
+      <WeekChips weeks={weeks} selected={w.number} current={cur} href={(n) => `/admin/schedule?week=${n}`} />
       {/*
         مفتاحٌ بالأسبوع على البطاقة كلها: التنقّل بين الأسابيع من طرف العميل يبقي
         حقول النموذج مركَّبة، فلا يتبع نصُّ textarea ذو القيمة الأسبوعَ الجديد ويبقى
@@ -101,6 +96,8 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
           <div className="field">
             <label className="label">الورد القرائي</label>
             <input name="reading" className="input" defaultValue={w.reading} />
+            {/* النصاب يُستخرج من هذا النص، فيُرى هنا كيف قُرئ — ولا يبقى التقدير الافتراضي صامتاً */}
+            <p className="text-xs text-muted mt-1">{quotaNote(w)}</p>
           </div>
           <div className="field">
             <label className="label">المعايشة الميدانية (ساعة · يوم يختاره المشارك)</label>
@@ -154,4 +151,12 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
       </Card>
     </>
   );
+}
+
+/** كيف قُرئ نصاب الورد من نص الأسبوع: بأرقامه، أو بالتقدير الافتراضي، أو لا نصاب */
+function quotaNote(w: LiveWeek): string {
+  const q = weekQuota(w);
+  if (!q) return "لا نصاب للورد في هذا الأسبوع.";
+  if (!q.parsed) return `لا أرقام صفحات في النص، فالنصاب تقديرٌ افتراضي: ${DEFAULT_WEEKLY_PAGES} صفحة. اكتب «ص 10–60» ليُحسب بدقة.`;
+  return `النصاب المحتسب: ${q.pages} صفحة (نحو ${Math.round(q.daily)} صفحة يومياً). يُقرأ من كل «ص من–إلى» في النص.`;
 }

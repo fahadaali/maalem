@@ -1,4 +1,4 @@
-import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { Fragment } from "react";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -9,7 +9,7 @@ import { saveAttendance, copyAttendanceFromWeek } from "../actions";
 import AttendanceQuickFill from "@/components/AttendanceQuickFill";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 
-import { ATTENDANCE_LABELS, cn } from "@/lib/utils";
+import { ATTENDANCE_LABELS } from "@/lib/utils";
 import { PARTICIPATION_SCALE } from "@/lib/program";
 import { participantsWhere } from "@/lib/cohort";
 
@@ -34,11 +34,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
     <>
       <PageHeader title="سجل الحضور" subtitle="اللقاء الحضوري (السبت) وحلقة النقاش عن بُعد (الثلاثاء). الحد الأدنى في الخطة: 85% للقاء الحضوري و80% لحلقة النقاش. ورصد المشاركة أداة قياس في الخطة: يدخل في درجة الحضور، والمشاركة في الحلقة تدخل في درجة الورد القرائي." />
       <FormMessage ok={sp.ok} err={sp.err} />
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {weeks.filter((w) => w.number <= 13).map((w) => (
-          <Link key={w.number} href={`/admin/attendance?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number === 13 ? "الختامي" : w.number}</Link>
-        ))}
-      </div>
+      <WeekChips weeks={weeks.filter((w) => w.number <= 13)} selected={week} current={resolveCurrentWeek(weeks)} href={(n) => `/admin/attendance?week=${n}`} />
       {/*
         مفتاحٌ واحد بالأسبوع على البطاقة كلها لا على كل نموذج فيها: التنقّل بين
         الأسابيع يجري في مكانه، ونموذجان شقيقان بمفتاحٍ واحد يُسقطان أحدهما من

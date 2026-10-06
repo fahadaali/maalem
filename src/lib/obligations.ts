@@ -572,3 +572,13 @@ export async function obligationsForMany(userIds: string[]): Promise<Map<string,
   const now = new Date();
   return new Map([...rows].map(([id, r]) => [id, obligationsFrom(r, program, now)]));
 }
+
+/**
+ * «مهامي» لمن يتصفّح واجهة المشارك: المشارك ببنوده، ومدير المشروع في المعاينة
+ * ببنود حسابه هو كأنه مشاركٌ لم يسلّم شيئاً — فيرى الواجهة كما تبدو لا فارغةً.
+ */
+export async function obligationsForView(user: { id: string; role: string }, now: Date = new Date()): Promise<ObligationsResult | null> {
+  if (user.role === "PARTICIPANT") return getObligations(user.id);
+  const [rows, program] = await Promise.all([loadParticipant(user.id), loadProgram()]);
+  return rows ? obligationsFrom({ ...rows, user: { ...rows.user, role: "PARTICIPANT", cohortId: null } }, program, now) : null;
+}

@@ -149,7 +149,7 @@ export async function saveWeeklyReport(formData: FormData) {
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
   }
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok(path, "تم حفظ التقرير الأسبوعي");
 }
 
@@ -169,7 +169,7 @@ export async function submitQuiz(formData: FormData) {
     if (e?.code === "P2002") fail(`/app/quizzes/${quizId}`, "سبق أن أديت هذا الاختبار");
     throw e;
   });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   redirect(`/app/quizzes/${quizId}`);
 }
 
@@ -192,7 +192,7 @@ export async function submitAssignment(formData: FormData) {
     update: { content, link: link || null, submittedAt: new Date() },
   });
   if (!existing) await notifyAdmins({ title: "تسليم مهمة", body: `${user.name} سلّم: ${assignment!.title}`, url: `/admin/tasks/${assignmentId}` });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok(path, "تم تسليم المهمة");
 }
 
@@ -211,7 +211,7 @@ export async function addFieldLog(formData: FormData) {
   await notifyAdmins({ title: "سجل معايشة جديد", body, url: "/admin/field" });
   // المشرف المرافق يعتمد من لوحته هو؛ رابط منطقة الإدارة كان يُعاد توجيهه عنها
   if (me?.mentorId) await notifyUsers([me.mentorId], { title: "سجل معايشة جديد", body, url: "/mentor" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/field", "تم تسجيل المعايشة وبانتظار اعتمادها");
 }
 
@@ -220,7 +220,7 @@ export async function deleteFieldLog(formData: FormData) {
   const id = str(formData.get("id"));
   const { count } = await db.fieldLog.deleteMany({ where: { id, userId: user.id, approvedAt: null } });
   if (count) await removeAttachments("FIELD", id);
-  revalidatePath("/app/field");
+  revalidatePath("/app", "layout");
 }
 
 // ——— الدور القيادي وتقييم الأقران ———
@@ -233,7 +233,7 @@ export async function addLeadershipActivity(formData: FormData) {
   await db.leadershipActivity.create({ data: { userId: user.id, title, date: keyToDate(dateKey), report: report || null } });
   const peers = await db.user.findMany({ where: { ...(await participantsWhere()), id: { not: user.id } }, select: { id: true } });
   await notifyUsers(peers.map((p) => p.id), { title: "تقييم أقران مطلوب", body: `${user.name} قاد نشاطاً: ${title}. شارك بتقييمك.`, url: "/app/leadership" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/leadership", "تم تسجيل النشاط القيادي وإشعار الأقران لتقييمه");
 }
 
@@ -258,7 +258,7 @@ export async function submitPeerEvaluation(formData: FormData) {
     create: { activityId, evaluatorId: user.id, c1: vals[0], c2: vals[1], c3: vals[2], c4: vals[3], c5: vals[4], comment: str(formData.get("comment")) || null },
     update: { c1: vals[0], c2: vals[1], c3: vals[2], c4: vals[3], c5: vals[4], comment: str(formData.get("comment")) || null },
   });
-  revalidatePath("/app/leadership");
+  revalidatePath("/app", "layout");
   ok("/app/leadership", "شكراً، تم حفظ تقييمك");
 }
 
@@ -288,7 +288,7 @@ export async function saveProject(formData: FormData) {
   if (!existing || changedTopic) await notifyAdmins({ title: "موضوع مشروع تخرج", body: `${user.name}: ${topic}`, url: "/admin/projects" });
   else if (status === "DRAFT" && existing.status !== "DRAFT") await notifyAdmins({ title: "مسودة مشروع تخرج", body: `${user.name} سلّم مسودة المشروع`, url: "/admin/projects" });
   else if (status === "FINAL" && existing.status !== "FINAL") await notifyAdmins({ title: "النسخة النهائية لمشروع التخرج", body: `${user.name} سلّم النسخة النهائية`, url: "/admin/projects" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/project", "تم حفظ بيانات المشروع");
 }
 
@@ -304,7 +304,7 @@ export async function saveLearningPlan(formData: FormData) {
     create: { userId: user.id, goals, weeklyPlan, memorization },
     update: { goals, weeklyPlan, memorization },
   });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/plan", "تم حفظ خطة التعلم");
 }
 
@@ -321,7 +321,7 @@ export async function addTadabbur(formData: FormData) {
 export async function deleteTadabbur(formData: FormData) {
   const user = await participant();
   await db.tadabburStop.deleteMany({ where: { id: str(formData.get("id")), userId: user.id } });
-  revalidatePath("/app/plan");
+  revalidatePath("/app", "layout");
 }
 
 // ——— دفتر التأمل ———
@@ -390,7 +390,7 @@ export async function acceptCharter(formData: FormData) {
   if (signed?.charterAcceptedAt) fail("/app/charter", "وقّعت الميثاق من قبل");
   await db.user.update({ where: { id: user.id }, data: { charterAcceptedAt: new Date(), charterName: name } });
   await notifyAdmins({ title: "توقيع ميثاق المشاركة", body: `${user.name} وقّع ميثاق المشاركة`, url: "/admin/participants" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/charter", "تم توقيع الميثاق. وفقك الله");
 }
 
@@ -414,7 +414,7 @@ export async function saveDiagnostic(formData: FormData) {
     throw e;
   });
   await notifyAdmins({ title: stage === "PRE" ? "تقييم تشخيصي قبلي" : "تقييم تشخيصي بعدي", body: `${user.name} عبّأ التقييم`, url: "/admin/diagnostic" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/diagnostic", "تم حفظ التقييم التشخيصي");
 }
 
@@ -434,7 +434,7 @@ export async function submitSurvey(formData: FormData) {
     data: { cohortId: await activeCohortId(), answers: JSON.stringify(answers), liked: str(formData.get("liked")) || null, improve: str(formData.get("improve")) || null },
   });
   await db.user.update({ where: { id: user.id }, data: { surveyDoneAt: new Date() } });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/survey", "شكراً لك، وصلت إجابتك مجهولة المصدر");
 }
 
@@ -445,7 +445,7 @@ export async function submitPortfolio() {
   if (me?.portfolioSubmittedAt) fail("/app/portfolio", "سلّمت ملف الإنجاز من قبل");
   await db.user.update({ where: { id: user.id }, data: { portfolioSubmittedAt: new Date() } });
   await notifyAdmins({ title: "تسليم ملف الإنجاز", body: `${user.name} سلّم ملف إنجازه النهائي`, url: "/admin/participants" });
-  revalidatePath("/app/portfolio");
+  revalidatePath("/app", "layout");
   ok("/app/portfolio", "تم تسليم ملف الإنجاز لمدير المشروع");
 }
 
