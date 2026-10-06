@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { keyToDate, reportDueFrom } from "./dates";
 import { resolveCurrentWeek, weekResolver, type LiveWeek } from "./weeks";
-import { dueFor, loadParticipant, loadParticipants, loadProgram, type ParticipantRows, type ProgramData } from "./participant-data";
+import { dueFor, loadParticipant, loadParticipantsOnce, loadProgram, type ParticipantRows, type ProgramData } from "./participant-data";
 import { readingByWeek, readingDeadline, weekQuota } from "./reading-quota";
 import { RETURN_KINDS, returnedIds, type OpenReturn, type ReturnKind } from "./returns";
 import { remaining } from "./week-state";
@@ -568,7 +568,7 @@ export const getObligations = cache(async (userId: string): Promise<ObligationsR
 
 /** لمجموعة مشاركين باستعلام واحد لكل جدول — لقائمة المشاركين عند المدير */
 export async function obligationsForMany(userIds: string[]): Promise<Map<string, ObligationsResult>> {
-  const [rows, program] = await Promise.all([loadParticipants(userIds), loadProgram()]);
+  const [rows, program] = await Promise.all([loadParticipantsOnce(userIds), loadProgram()]);
   const now = new Date();
   return new Map([...rows].map(([id, r]) => [id, obligationsFrom(r, program, now)]));
 }

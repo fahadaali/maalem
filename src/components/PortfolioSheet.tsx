@@ -10,8 +10,8 @@ import { taskStatusLabel } from "@/lib/report";
 
 /**
  * ملف الإنجاز كاملاً في صفحة واحدة قابلة للطباعة والأرشفة.
- * includePrivate: يشمل دفتر التأمل والعادات — لا يُعرض لمدير المشروع
- * إلا بعد أن يسلّم المشارك ملفه بنفسه.
+ * includePrivate: يشمل دفتر التأمل والعادات. يراهما مدير المشروع دائماً (وفي ملف
+ * المشارك عنده)، والمشارك يُنبَّه إلى ذلك في صفحتيهما؛ والأرشفة تتبع تسليم صاحبه.
  */
 export default async function PortfolioSheet({ userId, includePrivate }: { userId: string; includePrivate: boolean }) {
   const [continuous, rubric, cohort] = await Promise.all([getContinuous(), getProjectRubric(), activeCohort()]);

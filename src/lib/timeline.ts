@@ -10,7 +10,29 @@ export type Entry = { at: Date; kind: string; title: string; detail?: string; hr
  * سجل نشاط المشارك مرتباً بالزمن: من التوقيع على الميثاق إلى وثيقة الإتمام،
  * مجموعاً من سجلات المنصة نفسها لا من جدول منفصل، فلا يتخلّف عن الواقع.
  */
-export async function buildTimeline(userId: string, limit = 200): Promise<Entry[]> {
+/**
+ * لمن يُرسم السجل: روابطه إلى صفحات المشارك نفسه، أو إلى تبويبات ملفه عند المدير،
+ * أو بلا روابط للمشرف المرافق — كانت روابط `/app` تُعاد عنهما إلى لوحتيهما.
+ */
+export type TimelineAudience = "participant" | "admin" | "mentor";
+
+/** تبويب ملف المشارك عند المدير لكل نوع من أنواع السجل */
+const ADMIN_TAB: Record<string, string> = {
+  القراءة: "reading",
+  "التقرير الأسبوعي": "work",
+  المهام: "work",
+  الاختبارات: "quizzes",
+  الحضور: "quizzes",
+  الاستئذان: "quizzes",
+  "التقييم التشخيصي": "quizzes",
+  المعايشة: "field",
+  "الدور القيادي": "field",
+  "مشروع التخرج": "field",
+  "تقييم المشرف": "field",
+  التأمل: "journal",
+};
+
+export async function buildTimeline(userId: string, limit = 200, audience: TimelineAudience = "participant"): Promise<Entry[]> {
   const [user, attendance, cards, reports, attempts, submissions, fieldLogs, activities, reflections, diagnostics, excuses, certificate, project, mentorEvals] =
     await Promise.all([
       db.user.findUnique({ where: { id: userId }, select: { createdAt: true, charterAcceptedAt: true, charterName: true, surveyDoneAt: true, portfolioSubmittedAt: true } }),
@@ -65,8 +87,15 @@ export async function buildTimeline(userId: string, limit = 200): Promise<Entry[
   if (project?.createdAt) e.push({ at: project.createdAt, kind: "مشروع التخرج", title: `سجّل موضوع مشروعه: ${project.topic}` });
   if (certificate) e.push({ at: certificate.issuedAt, kind: "الوثيقة", title: certificate.kind === "ATTENDANCE" ? "صدرت إفادة حضوره" : "صدرت وثيقة إتمامه", detail: `${certificate.level} · ${certificate.serial}` });
 
+  const relink = (x: Entry): Entry => {
+    if (audience === "participant") return x;
+    if (audience === "mentor") return { ...x, href: undefined };
+    const tab = ADMIN_TAB[x.kind];
+    return { ...x, href: tab ? `/admin/participants/${userId}?tab=${tab}` : undefined };
+  };
   return e
     .filter((x) => x.at.getTime() > 0)
     .sort((a, b) => b.at.getTime() - a.at.getTime())
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(relink);
 }

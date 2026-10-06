@@ -24,10 +24,11 @@ export default async function AdminPortfolioPage({ params }: { params: Promise<{
         {u.portfolioSubmittedAt ? (
           <Alert tone="success">سلّم المشارك ملف إنجازه في {formatShort(u.portfolioSubmittedAt)}.</Alert>
         ) : (
-          <Alert>لم يسلّم المشارك ملفه النهائي بعد. ما يظهر أدناه هو ما رصدته المنصة، دون دفتر تأمله الشخصي.</Alert>
+          <Alert>لم يسلّم المشارك ملفه النهائي بعد. ما يظهر أدناه هو ما رصدته المنصة حتى الآن.</Alert>
         )}
       </div>
-      <PortfolioSheet userId={id} includePrivate={!!u.portfolioSubmittedAt} />
+      {/* دفتر التأمل والعادات ظاهران لمدير المشروع دائماً — قراره، والمشارك يُنبَّه إليه في صفحتيهما */}
+      <PortfolioSheet userId={id} includePrivate />
     </>
   );
 }

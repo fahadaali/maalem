@@ -6,6 +6,9 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { createUser, importParticipants } from "../actions";
 import { computeGradesFor } from "@/lib/grades";
+import { obligationsForMany } from "@/lib/obligations";
+import { returnedIds } from "@/lib/returns";
+import { loadParticipantsOnce } from "@/lib/participant-data";
 import { ROLE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -17,7 +20,21 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
   const users = await db.user.findMany({ where: { OR: [await cohortWhere(), { role: "ADMIN" }] }, orderBy: [{ role: "asc" }, { name: "asc" }], include: { mentor: { select: { name: true } } } });
   const participants = users.filter((u) => u.role === "PARTICIPANT");
   const mentors = users.filter((u) => u.role === "MENTOR");
-  const grades = await computeGradesFor(participants.map((p) => p.id));
+  const ids = participants.map((p) => p.id);
+  // الدرجات والمتأخر وما ينتظر المراجعة من صفوفٍ واحدة تُجلب مرة في الطلب
+  const [grades, obligations, rows] = await Promise.all([computeGradesFor(ids), obligationsForMany(ids), loadParticipantsOnce(ids)]);
+  const waiting = (id: string) => {
+    const r = rows.get(id);
+    if (!r) return 0;
+    const returned = returnedIds(r.returns, "SUBMISSION");
+    return (
+      r.submissions.filter((s) => !s.gradedAt && !returned.has(s.id)).length +
+      r.reports.filter((x) => !x.reviewedAt).length +
+      r.cards.filter((c) => !c.reviewedAt).length +
+      (r.plan && !r.plan.reviewedAt ? 1 : 0) +
+      r.fieldLogs.filter((f) => !f.approvedAt).length
+    );
+  };
 
   return (
     <>
@@ -26,7 +43,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
       <div className="table-wrap mb-6">
         <table className="table">
           <thead>
-            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th>الورد (صفحات)</th><th>الاختبارات (متوسط)</th><th>المهام المسلمة</th><th>ساعات المعايشة</th><th>الدور القيادي</th><th>المجموع</th><th></th></tr>
+            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th>الورد (صفحات)</th><th>الاختبارات (متوسط)</th><th>المهام المسلمة</th><th>ساعات المعايشة</th><th>الدور القيادي</th><th>المجموع</th><th>متأخر</th><th>بانتظار مراجعتك</th><th></th></tr>
           </thead>
           <tbody>
             {participants.map((p, i) => {
@@ -42,11 +59,14 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
                   <td>{g.stats.fieldHours}{g.stats.pendingFieldHours ? ` (+${g.stats.pendingFieldHours})` : ""}</td>
                   <td>{g.stats.leadershipActivities ? `${g.stats.peerAvg}/5` : "—"}</td>
                   <td className="font-bold">{g.total}</td>
+                  {/* ما تأخّر عليه وما أُرجع إليه، وما ينتظر مراجعتك من إدخالاته — يُفتح كلٌّ في ملفه */}
+                  <td>{(() => { const o = obligations.get(p.id); const n = o ? o.counts.overdue + o.counts.returned : 0; return n ? <Link href={`/admin/participants/${p.id}`} className="badge badge-ink">{n}</Link> : <span className="text-muted">—</span>; })()}</td>
+                  <td>{waiting(p.id) ? <Link href={`/admin/participants/${p.id}`} className="badge">{waiting(p.id)}</Link> : <span className="text-muted">—</span>}</td>
                   <td><Link href={`/admin/participants/${p.id}`} className="btn btn-secondary btn-sm">الملف</Link></td>
                 </tr>
               );
             })}
-            {participants.length === 0 && <tr><td colSpan={10} className="text-center text-muted">لا مشاركون بعد. أضف المشاركين (3–5) من النموذج أدناه.</td></tr>}
+            {participants.length === 0 && <tr><td colSpan={12} className="text-center text-muted">لا مشاركون بعد. أضف المشاركين (3–5) من النموذج أدناه.</td></tr>}
           </tbody>
         </table>
       </div>

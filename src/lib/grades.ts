@@ -1,5 +1,5 @@
 import { getCompletionLevels, getContinuous, getProjectRubric, levelForTotal, programExpectations, type AssessmentRow, type Level } from "./content";
-import { emptyParticipant, loadParticipant, loadParticipants, loadProgram, type ParticipantRows } from "./participant-data";
+import { emptyParticipant, loadParticipant, loadParticipantsOnce, loadProgram, type ParticipantRows } from "./participant-data";
 import { readingTotals } from "./reading-quota";
 import { returnedIds } from "./returns";
 import type { LiveWeek } from "./weeks";
@@ -206,6 +206,6 @@ export async function computeGrades(userId: string): Promise<GradeBreakdown> {
  */
 export async function computeGradesFor(userIds: string[]): Promise<GradeBreakdown[]> {
   if (userIds.length === 0) return [];
-  const [cfg, rows] = await Promise.all([shared(), loadParticipants(userIds)]);
+  const [cfg, rows] = await Promise.all([shared(), loadParticipantsOnce(userIds)]);
   return userIds.map((id) => computeFrom(rows.get(id) ?? emptyParticipant(id), cfg));
 }

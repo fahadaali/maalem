@@ -15,7 +15,7 @@ export default async function MentorMenteePage({ params }: { params: Promise<{ i
   const mentee = await db.user.findFirst({ where: { id, mentorId: me.id }, select: { id: true, name: true, active: true } });
   if (!mentee) notFound();
 
-  const [grades, entries] = await Promise.all([computeGrades(mentee.id), buildTimeline(mentee.id, 120)]);
+  const [grades, entries] = await Promise.all([computeGrades(mentee.id), buildTimeline(mentee.id, 120, "mentor")]);
 
   return (
     <>

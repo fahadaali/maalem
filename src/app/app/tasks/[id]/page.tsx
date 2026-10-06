@@ -32,7 +32,8 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   // المُرجَعة إليه تنفتح للتعديل ولو كانت مقيَّمة، وتقييمها السابق يبقى ظاهراً مرجعاً
   const returned = s ? openReturnFor(rows?.returns ?? [], "SUBMISSION", s.id) : undefined;
   const graded = !!s?.gradedAt && !returned;
-  const scores = graded ? { completeness: s!.completeness, referencing: s!.referencing, application: s!.application, punctuality: s!.punctuality } : null;
+  // التقييم السابق يُعرض ولو أُرجعت المهمة — مرجعاً لما يُعدَّل — والقفل لما لم يُرجَع وحده
+  const scores = s?.gradedAt ? { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: s.punctuality } : null;
   const total = scores ? Object.values(scores).reduce((x, y) => (x ?? 0) + (y ?? 0), 0) : null;
 
   return (
@@ -44,7 +45,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
       {a.description && <div className="card card-muted text-sm mb-4 whitespace-pre-wrap">{a.description}</div>}
       {s?.gradedAt && (
         <Alert tone="success">
-          <div className="font-medium mb-2">نتيجة التقييم: {total} من 16</div>
+          <div className="font-medium mb-2">{returned ? "التقييم السابق قبل الإرجاع" : "نتيجة التقييم"}: {total} من 16</div>
           <ul className="text-sm space-y-0.5">
             {TASK_RUBRIC.map((r) => (
               <li key={r.key}>{r.criterion}: {scores![r.key]} — {r.levels[4 - (scores![r.key] ?? 1)]}</li>

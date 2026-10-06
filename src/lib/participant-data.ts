@@ -186,6 +186,15 @@ export function emptyParticipant(id: string): ParticipantRows {
   };
 }
 
+/**
+ * صفوف مجموعةٍ مرة واحدة في الطلب: كشف المشاركين يقرؤها للدرجات وللمتأخر معاً.
+ * و`cache` يقارن الوسائط بالهوية، فتُمرَّر المعرّفات نصّاً واحداً لا مصفوفة.
+ */
+const loadMany = cache(async (key: string) => loadParticipants(key ? key.split(",") : []));
+export function loadParticipantsOnce(ids: string[]): Promise<Map<string, ParticipantRows>> {
+  return loadMany(ids.join(","));
+}
+
 /** صفوف مشاركٍ واحد، مرة واحدة في الطلب مهما تعدّد من يقرؤها */
 export const loadParticipant = cache(async (userId: string): Promise<ParticipantRows | null> => {
   return (await loadParticipants([userId])).get(userId) ?? null;
