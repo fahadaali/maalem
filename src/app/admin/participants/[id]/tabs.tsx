@@ -13,7 +13,7 @@ import { reviewItem } from "../actions";
 import { ItemActions, ItemPanel, MenuAction, ReturnedNote, itemLinks, type Panel } from "./parts";
 import { REPORT_ROWS } from "@/lib/report";
 import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
-import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, daysLabel } from "@/lib/utils";
+import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, daysLabel, pagesText } from "@/lib/utils";
 import { EXCUSE_KINDS, EXCUSE_STATUS } from "@/lib/excuses";
 import { formatDateTime, formatShort, reportDueFrom, todayKey } from "@/lib/dates";
 import { toItem, withFiles } from "@/lib/attachments";
@@ -340,7 +340,7 @@ export async function ReadingTab({ ctx }: { ctx: Ctx }) {
                             <div className="min-w-0">
                               <div className="text-xs text-muted">{formatShort(c.date)} · {c.book} · ص {c.fromPage}–{c.toPage}</div>
                               <div className="text-sm mt-0.5">
-                                <strong>{pages} صفحة</strong> — تعادل {daysLabel(equivalentDays(pages, q))} من ورد أسبوعها
+                                <strong>{pagesText(pages)}</strong> — تعادل {daysLabel(equivalentDays(pages, q))} من ورد أسبوعها
                                 {isLargeAmount(pages, q) && <Badge tone="ink" className="ms-2">مقدار كبير — تحقّق منه</Badge>}
                               </div>
                             </div>

@@ -12,6 +12,7 @@ import { formatShort, todayKey } from "@/lib/dates";
 import { resolveCurrentWeek, weekResolver } from "@/lib/weeks";
 import { loadParticipant, loadProgram } from "@/lib/participant-data";
 import { cardPages, daysLabel, equivalentDays, readingByWeek, readingDeadline, readingTotals, weekQuota } from "@/lib/reading-quota";
+import { pagesText } from "@/lib/utils";
 import { daysLate, overdueLabel, weekName } from "@/lib/obligations";
 import { openReturnFor, returnedIds } from "@/lib/returns";
 import { Pencil, Trash2 } from "lucide-react";
@@ -101,7 +102,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
             <>
               <p className="text-sm">{week.reading}</p>
               <p className="text-xs text-muted mt-1">
-                النصاب في الجدول {quota.pages} صفحة — نحو {Math.round(quota.daily)} صفحة يومياً من الأحد إلى الخميس
+                النصاب في الجدول {pagesText(quota.pages)} — نحو {pagesText(quota.daily)} يومياً من الأحد إلى الخميس
                 {quota.parsed ? "" : " (تقديرٌ لقراءةٍ حرة بلا أرقام صفحات)"}
               </p>
               <div className="flex justify-between text-xs mt-3 mb-1">
@@ -122,7 +123,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
           <div className="progress"><span style={{ width: `${Math.round(totals.ratio * 100)}%` }} /></div>
           <p className="text-xs mt-2">
             {behind > 0 ? (
-              <>ينقصك <strong>{behind} صفحة</strong> من ورد ما مضى من الأسابيع ({totals.requiredSoFar} صفحة). يُستدرك بقراءتها وتسجيلها في بطاقاتك القادمة.</>
+              <>ينقصك <strong>{pagesText(behind)}</strong> من ورد ما مضى من الأسابيع ({totals.requiredSoFar} صفحة). يُستدرك بقراءتها وتسجيلها في بطاقاتك القادمة.</>
             ) : (
               <span className="text-muted">أنت على نصاب ما مضى من الأسابيع.</span>
             )}
@@ -228,7 +229,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
                             <div className="text-xs text-muted">{formatShort(c.date)} · {c.book} · ص {c.fromPage}–{c.toPage}</div>
                             {isReturned ? <Badge>أُرجعت إليك</Badge> : c.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge tone="soft">بانتظار المراجعة</Badge>}
                           </div>
-                          <div className="text-xs mt-0.5">{pages} صفحة · تعادل {daysLabel(equivalentDays(pages, q))} من ورد أسبوعها</div>
+                          <div className="text-xs mt-0.5">{pagesText(pages)} · تعادل {daysLabel(equivalentDays(pages, q))} من ورد أسبوعها</div>
                           <div className="text-sm mt-1 whitespace-pre-wrap">{c.benefit}</div>
                           {c.question && <div className="text-sm text-muted mt-1">سؤال: {c.question}</div>}
                           {c.feedback && <div className="text-sm mt-2 border-s-2 border-ink ps-2">ملاحظة مدير المشروع: {c.feedback}</div>}

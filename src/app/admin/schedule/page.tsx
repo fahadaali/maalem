@@ -10,6 +10,7 @@ import { listAttachments } from "@/lib/attachments";
 import { getWeeks, getWeekTasks, resolveCurrentWeek } from "@/lib/weeks";
 import { SCHEDULE_NOTE } from "@/lib/program";
 import { DEFAULT_WEEKLY_PAGES, weekQuota } from "@/lib/reading-quota";
+import { pagesText } from "@/lib/utils";
 import type { LiveWeek } from "@/lib/weeks";
 
 export const metadata = { title: "جدول البرنامج" };
@@ -107,6 +108,10 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
             <label className="label">ملاحظة تظهر للمشاركين (تأجيل، تغيير قاعة، ونحوه)</label>
             <input name="note" className="input" defaultValue={w.note ?? ""} />
           </div>
+          <label className="flex items-center gap-2 text-sm mb-3">
+            <input type="checkbox" name="moveTasks" defaultChecked className="accent-black" />
+            إن تغيّر تاريخ الأسبوع فانقل مواعيد مهامّه المقيَّمة معه بالفرق نفسه
+          </label>
           <SubmitButton>حفظ الأسبوع</SubmitButton>
         </form>
         {/* ومفتاح البطاقة يشمل هذا النموذج، والعلّة فيه أشدّ: حقوله مسمّاة بمعرّفات
@@ -158,5 +163,5 @@ function quotaNote(w: LiveWeek): string {
   const q = weekQuota(w);
   if (!q) return "لا نصاب للورد في هذا الأسبوع.";
   if (!q.parsed) return `لا أرقام صفحات في النص، فالنصاب تقديرٌ افتراضي: ${DEFAULT_WEEKLY_PAGES} صفحة. اكتب «ص 10–60» ليُحسب بدقة.`;
-  return `النصاب المحتسب: ${q.pages} صفحة (نحو ${Math.round(q.daily)} صفحة يومياً). يُقرأ من كل «ص من–إلى» في النص.`;
+  return `النصاب المحتسب: ${pagesText(q.pages)} (نحو ${pagesText(q.daily)} يومياً). يُقرأ من كل «ص من–إلى» في النص.`;
 }

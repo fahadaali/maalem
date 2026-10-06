@@ -4,6 +4,7 @@ import { notifyUsers } from "@/lib/notify";
 import { todayKey, weekdayIndex } from "@/lib/dates";
 import { currentWeekNumber, getWeekByNumber, getWeeks } from "@/lib/weeks";
 import { readingTotals, weekQuota } from "@/lib/reading-quota";
+import { pagesText } from "@/lib/utils";
 import { peekCronSecret, secretMatches } from "@/lib/secrets";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 import { ensureSchema } from "@/lib/setup";
@@ -107,7 +108,7 @@ export async function GET(req: Request) {
           const mine = cards.filter((c) => c.userId === p);
           return readingTotals(mine, weeks, now, exclude).read < expected(mine);
         });
-        await notifyUsers(behind, { title: "الورد القرائي اليوم", body: `نصاب اليوم نحو ${Math.round(q.daily)} صفحة — سجّلها في بطاقتك مع أهم فائدة.`, url: "/app/reading" });
+        await notifyUsers(behind, { title: "الورد القرائي اليوم", body: `نصاب اليوم نحو ${pagesText(q.daily)} — سجّلها في بطاقتك مع أهم فائدة.`, url: "/app/reading" });
       });
     }
   }

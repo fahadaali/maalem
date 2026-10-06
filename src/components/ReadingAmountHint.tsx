@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { daysLabel } from "@/lib/utils";
+import { daysLabel, pagesText } from "@/lib/utils";
 
 type WeekQuota = { start: string; daily: number; label: string };
 
@@ -30,11 +30,11 @@ export default function ReadingAmountHint({ weeks }: { weeks: WeekQuota[] }) {
       // أسبوع التاريخ: آخر أسبوع بدأ قبله أو فيه
       const week = [...weeks].reverse().find((w) => !date || w.start <= date);
       if (!week) {
-        setText(`${pages} صفحة`);
+        setText(pagesText(pages));
         return;
       }
       const days = Math.round((pages / week.daily) * 2) / 2;
-      setText(`${pages} صفحة — تعادل ${daysLabel(days)} تقريباً من ورد ${week.label} (نصابه اليومي ${Math.round(week.daily)} صفحة)`);
+      setText(`${pagesText(pages)} — تعادل ${daysLabel(days)} تقريباً من ورد ${week.label} (نصابه اليومي ${pagesText(week.daily)})`);
     };
     read();
     form.addEventListener("input", read);

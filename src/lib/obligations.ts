@@ -5,6 +5,7 @@ import { dueFor, loadParticipant, loadParticipantsOnce, loadProgram, type Partic
 import { readingByWeek, readingDeadline, weekQuota } from "./reading-quota";
 import { RETURN_KINDS, returnedIds, type OpenReturn, type ReturnKind } from "./returns";
 import { remaining } from "./week-state";
+import { pagesText } from "./utils";
 
 /**
  * «مهامي»: كل ما يُطلب من المشارك في قائمة واحدة، بحاله وموعده.
@@ -96,6 +97,22 @@ export function nativeParts(title: string) {
   return title
     .split(/\s+\+\s+/)
     .map((part) => ({ part, native: NATIVE.find((n) => n.match.test(part)) }));
+}
+
+/**
+ * مهام الجدول (التي يرصدها المشارك في تقريره) ولا مهمةَ تسليمٍ تقابلها في أسبوعها:
+ * تظهر في بطاقة الأسبوع نصّاً بلا باب يُسلَّم منه. والمطابقة بالعنوان، أو بوروده
+ * جزءاً من عنوان مهمةٍ مبذورة («أ + ب»). وما يُنجز في وحدةٍ لها بابها يُوسم بها.
+ */
+export function missingAssignments(program: Pick<ProgramData, "assignments" | "weekTasks">): { week: number; title: string; native?: string }[] {
+  const out: { week: number; title: string; native?: string }[] = [];
+  for (const t of program.weekTasks) {
+    if (t.week < 0 || t.week > 12) continue;
+    const covered = program.assignments.some((a) => a.week === t.week && (a.title === t.title || a.title.split(/\s+\+\s+/).map((x) => x.trim()).includes(t.title)));
+    if (covered) continue;
+    out.push({ week: t.week, title: t.title, native: NATIVE.find((n) => n.match.test(t.title))?.label });
+  }
+  return out;
 }
 
 /** «فات موعده اليوم» و«متأخر يوماً واحداً» و«متأخر يومين» و«متأخر 3 أيام» و«متأخر 12 يوماً» */
@@ -259,11 +276,11 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
       progress: { done: read, total: state === "overdue" ? soFar : needed || total, unit: "صفحة" },
       detail:
         behind > 0
-          ? `ينقصك ${behind} صفحة من ورد ما مضى من الأسابيع`
+          ? `ينقصك ${pagesText(behind)} من ورد ما مضى من الأسابيع`
           : inProgress
             ? read >= needed
               ? "أتممت ورد هذا الأسبوع"
-              : `بقي ${needed - read} صفحة من ورد هذا الأسبوع (${current?.quota.pages ?? 0} صفحة في الجدول)`
+              : `بقي ${pagesText(needed - read)} من ورد هذا الأسبوع (${pagesText(current?.quota.pages ?? 0)} في الجدول)`
             : undefined,
       doneLabel: read >= total ? "أتممت ورد البرنامج كله" : "أتممت ورد ما مضى",
     });

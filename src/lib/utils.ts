@@ -75,3 +75,12 @@ export function daysLabel(days: number): string {
   if (days === 2) return "يومان";
   return days <= 10 ? `${days} أيام` : `${days} يوماً`;
 }
+
+/** «صفحة واحدة» و«صفحتان» و«8 صفحات» و«62 صفحة» — العدد مع معدوده بالعربية السليمة */
+export function pagesText(n: number): string {
+  const v = Math.round(n);
+  if (v === 1) return "صفحة واحدة";
+  if (v === 2) return "صفحتان";
+  if (v >= 3 && v <= 10) return `${v} صفحات`;
+  return `${v} صفحة`;
+}

@@ -20,6 +20,7 @@ import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
 import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
+import { seedAssignmentsFor } from "@/lib/seed";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 import { closeReturns } from "@/lib/items";
@@ -151,6 +152,33 @@ export async function createAssignment(formData: FormData) {
   await notifyRole("PARTICIPANT", { title: "مهمة جديدة", body: title, url: `/app/tasks/${a.id}` });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تمت إضافة المهمة وإشعار المشاركين");
+}
+
+/**
+ * إنشاء المهام الناقصة من الجدول بعد أن يراجعها المدير: لكل بندٍ محدَّد مهمةٌ في
+ * أسبوعه بالموعد الذي اختاره، وإشعارٌ واحد للمشاركين لا إشعارٌ لكل مهمة.
+ */
+export async function createMissingAssignments(formData: FormData) {
+  await admin();
+  const picks = formData.getAll("pick").map((v) => num(v, -1)).filter((i) => i >= 0);
+  if (picks.length === 0) fail("/admin/tasks", "لم تحدد مهمة لإنشائها");
+  const cohortId = await activeCohortId();
+  const rows = picks.map((i) => ({
+    title: str(formData.get(`title_${i}`)),
+    week: num(formData.get(`week_${i}`), -1),
+    due: str(formData.get(`due_${i}`)),
+  }));
+  for (const r of rows) {
+    if (!r.title || r.week < 0 || r.week > 12) fail("/admin/tasks", "بندٌ ناقص في القائمة");
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.due)) fail("/admin/tasks", `حدّد موعد «${r.title}»`);
+  }
+  await db.assignment.createMany({
+    data: rows.map((r) => ({ cohortId, title: r.title, week: r.week, dueAt: new Date(r.due + "+03:00"), description: `من مهام الأسبوع ${r.week} في جدول البرنامج.` })),
+  });
+  await notifyRole("PARTICIPANT", { title: rows.length === 1 ? "مهمة جديدة" : `${rows.length} مهام جديدة`, body: rows.map((r) => r.title).join("، ").slice(0, 140), url: "/app/tasks?type=tasks" });
+  revalidatePath("/admin/tasks");
+  revalidatePath("/app", "layout");
+  ok("/admin/tasks", `أُنشئت ${rows.length} مهمة وأُشعر المشاركون`);
 }
 
 export async function updateAssignment(formData: FormData) {
@@ -588,7 +616,8 @@ export async function saveWeek(formData: FormData) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gregorian)) fail("/admin/schedule", "تاريخ غير صحيح");
   if (remoteUrl && !/^https?:\/\//i.test(remoteUrl)) fail("/admin/schedule", "رابط الحلقة يجب أن يبدأ بـ http أو https");
   const cohortId = await requireCohortId();
-  if (!(await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true } }))) fail("/admin/schedule", "أسبوع غير موجود");
+  const before = await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true, gregorian: true } });
+  if (!before) fail("/admin/schedule", "أسبوع غير موجود");
   await db.programWeek.update({
     where: { cohortId_number: { cohortId, number } },
     data: {
@@ -605,12 +634,25 @@ export async function saveWeek(formData: FormData) {
       note: str(formData.get("note")) || null,
     },
   });
+  /**
+   * أسبوعٌ نُقل تاريخه تنتقل معه مواعيد مهامّه بالفرق نفسه — إن اختار المدير ذلك،
+   * وهو المختار افتراضياً. كان موعد التقرير يتبع الأسبوع وموعد المهمة لا يتبعه،
+   * فيُؤجَّل أسبوعٌ وتبقى مهمته مستحقّةً في يومها القديم.
+   */
+  let moved = 0;
+  const shift = keyToDate(gregorian).getTime() - keyToDate(before.gregorian).getTime();
+  if (shift !== 0 && formData.get("moveTasks")) {
+    const tasks = await db.assignment.findMany({ where: { cohortId, week: number }, select: { id: true, dueAt: true } });
+    for (const t of tasks) await db.assignment.update({ where: { id: t.id }, data: { dueAt: new Date(t.dueAt.getTime() + shift) } });
+    moved = tasks.length;
+  }
   revalidatePath("/admin/schedule");
   revalidatePath("/program/schedule");
+  revalidatePath("/admin/tasks");
   // بطاقة الأسبوع تُرسم من هذه الحقول في لوحة المشارك أيضاً
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   revalidatePath("/app/week");
-  ok(`/admin/schedule?week=${number}`, "تم تحديث الأسبوع");
+  ok(`/admin/schedule?week=${number}`, moved ? `تم تحديث الأسبوع، ونُقلت مواعيد ${moved} من مهامّه معه` : "تم تحديث الأسبوع");
 }
 
 // ——— مهام الأسبوع: صفٌّ لكل مهمة، يرصد عليه المشارك إنجازه في تقريره الأسبوعي ———
@@ -933,7 +975,9 @@ export async function createCohort(formData: FormData) {
   // بقية محتوى الوثيقة للدفعة الجديدة: الكتب والميثاق والأوزان والمستويات والكفاءات،
   // تُبذر الآن لا عند أول تشغيل تالٍ، فتكون قابلة للتحرير من ساعة إنشائها
   await ensureProgramData(cohort.id);
-  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها وميزانيتها ومحتوى وثيقتها. فعّلها للعمل عليها.`);
+  // ومهامّها المقيَّمة واختباراتها من الخطة بمواعيدها، فلا تبدأ الدفعة بلا مهمة يُسلَّم فيها
+  await seedAssignmentsFor(db, cohort);
+  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها ومهامّها وميزانيتها ومحتوى وثيقتها. فعّلها للعمل عليها.`);
 }
 
 export async function activateCohort(formData: FormData) {
