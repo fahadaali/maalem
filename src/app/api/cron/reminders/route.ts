@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { notifyUsers } from "@/lib/notify";
 import { todayKey, weekdayIndex } from "@/lib/dates";
-import { currentWeekNumber, getWeekByNumber } from "@/lib/weeks";
+import { currentWeekNumber, getWeekByNumber, getWeeks } from "@/lib/weeks";
+import { readingTotals, weekQuota } from "@/lib/reading-quota";
 import { peekCronSecret, secretMatches } from "@/lib/secrets";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
 import { ensureSchema } from "@/lib/setup";
@@ -54,13 +55,14 @@ export async function GET(req: Request) {
   if (week && weekNo >= 0 && weekNo <= 13) {
     if (wd === 6) {
       await once("saturday", async () => {
-        await notifyUsers(participants, { title: `اللقاء الحضوري — الأسبوع ${week.label}`, body: week.session, url: "/program/schedule" });
+        await notifyUsers(participants, { title: `اللقاء الحضوري — الأسبوع ${week.label}`, body: week.session, url: `/app/week?week=${weekNo}` });
         await notifyUsers(admins, { title: "اليوم: إدارة اللقاء الحضوري", body: "سجّل الحضور والملاحظات بعد اللقاء.", url: `/admin/attendance?week=${weekNo}` });
       });
     }
     if (wd === 0 && weekNo <= 12) {
       await once("sunday", async () => {
-        await notifyUsers(participants, { title: "ورد هذا الأسبوع والمهمة", body: `الورد: ${week.reading}. المهمة: ${week.task}.`, url: "/app/reading" });
+        const q = weekQuota(week);
+        await notifyUsers(participants, { title: "ورد هذا الأسبوع والمهمة", body: `الورد: ${week.reading}${q ? ` — ${q.pages} صفحة` : ""}. المهمة: ${week.task}.`, url: "/app/tasks" });
       });
     }
     if (wd === 2 && weekNo <= 13) {
@@ -85,22 +87,46 @@ export async function GET(req: Request) {
       });
     }
     if (wd >= 0 && wd <= 4 && weekNo <= 12) {
+      /**
+       * التذكير لمن لم يبلغ وردَ يومه بالصفحات، لا لمن لم يكتب بطاقةً اليوم: من قرأ
+       * أسبوعه كلَّه في بطاقة واحدة كان يُذكَّر كل صباحٍ بعدها، ومن قرأ عشراً من نصابٍ
+       * يومي اثنتي عشرة صفحة لا يُذكَّر. والمُرجَع من البطاقات لا يُحسب حتى يُعاد.
+       */
       await once("reading", async () => {
-        const start = new Date(`${today}T00:00:00+03:00`);
-        const end = new Date(`${today}T23:59:59+03:00`);
-        const cards = await db.readingCard.findMany({ where: { date: { gte: start, lte: end }, userId: { in: participants } }, select: { userId: true } });
-        const has = new Set(cards.map((c) => c.userId));
-        await notifyUsers(participants.filter((p) => !has.has(p)), { title: "بطاقة القراءة اليومية", body: "10 صفحات اليوم — سجّل أهم فائدة وسؤالك للحلقة.", url: "/app/reading" });
+        const q = weekQuota(week);
+        if (!q) return;
+        const [weeks, cards, returned] = await Promise.all([
+          getWeeks(),
+          db.readingCard.findMany({ where: { userId: { in: participants } }, select: { id: true, userId: true, date: true, fromPage: true, toPage: true } }),
+          db.itemReturn.findMany({ where: { kind: "READING_CARD", resolvedAt: null, userId: { in: participants } }, select: { recordId: true } }),
+        ]);
+        const exclude = new Set(returned.map((r) => r.recordId));
+        // نصاب ما مضى من الأسابيع، وأيامُ هذا الأسبوع حتى اليوم (الأحد = 0)
+        const expected = (cs: typeof cards) => readingTotals(cs, weeks, now, exclude).requiredSoFar + q.daily * (wd + 1);
+        const behind = participants.filter((p) => {
+          const mine = cards.filter((c) => c.userId === p);
+          return readingTotals(mine, weeks, now, exclude).read < expected(mine);
+        });
+        await notifyUsers(behind, { title: "الورد القرائي اليوم", body: `نصاب اليوم نحو ${Math.round(q.daily)} صفحة — سجّلها في بطاقتك مع أهم فائدة.`, url: "/app/reading" });
       });
     }
   }
 
   // مهام يحين موعدها خلال 24 ساعة
+  // ومن مُدّد له موعدٌ أبعد لا يُذكَّر بموعدٍ ليس موعده، ومن أُرجع إليه تسليمه يُذكَّر كمن لم يسلّم
   await once("due-soon", async () => {
-    const soon = await db.assignment.findMany({ where: { dueAt: { gte: now, lte: new Date(now.getTime() + 24 * 3600 * 1000) }, ...(await cohortWhere()) }, include: { submissions: { select: { userId: true } } } });
+    const until = new Date(now.getTime() + 24 * 3600 * 1000);
+    const soon = await db.assignment.findMany({ where: { dueAt: { gte: now, lte: until }, ...(await cohortWhere()) }, include: { submissions: { select: { id: true, userId: true } } } });
+    if (!soon.length) return;
+    const [extensions, returned] = await Promise.all([
+      db.excuseRequest.findMany({ where: { kind: "EXTENSION", status: "APPROVED", assignmentId: { in: soon.map((a) => a.id) }, untilAt: { gt: until } }, select: { userId: true, assignmentId: true } }),
+      db.itemReturn.findMany({ where: { kind: "SUBMISSION", resolvedAt: null, recordId: { in: soon.flatMap((a) => a.submissions.map((s) => s.id)) } }, select: { recordId: true } }),
+    ]);
+    const reopened = new Set(returned.map((r) => r.recordId));
     for (const a of soon) {
-      const done = new Set(a.submissions.map((s) => s.userId));
-      await notifyUsers(participants.filter((p) => !done.has(p)), { title: "مهمة يحين موعدها غداً", body: a.title, url: `/app/tasks/${a.id}` });
+      const done = new Set(a.submissions.filter((s) => !reopened.has(s.id)).map((s) => s.userId));
+      const later = new Set(extensions.filter((e) => e.assignmentId === a.id).map((e) => e.userId));
+      await notifyUsers(participants.filter((p) => !done.has(p) && !later.has(p)), { title: "مهمة يحين موعدها غداً", body: a.title, url: `/app/tasks/${a.id}` });
     }
   });
 

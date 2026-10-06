@@ -1,5 +1,8 @@
 import { db } from "./db";
 import { getCompetencies, programExpectations } from "./content";
+import { emptyParticipant, loadParticipant, loadProgram } from "./participant-data";
+import { readingTotals } from "./reading-quota";
+import { returnedIds } from "./returns";
 
 /**
  * بطاقة الكفاءات: تحوّل شواهد المنصة إلى نسبة تحقّق لكل كفاءة من الكفاءات الثماني،
@@ -21,20 +24,32 @@ const EXPECTED_HABIT_DAYS = 28;
 const pct = (v: number, m: number) => (m > 0 ? Math.min(1, v / m) : 0);
 
 export async function computeCompetencies(userId: string): Promise<CompetencyAttainment[]> {
-  const expected = await programExpectations();
-  const [cards, fieldLogs, attempts, tadabbur, reports, activities, evals, plan, habitLogs, reflections, submissions] = await Promise.all([
-    db.readingCard.count({ where: { userId } }),
-    db.fieldLog.findMany({ where: { userId, approvedAt: { not: null } }, select: { hours: true } }),
-    db.quizAttempt.findMany({ where: { userId }, select: { score: true, total: true } }),
-    db.tadabburStop.count({ where: { userId } }),
-    db.weeklyReport.count({ where: { userId } }),
-    db.leadershipActivity.count({ where: { userId } }),
-    db.peerEvaluation.findMany({ where: { activity: { userId } }, select: { c1: true, c2: true, c3: true, c4: true, c5: true } }),
-    db.learningPlan.findUnique({ where: { userId }, select: { id: true } }),
+  // صفوف المشارك من المُحمِّل المشترك — تتقاسمها الدرجة في الطلب نفسه — وما لا يحمله يُجلب هنا
+  const [expected, loaded, program, habitLogs, reflections] = await Promise.all([
+    programExpectations(),
+    loadParticipant(userId),
+    loadProgram(),
     db.habitLog.count({ where: { habit: { userId } } }),
     db.reflection.count({ where: { userId } }),
-    db.submission.findMany({ where: { userId, gradedAt: { not: null } }, include: { assignment: { select: { competency: true } } } }),
   ]);
+  const rows = loaded ?? emptyParticipant(userId);
+  // ما أُرجع إلى صاحبه لا يُعدّ شاهداً حتى يُعيده
+  const returnedLogs = returnedIds(rows.returns, "FIELD_LOG");
+  const returnedSubs = returnedIds(rows.returns, "SUBMISSION");
+  const returnedActs = returnedIds(rows.returns, "LEADERSHIP");
+  const reading = readingTotals(rows.cards, program.weeks, new Date(), returnedIds(rows.returns, "READING_CARD"));
+  const fieldLogs = rows.fieldLogs.filter((f) => f.approvedAt && !returnedLogs.has(f.id));
+  const attempts = rows.attempts;
+  const tadabbur = rows.tadabbur;
+  const reports = rows.reports.length;
+  const counted = rows.activities.filter((a) => !returnedActs.has(a.id));
+  const activities = counted.length;
+  const evals = counted.flatMap((a) => a.evaluations);
+  const plan = rows.plan;
+  const competencyOf = new Map(program.assignments.map((a) => [a.id, a.competency]));
+  const submissions = rows.submissions
+    .filter((s) => s.gradedAt && !returnedSubs.has(s.id))
+    .map((s) => ({ ...s, assignment: { competency: competencyOf.get(s.assignmentId) ?? null } }));
 
   const fieldHours = fieldLogs.reduce((s, f) => s + f.hours, 0);
   const quizAvg = attempts.length ? attempts.reduce((s, a) => s + (a.total ? a.score / a.total : 0), 0) / attempts.length : 0;
@@ -50,7 +65,7 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
 
   const extra: Record<string, Signal[]> = {
     educational: [
-      { label: "بطاقات القراءة", value: cards, max: expected.cards },
+      { label: "صفحات الورد القرائي", value: reading.read, max: reading.required },
       { label: "ساعات المعايشة المعتمدة", value: Math.round(fieldHours * 10) / 10, max: expected.fieldHours },
     ],
     sharia: [

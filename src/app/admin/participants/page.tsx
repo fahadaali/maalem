@@ -21,12 +21,12 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <PageHeader title="المشاركون وسجل الأداء" subtitle="ملحق 3: سجل الأداء يُحتسب آلياً من الحضور، والبطاقات، والاختبارات، والمهام، والمعايشة، والدور القيادي." />
+      <PageHeader title="المشاركون وسجل الأداء" subtitle="ملحق 3: سجل الأداء يُحتسب آلياً من الحضور، وصفحات الورد، والاختبارات، والمهام، والمعايشة، والدور القيادي." />
       <FormMessage ok={ok} err={err} />
       <div className="table-wrap mb-6">
         <table className="table">
           <thead>
-            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th>بطاقات القراءة</th><th>الاختبارات (متوسط)</th><th>المهام المسلمة</th><th>ساعات المعايشة</th><th>الدور القيادي</th><th>المجموع</th><th></th></tr>
+            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th>الورد (صفحات)</th><th>الاختبارات (متوسط)</th><th>المهام المسلمة</th><th>ساعات المعايشة</th><th>الدور القيادي</th><th>المجموع</th><th></th></tr>
           </thead>
           <tbody>
             {participants.map((p, i) => {
@@ -36,7 +36,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
                   <td>{i + 1}</td>
                   <td className="font-medium whitespace-nowrap"><Link href={`/admin/participants/${p.id}`} className="hover:underline">{p.name}</Link>{!p.active && <Badge className="ms-1">موقوف</Badge>}</td>
                   <td>{g.stats.attendancePct}%</td>
-                  <td>{g.stats.cards}/{g.stats.expectedCards}</td>
+                  <td className="tabular-nums">{g.stats.readingPages}/{g.stats.readingRequired}</td>
                   <td>{g.stats.quizCount ? `${g.stats.quizAvgPct}%` : "—"}</td>
                   <td>{g.stats.submitted}/{g.stats.assignments}</td>
                   <td>{g.stats.fieldHours}{g.stats.pendingFieldHours ? ` (+${g.stats.pendingFieldHours})` : ""}</td>

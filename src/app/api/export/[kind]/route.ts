@@ -61,8 +61,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
     for (const l of logs) rows.push([nameOf.get(l.userId) ?? l.userId, l.date.toISOString().slice(0, 10), l.hours, l.mentorName, l.note, l.approvedAt ? "معتمد" : "معلّق"]);
   } else if (kind === "reading") {
     const cards = await db.readingCard.findMany({ where: ofCohort, orderBy: { date: "asc" } });
-    rows = [["المشارك", "التاريخ", "الكتاب", "من صفحة", "إلى صفحة", "أهم فائدة", "سؤال للحلقة"]];
-    for (const c of cards) rows.push([nameOf.get(c.userId) ?? c.userId, c.date.toISOString().slice(0, 10), c.book, c.fromPage, c.toPage, c.benefit, c.question ?? ""]);
+    rows = [["المشارك", "التاريخ", "الكتاب", "من صفحة", "إلى صفحة", "عدد الصفحات", "أهم فائدة", "سؤال للحلقة", "المراجعة", "ملاحظة مدير المشروع"]];
+    for (const c of cards) rows.push([nameOf.get(c.userId) ?? c.userId, c.date.toISOString().slice(0, 10), c.book, c.fromPage, c.toPage, c.toPage - c.fromPage + 1, c.benefit, c.question ?? "", c.reviewedAt ? "رُوجعت" : "", c.feedback ?? ""]);
   } else {
     const reps = await db.weeklyReport.findMany({ where: ofCohort, orderBy: [{ week: "asc" }], include: { tasks: { orderBy: { order: "asc" } } } });
     rows = [["المشارك", "الأسبوع", "تاريخ التسليم", "الورد المنجز", "الفوائد", "مهام الأسبوع", "المعايشة", "نتيجة الاختبار", "تطبيق ميداني", "صعوبة", "التغذية الراجعة"]];

@@ -32,7 +32,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
 
   const items = [
     { label: "خطة التعلم الشخصية", value: plan ? "مسلّمة" : "لم تُسلَّم", href: "/app/plan" },
-    { label: "بطاقات القراءة", value: `${g.stats.cards} / ${g.stats.expectedCards}`, href: "/app/reading" },
+    { label: "الورد القرائي", value: `${g.stats.readingPages} / ${g.stats.readingRequired} صفحة · ${g.stats.cards} بطاقة`, href: "/app/reading" },
     { label: "التقارير الأسبوعية", value: `${g.stats.reportsSubmitted} / ${expected.reports}`, href: "/app/reports" },
     { label: "المهام المسلّمة", value: `${g.stats.submitted} / ${g.stats.assignments}`, href: "/app/tasks" },
     { label: "الاختبارات", value: `${g.stats.quizCount} اختبار · متوسط ${g.stats.quizAvgPct}%`, href: "/app/quizzes" },

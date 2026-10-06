@@ -15,6 +15,7 @@ import { SURVEY_QUESTIONS } from "@/lib/program";
 import { getCharter, getCompetencies } from "@/lib/content";
 import { isCorrect } from "@/lib/quiz";
 import { EXCUSE_KINDS, isExcuseKind } from "@/lib/excuses";
+import { closeReturns, findOpenReturn, markResubmitted } from "@/lib/items";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -34,31 +35,62 @@ async function participant() {
 }
 
 // ——— بطاقة القراءة اليومية ———
-export async function addReadingCard(formData: FormData) {
-  const user = await participant();
+
+/** حقول البطاقة من النموذج بعد التحقق — للإضافة والتعديل معاً فلا تفترق قواعدهما */
+function readCardForm(formData: FormData, path: string) {
   const dateKey = str(formData.get("date")) || todayKey();
   const book = str(formData.get("book")) === "__other" ? str(formData.get("bookOther")) : str(formData.get("book"));
   const fromPage = num(formData.get("fromPage"));
   const toPage = num(formData.get("toPage"));
   const benefit = str(formData.get("benefit"));
   const question = str(formData.get("question"));
-  if (!book || !benefit) fail("/app/reading", "الكتاب وأهم فائدة حقلان إلزاميان");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail("/app/reading", "تاريخ غير صحيح");
-  if (dateKey > todayKey()) fail("/app/reading", "لا تُسجَّل بطاقة ليوم لم يأتِ بعد");
-  if (fromPage < 1 || toPage < fromPage) fail("/app/reading", "أرقام الصفحات: تبدأ من 1 ولا تقل الأخيرة عن الأولى");
-  // بطاقة واحدة لكل يوم قراءة كما تنص الخطة، فلا تُضخَّم درجة الورد بتكرار بطاقات اليوم الواحد
-  const date = keyToDate(dateKey);
-  if (await db.readingCard.findFirst({ where: { userId: user.id, date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — احذفها إن أردت تعديلها");
-  await db.readingCard.create({ data: { userId: user.id, date, book, fromPage, toPage, benefit, question: question || null } });
-  revalidatePath("/app");
+  if (!book || !benefit) fail(path, "الكتاب وأهم فائدة حقلان إلزاميان");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail(path, "تاريخ غير صحيح");
+  if (dateKey > todayKey()) fail(path, "لا تُسجَّل بطاقة ليوم لم يأتِ بعد");
+  if (fromPage < 1 || toPage < fromPage) fail(path, "أرقام الصفحات: تبدأ من 1 ولا تقل الأخيرة عن الأولى");
+  return { date: keyToDate(dateKey), book, fromPage, toPage, benefit, question: question || null };
+}
+
+export async function addReadingCard(formData: FormData) {
+  const user = await participant();
+  const data = readCardForm(formData, "/app/reading");
+  // بطاقة واحدة لكل يوم قراءة كما تنص الخطة؛ ومن قرأ أكثر في يومه كتب صفحاته كلها في بطاقته — فالمقدار بالصفحات
+  if (await db.readingCard.findFirst({ where: { userId: user.id, date: data.date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — عدّلها وأضف إليها صفحاتك");
+  await db.readingCard.create({ data: { userId: user.id, ...data } });
+  revalidatePath("/app", "layout");
   ok("/app/reading", "تم حفظ بطاقة القراءة");
+}
+
+/**
+ * تعديل البطاقة. تبقى مفتوحةً لصاحبها حتى يراجعها مدير المشروع؛ وبعد المراجعة
+ * تُقفل كما يُقفل التسليم بعد تقييمه — إلا أن تُرجَع إليه، فيعدّلها ويعيدها.
+ */
+export async function updateReadingCard(formData: FormData) {
+  const user = await participant();
+  const id = str(formData.get("id"));
+  const path = `/app/reading?edit=${encodeURIComponent(id)}`;
+  const card = await db.readingCard.findFirst({ where: { id, userId: user.id }, select: { id: true, reviewedAt: true } });
+  if (!card) fail("/app/reading", "البطاقة غير موجودة");
+  const returned = await findOpenReturn("READING_CARD", id);
+  if (card.reviewedAt && !returned) fail("/app/reading", "راجع مدير المشروع هذه البطاقة فأُقفلت — اطلب منه إرجاعها إن أردت تعديلها");
+  const data = readCardForm(formData, path);
+  if (await db.readingCard.findFirst({ where: { userId: user.id, date: data.date, NOT: { id } }, select: { id: true } })) fail(path, "لك بطاقة أخرى في هذا اليوم — بطاقة واحدة لكل يوم");
+  await db.readingCard.update({ where: { id }, data });
+  const resubmitted = await markResubmitted("READING_CARD", id, user);
+  revalidatePath("/app", "layout");
+  ok("/app/reading", resubmitted ? "أُعيدت البطاقة إلى مدير المشروع" : "تم تعديل البطاقة");
 }
 
 export async function deleteReadingCard(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
+  const card = await db.readingCard.findFirst({ where: { id, userId: user.id }, select: { reviewedAt: true } });
+  if (!card) return;
+  if (card.reviewedAt && !(await findOpenReturn("READING_CARD", id))) fail("/app/reading", "راجع مدير المشروع هذه البطاقة فأُقفلت");
   await db.readingCard.deleteMany({ where: { id, userId: user.id } });
-  revalidatePath("/app/reading");
+  await closeReturns("READING_CARD", [id]);
+  revalidatePath("/app", "layout");
+  ok("/app/reading", "حُذفت البطاقة");
 }
 
 // ——— التقرير الأسبوعي ———

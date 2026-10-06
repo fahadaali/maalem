@@ -9,6 +9,8 @@ export type Snapshot = {
   participants: number;
   attendanceAvg: number;
   readingCards: number;
+  /** أُضيف بعد أول التقارير: اللقطات المحفوظة قبله تخلو منه */
+  readingPages?: number;
   reportsSubmitted: number;
   reportsExpected: number;
   tasksGraded: number;
@@ -42,6 +44,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     participants: participants.length,
     attendanceAvg: avg(grades.map((g) => g.stats.attendancePct)),
     readingCards: cards,
+    readingPages: grades.reduce((s, g) => s + g.stats.readingPages, 0),
     reportsSubmitted: reports,
     reportsExpected: participants.length * Math.max(0, Math.min(12, week)),
     tasksSubmitted: submissions,
@@ -60,6 +63,7 @@ export const SNAPSHOT_LABELS: Record<keyof Snapshot, string> = {
   participants: "عدد المشاركين",
   attendanceAvg: "متوسط الحضور %",
   readingCards: "بطاقات القراءة",
+  readingPages: "صفحات الورد المقروءة",
   reportsSubmitted: "التقارير المسلّمة",
   reportsExpected: "التقارير المتوقعة",
   tasksSubmitted: "المهام المسلّمة",

@@ -30,7 +30,7 @@ export default async function TrendsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <Stat label="نسبة الحضور العامة" value={`${t.totals.attendance}%`} hint={`${t.participants} مشاركاً`} />
         <Stat label="تسليم التقارير" value={`${t.totals.reports}%`} hint="من المتوقع تسليمه" />
-        <Stat label="الورد القرائي" value={`${t.totals.cards}%`} hint="من البطاقات المتوقعة" />
+        <Stat label="الورد القرائي" value={`${t.totals.cards}%`} hint="من صفحات الجدول المطلوبة" />
         <Stat label="ساعات المعايشة المعتمدة" value={t.totals.field} hint="ساعة" />
       </div>
 
@@ -42,7 +42,7 @@ export default async function TrendsPage() {
           <ColumnChart data={t.reports} max={100} caption="نسبة من سلّم تقريره من مجموع المشاركين، والمستهدف تسليم الجميع." />
         </Card>
         <Card title="التزام الورد القرائي">
-          <ColumnChart data={t.cards} max={100} caption="البطاقات المسجَّلة نسبةً إلى خمس بطاقات لكل مشارك أسبوعياً." />
+          <ColumnChart data={t.cards} max={100} caption="صفحات بطاقات الأسبوع نسبةً إلى نصابه في الجدول لكل مشارك." />
         </Card>
         <Card title="متوسط نتائج الاختبارات">
           <ColumnChart data={t.quizzes} max={100} target={70} targetLabel="حدّ النجاح ٧٠٪" caption="متوسط محاولات الأسبوع المصحَّحة." />

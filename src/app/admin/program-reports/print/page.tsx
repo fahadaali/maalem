@@ -50,7 +50,7 @@ export default async function PrintReportsPage({ searchParams }: { searchParams:
                 <table className="table">
                   <tbody>
                     {(Object.keys(SNAPSHOT_LABELS) as (keyof Snapshot)[]).map((k) => (
-                      <tr key={k}><td className="text-muted">{SNAPSHOT_LABELS[k]}</td><td className="font-medium">{snap[k]}</td></tr>
+                      <tr key={k}><td className="text-muted">{SNAPSHOT_LABELS[k]}</td><td className="font-medium">{snap[k] ?? "—"}</td></tr>
                     ))}
                   </tbody>
                 </table>

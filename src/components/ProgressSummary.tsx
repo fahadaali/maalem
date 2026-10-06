@@ -15,7 +15,7 @@ export default async function ProgressSummary({ userId, fallbackAssignments }: {
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Stat label="المجموع الحالي" value={`${grades.total}`} hint={`من ${max} · ${grades.level}`} href="/app/portfolio" />
-        <Stat label="بطاقات القراءة" value={grades.stats.cards} hint={`من ${grades.stats.expectedCards}`} href="/app/reading" />
+        <Stat label="صفحات الورد" value={grades.stats.readingPages} hint={`من ${grades.stats.readingRequired} في الجدول`} href="/app/reading" />
         <Stat label="ساعات المعايشة" value={grades.stats.fieldHours} hint={`من ${expected.fieldHours} معتمدة`} href="/app/field" />
         <Stat label="المهام المسلّمة" value={`${grades.stats.submitted}/${grades.stats.assignments || fallbackAssignments}`} hint={`تم تقييم ${grades.stats.graded}`} href="/app/tasks" />
       </div>

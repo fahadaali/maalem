@@ -1,6 +1,8 @@
-import { db } from "./db";
-import { cohortWhere } from "./cohort";
 import { getCompletionLevels, getContinuous, getProjectRubric, levelForTotal, programExpectations, type AssessmentRow, type Level } from "./content";
+import { emptyParticipant, loadParticipant, loadParticipants, loadProgram, type ParticipantRows } from "./participant-data";
+import { readingTotals } from "./reading-quota";
+import { returnedIds } from "./returns";
+import type { LiveWeek } from "./weeks";
 
 type Expectations = Awaited<ReturnType<typeof programExpectations>>;
 
@@ -26,8 +28,11 @@ export type GradeBreakdown = {
     mentorEvaluations: number;
     inPersonPct: number;
     remotePct: number;
+    /** البطاقات المحتسبة (غير المُرجَعة) — عددٌ للعرض، والدرجة من الصفحات */
     cards: number;
-    expectedCards: number;
+    /** صفحات البطاقات المحتسبة، ونصاب البرنامج كله من جدوله */
+    readingPages: number;
+    readingRequired: number;
     quizAvgPct: number;
     quizCount: number;
     submitted: number;
@@ -48,26 +53,37 @@ function round1(n: number) {
 
 export { levelForTotal as levelFor };
 
-/** السجلات التي تُحتسب منها درجة مشارك واحد */
-type Rows = {
-  attendance: { status: string; type: string; participation: number | null; circleScore: number | null }[];
-  cards: number;
-  attempts: { score: number; total: number }[];
+/** إعدادات الدرجة المشتركة بين كل الحسابات في الطلب الواحد */
+type Config = {
+  weights: AssessmentRow[];
+  projectRubric: AssessmentRow[];
+  levels: Level[];
+  expected: Expectations;
   assignments: number;
-  submissions: { gradedAt: Date | null; completeness: number | null; referencing: number | null; application: number | null; punctuality: number | null }[];
-  reports: number;
-  fieldLogs: { hours: number; approvedAt: Date | null }[];
-  activities: { evaluations: { c1: number; c2: number; c3: number; c4: number; c5: number }[] }[];
-  project: { status: string; clarity: number | null; grounding: number | null; design: number | null; integration: number | null; presentation: number | null } | null;
-  mentorEvals: { regularity: number; engagement: number; application: number; conduct: number; growth: number }[];
+  weeks: LiveWeek[];
+  now: Date;
 };
 
 /** الحضور: حاضر = 1، متأخر = 0.5، معذور = لا يُحتسب، غائب = 0 — قاعدة واحدة للدرجات والاتجاهات معاً */
 export const attendanceWeight = (status: string): number => (status === "PRESENT" ? 1 : status === "LATE" ? 0.5 : 0);
 
-/** الحساب نفسه — دالة نقية لا تمسّ قاعدة البيانات، فتُستعمل للمفرد وللدفعة معاً */
-function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: AssessmentRow[], levels: Level[], expected: Expectations): GradeBreakdown {
-  const { attendance, cards, attempts, assignments, submissions, reports, fieldLogs, activities, project, mentorEvals } = rows;
+/**
+ * الحساب نفسه — دالة نقية لا تمسّ قاعدة البيانات، فتُستعمل للمفرد وللدفعة معاً.
+ *
+ * ما أُرجع إلى صاحبه لا يُحتسب حتى يُعيده: البطاقة والتسليم وسجل المعايشة
+ * والنشاط القيادي. وأختام مراجعتها باقية على سجلاتها، فالاستبعاد من هنا.
+ */
+export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown {
+  const { weights, projectRubric, levels, expected, assignments } = cfg;
+  const { attendance, attempts, project, mentorEvals } = rows;
+  const reports = rows.reports.length;
+  const returnedSubmissions = returnedIds(rows.returns, "SUBMISSION");
+  const returnedCards = returnedIds(rows.returns, "READING_CARD");
+  const returnedLogs = returnedIds(rows.returns, "FIELD_LOG");
+  const returnedActivities = returnedIds(rows.returns, "LEADERSHIP");
+  const submissions = rows.submissions.filter((s) => !returnedSubmissions.has(s.id));
+  const fieldLogs = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id));
+  const activities = rows.activities.filter((a) => !returnedActivities.has(a.id));
   /** وزن مكوّن التقييم كما ضُبط في اللوحة، وإلا فوزن الخطة */
   const w = (key: string, fallback: number) => weights.find((x) => x.key === key)?.points ?? fallback;
 
@@ -85,8 +101,13 @@ function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: Assess
   const participationAvg = participationRatio ?? 0;
   const attendanceScore = round1((participationRatio === null ? attendancePct : attendancePct * 0.6 + participationRatio * 0.4) * w("attendance", 10));
 
-  // الورد القرائي: البطاقات 70% وتقييم المشاركة في الحلقة 30% متى رُصد
-  const readingRatio = Math.min(cards / expected.cards, 1);
+  /**
+   * الورد القرائي: الصفحات 70% وتقييم المشاركة في الحلقة 30% متى رُصد.
+   * والصفحات تراكمية بنصاب الجدول — لا عددُ البطاقات — فبطاقةٌ بمئة صفحة تُحسب
+   * مئة صفحة، والاستدراك في أسبوعٍ لاحق يُحتسب.
+   */
+  const reading = readingTotals(rows.cards, cfg.weeks, cfg.now, returnedCards);
+  const readingRatio = reading.ratio;
   const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
   const circleAvg = circleRatio ?? 0;
   const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * w("reading", 15));
@@ -143,8 +164,9 @@ function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: Assess
       mentorEvaluations: mentorEvals.length,
       inPersonPct: Math.round(pct(inPerson) * 100),
       remotePct: Math.round(pct(remote) * 100),
-      cards,
-      expectedCards: expected.cards,
+      cards: rows.cards.filter((c) => !returnedCards.has(c.id)).length,
+      readingPages: reading.read,
+      readingRequired: reading.required,
       quizAvgPct: Math.round(quizAvg * 100),
       quizCount: attempts.length,
       submitted: submissions.length,
@@ -160,36 +182,21 @@ function computeFrom(rows: Rows, weights: AssessmentRow[], projectRubric: Assess
   };
 }
 
-/** استعلامات الإعدادات المشتركة بين كل الحسابات في الطلب الواحد */
-async function shared() {
-  const [weights, projectRubric, levels, expected, assignments] = await Promise.all([
+/** إعدادات الدرجة المشتركة بين كل الحسابات في الطلب الواحد */
+async function shared(): Promise<Config> {
+  const [weights, projectRubric, levels, expected, program] = await Promise.all([
     getContinuous(),
     getProjectRubric(),
     getCompletionLevels(),
     programExpectations(),
-    db.assignment.count({ where: await cohortWhere() }),
+    loadProgram(),
   ]);
-  return { weights, projectRubric, levels, expected, assignments };
+  return { weights, projectRubric, levels, expected, assignments: program.assignments.length, weeks: program.weeks, now: new Date() };
 }
 
 export async function computeGrades(userId: string): Promise<GradeBreakdown> {
-  const [cfg, rows] = await Promise.all([shared(), loadOne(userId)]);
-  return computeFrom({ ...rows, assignments: cfg.assignments }, cfg.weights, cfg.projectRubric, cfg.levels, cfg.expected);
-}
-
-async function loadOne(userId: string): Promise<Omit<Rows, "assignments">> {
-  const [attendance, cards, attempts, submissions, reports, fieldLogs, activities, project, mentorEvals] = await Promise.all([
-    db.attendance.findMany({ where: { userId } }),
-    db.readingCard.count({ where: { userId } }),
-    db.quizAttempt.findMany({ where: { userId } }),
-    db.submission.findMany({ where: { userId } }),
-    db.weeklyReport.count({ where: { userId } }),
-    db.fieldLog.findMany({ where: { userId } }),
-    db.leadershipActivity.findMany({ where: { userId }, include: { evaluations: true } }),
-    db.graduationProject.findUnique({ where: { userId } }),
-    db.mentorEvaluation.findMany({ where: { userId } }),
-  ]);
-  return { attendance, cards, attempts, submissions, reports, fieldLogs, activities, project, mentorEvals };
+  const [cfg, rows] = await Promise.all([shared(), loadParticipant(userId)]);
+  return computeFrom(rows ?? emptyParticipant(userId), cfg);
 }
 
 /**
@@ -199,41 +206,6 @@ async function loadOne(userId: string): Promise<Omit<Rows, "assignments">> {
  */
 export async function computeGradesFor(userIds: string[]): Promise<GradeBreakdown[]> {
   if (userIds.length === 0) return [];
-  const inIds = { userId: { in: userIds } };
-  const [cfg, attendance, cards, attempts, submissions, reports, fieldLogs, activities, projects, mentorEvals] = await Promise.all([
-    shared(),
-    db.attendance.findMany({ where: inIds }),
-    db.readingCard.groupBy({ by: ["userId"], where: inIds, _count: { _all: true } }),
-    db.quizAttempt.findMany({ where: inIds }),
-    db.submission.findMany({ where: inIds }),
-    db.weeklyReport.groupBy({ by: ["userId"], where: inIds, _count: { _all: true } }),
-    db.fieldLog.findMany({ where: inIds }),
-    db.leadershipActivity.findMany({ where: inIds, include: { evaluations: true } }),
-    db.graduationProject.findMany({ where: inIds }),
-    db.mentorEvaluation.findMany({ where: inIds }),
-  ]);
-
-  const by = <T extends { userId: string }>(rows: T[], id: string) => rows.filter((r) => r.userId === id);
-  const countOf = (rows: { userId: string; _count: { _all: number } }[], id: string) => rows.find((r) => r.userId === id)?._count._all ?? 0;
-
-  return userIds.map((id) =>
-    computeFrom(
-      {
-        attendance: by(attendance, id),
-        cards: countOf(cards, id),
-        attempts: by(attempts, id),
-        assignments: cfg.assignments,
-        submissions: by(submissions, id),
-        reports: countOf(reports, id),
-        fieldLogs: by(fieldLogs, id),
-        activities: by(activities, id),
-        project: projects.find((p) => p.userId === id) ?? null,
-        mentorEvals: by(mentorEvals, id),
-      },
-      cfg.weights,
-      cfg.projectRubric,
-      cfg.levels,
-      cfg.expected,
-    ),
-  );
+  const [cfg, rows] = await Promise.all([shared(), loadParticipants(userIds)]);
+  return userIds.map((id) => computeFrom(rows.get(id) ?? emptyParticipant(id), cfg));
 }

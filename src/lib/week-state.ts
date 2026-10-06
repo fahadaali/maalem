@@ -1,7 +1,9 @@
-import { db } from "./db";
 import { ATTENDANCE_LABELS } from "./utils";
 import { daysUntil, reportDueFrom } from "./dates";
 import { weekResolver, type LiveWeek } from "./weeks";
+import { loadParticipant, loadProgram } from "./participant-data";
+import { readingByWeek } from "./reading-quota";
+import { returnedIds } from "./returns";
 
 /** شارة صفٍّ واحد في بطاقة الأسبوع: ما أنجزه المشارك منه */
 export type RowState = { done: boolean; label: string };
@@ -21,13 +23,10 @@ export type WeekState = {
   report?: RowState;
 };
 
-/** خمس بطاقات قراءة في الأسبوع — الأحد إلى الخميس */
-const CARDS_PER_WEEK = 5;
-
 /**
- * حالة المشارك في كل أسبوع، بخمسة استعلامات لا باستعلام لكل بطاقة:
- * صفحة بطاقات الأسابيع تعرض خمسة عشر أسبوعاً، فالتجميع في الذاكرة كما في
- * `buildTrends` لا رحلةٌ إلى القاعدة مع كل صف.
+ * حالة المشارك في كل أسبوع، من صفوفه المجلوبة مرة واحدة في الطلب
+ * (`loadParticipant`) لا باستعلام لكل بطاقة: صفحة بطاقات الأسابيع تعرض خمسة
+ * عشر أسبوعاً، فالتجميع في الذاكرة.
  *
  * الحالة للأسبوع الحالي وما مضى فقط: أسبوعٌ لم يبدأ لا «ينقصه» شيء، وشارة
  * فارغة عليه تقرأ إنذاراً لا خبراً.
@@ -36,13 +35,17 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
   const states = new Map<number, WeekState>();
   if (!weeks.length) return states;
 
-  const [attendance, cards, attempts, fieldLogs, reports] = await Promise.all([
-    db.attendance.findMany({ where: { userId }, select: { week: true, type: true, status: true } }),
-    db.readingCard.findMany({ where: { userId }, select: { date: true } }),
-    db.quizAttempt.findMany({ where: { userId }, select: { score: true, total: true, quiz: { select: { week: true } } } }),
-    db.fieldLog.findMany({ where: { userId }, select: { date: true, hours: true, approvedAt: true } }),
-    db.weeklyReport.findMany({ where: { userId }, select: { week: true } }),
-  ]);
+  const [rows, program] = await Promise.all([loadParticipant(userId), loadProgram()]);
+  if (!rows) return states;
+  const { attendance } = rows;
+  const returnedLogs = returnedIds(rows.returns, "FIELD_LOG");
+  const fieldLogs = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id));
+  const quizWeek = new Map(program.quizzes.map((q) => [q.id, q.week]));
+  const attempts = rows.attempts.map((a) => ({ ...a, quiz: { week: quizWeek.get(a.quizId) ?? null } }));
+  // التقرير المُرجَع إلى صاحبه لم يُسلَّم بعد في حسابه: يعود عدّاده إلى موعده الأصلي
+  const returnedReports = returnedIds(rows.returns, "WEEKLY_REPORT");
+  const reports = rows.reports.filter((r) => !returnedReports.has(r.id));
+  const reading = new Map(readingByWeek(rows.cards, weeks, returnedIds(rows.returns, "READING_CARD")).map((r) => [r.week, r]));
 
   // التاريخ يُصنَّف بجدول الدفعة نفسه، فيتبع أي تعديل يجريه المدير على المواعيد
   const weekOf = weekResolver(weeks);
@@ -55,7 +58,6 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
     }
     return m;
   };
-  const cardsBy = countBy(cards, (c) => c.date);
   const fieldBy = countBy(fieldLogs, (f) => f.date);
   const reported = new Set(reports.map((r) => r.week));
 
@@ -66,10 +68,9 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
     const inperson = attendance.find((a) => a.week === n && a.type === "INPERSON");
     if (inperson) state.session = { done: inperson.status === "PRESENT", label: ATTENDANCE_LABELS[inperson.status] ?? inperson.status };
 
-    const cardCount = (cardsBy.get(n) ?? []).length;
-    if (w.reading && w.reading !== "—") {
-      state.reading = { done: cardCount >= CARDS_PER_WEEK, label: `${cardCount} من ${CARDS_PER_WEEK} بطاقات` };
-    }
+    // الورد بصفحاته مقابل نصاب الأسبوع من الجدول، لا بعدد بطاقاته
+    const r = reading.get(n);
+    if (r) state.reading = { done: r.read >= r.quota.pages, label: `${r.read} من ${r.quota.pages} صفحة` };
 
     const remote = attendance.find((a) => a.week === n && a.type === "REMOTE");
     const attempt = attempts.find((a) => a.quiz.week === n);
@@ -106,7 +107,7 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
 }
 
 /** «ساعة» و«ساعتان» و«3 ساعات» — الرقم وحده على البطاقة يقرأ ناقصاً */
-function hours(n: number): string {
+export function hours(n: number): string {
   const v = Math.round(n * 10) / 10;
   if (v === 1) return "ساعة";
   if (v === 2) return "ساعتان";
@@ -115,7 +116,7 @@ function hours(n: number): string {
 }
 
 /** ما بقي من المهلة بصيغة عربية سليمة: المفرد والمثنى وجمع القلة والكثرة */
-function remaining(days: number): string {
+export function remaining(days: number): string {
   if (days === 0) return "التسليم اليوم";
   if (days === 1) return "بقي يوم واحد";
   if (days === 2) return "بقي يومان";

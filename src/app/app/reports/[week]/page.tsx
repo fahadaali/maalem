@@ -5,7 +5,7 @@ import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveWeeklyReport } from "../../actions";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, keyToDate } from "@/lib/dates";
 import { getWeekByNumber, getWeekTasks, reportDueDate } from "@/lib/weeks";
 import { TASK_STATUS, publishedQuizWeeks, reportSections } from "@/lib/report";
 
@@ -21,7 +21,11 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   const [report, quizzes, cards, tasks, quizWeeks] = await Promise.all([
     db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, include: { tasks: true } }),
     db.quizAttempt.findMany({ where: { userId: user.id, quiz: { week } }, include: { quiz: true } }),
-    db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 5 }),
+    // بطاقات أسبوع التقرير نفسه — لا أحدث خمسٍ أيّاً كان أسبوعها، فتقرير أسبوعٍ مضى لا يُقترح له وردُ أسبوعٍ بعده
+    db.readingCard.findMany({
+      where: { userId: user.id, date: { gte: keyToDate(info.gregorian), lt: new Date(keyToDate(info.gregorian).getTime() + 7 * 86400000) } },
+      orderBy: { date: "desc" },
+    }),
     getWeekTasks(week),
     publishedQuizWeeks(),
   ]);

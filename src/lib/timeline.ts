@@ -43,7 +43,7 @@ export async function buildTimeline(userId: string, limit = 200): Promise<Entry[
     if (!start) continue;
     e.push({ at: new Date(start.getTime() + (a.type === "INPERSON" ? 0 : 3) * 86400000), kind: "الحضور", title: `الأسبوع ${a.week} — ${a.type === "INPERSON" ? "اللقاء الحضوري" : "حلقة النقاش"}: ${ATTENDANCE_LABELS[a.status] ?? a.status}`, detail: a.note ?? undefined });
   }
-  for (const c of cards) e.push({ at: c.createdAt, kind: "القراءة", title: `بطاقة قراءة — ${c.book}`, detail: `الصفحات ${c.fromPage}–${c.toPage}`, href: "/app/reading" });
+  for (const c of cards) e.push({ at: c.createdAt, kind: "القراءة", title: `بطاقة قراءة — ${c.book}`, detail: `الصفحات ${c.fromPage}–${c.toPage} (${c.toPage - c.fromPage + 1} صفحة)`, href: "/app/reading" });
   for (const r of reports) e.push({ at: r.submittedAt, kind: "التقرير الأسبوعي", title: `سلّم تقرير الأسبوع ${r.week}`, detail: r.reviewedAt ? "روجِع" : "بانتظار المراجعة" });
   for (const a of attempts) e.push({ at: a.createdAt, kind: "الاختبارات", title: `أدى ${a.quiz.title}`, detail: `${a.score} من ${a.total}`, href: `/app/quizzes/${a.quiz.id}` });
   for (const s of submissions) {

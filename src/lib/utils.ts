@@ -65,3 +65,13 @@ export function hostOf(url: string): string {
     return url;
   }
 }
+
+/** «نصف يوم» و«يوم واحد» و«يومان» و«3 أيام» و«12 يوماً» — لعددٍ تقريبي قد يكون فيه نصف */
+export function daysLabel(days: number): string {
+  if (days <= 0) return "أقل من نصف يوم";
+  if (days === 0.5) return "نصف يوم";
+  if (days === 1) return "يوم واحد";
+  if (days === 1.5) return "يوم ونصف";
+  if (days === 2) return "يومان";
+  return days <= 10 ? `${days} أيام` : `${days} يوماً`;
+}

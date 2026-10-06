@@ -93,7 +93,8 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
       return { label: `بطاقة قراءة — ${r.book}`, detail: `الصفحات ${r.fromPage}–${r.toPage}`, at: r.createdAt, userId: r.userId, userName: r.user.name, payload: r };
     },
     restore: async (p) => {
-      await db.readingCard.create({ data: { id: s(p.id), userId: s(p.userId), date: d(p.date), book: s(p.book), fromPage: n(p.fromPage), toPage: n(p.toPage), benefit: s(p.benefit), question: sn(p.question), createdAt: d(p.createdAt) } });
+      // وملاحظة المدير وختم مراجعته معها، فلا تعود البطاقة من التراجع «بانتظار المراجعة» وقد رُوجعت
+      await db.readingCard.create({ data: { id: s(p.id), userId: s(p.userId), date: d(p.date), book: s(p.book), fromPage: n(p.fromPage), toPage: n(p.toPage), benefit: s(p.benefit), question: sn(p.question), createdAt: d(p.createdAt), feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
     },
   },
 
@@ -365,7 +366,7 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     undoNote: "تُمحى الدرجة والتغذية الراجعة، ويبقى تسليم المشارك كما هو بانتظار تقييم جديد",
     list: async (who, take) =>
       (await db.submission.findMany({ where: { user: who, gradedAt: { not: null } }, include: { ...withUser, assignment: { select: { title: true } } }, orderBy: { gradedAt: "desc" }, take }))
-        .map((r) => item("GRADING", r, r.gradedAt!, `قيّم «${r.assignment.title}»`, `${(r.completeness ?? 0) + (r.referencing ?? 0) + (r.application ?? 0) + (r.punctuality ?? 0)} من 10${r.feedback ? ` · ${cut(r.feedback, 60)}` : ""}`, `/admin/tasks/${r.assignmentId}`)),
+        .map((r) => item("GRADING", r, r.gradedAt!, `قيّم «${r.assignment.title}»`, `${(r.completeness ?? 0) + (r.referencing ?? 0) + (r.application ?? 0) + (r.punctuality ?? 0)} من 16${r.feedback ? ` · ${cut(r.feedback, 60)}` : ""}`, `/admin/tasks/${r.assignmentId}`)),
     undo: async (id) => {
       const r = await db.submission.findUnique({ where: { id }, include: { ...withUser, assignment: { select: { title: true } } } });
       if (!r?.gradedAt) return null;

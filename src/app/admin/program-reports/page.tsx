@@ -56,7 +56,7 @@ export default async function ProgramReportsPage({ searchParams }: { searchParam
           {(Object.keys(SNAPSHOT_LABELS) as (keyof Snapshot)[]).map((k) => (
             <div key={k} className="flex justify-between border-b border-line py-1">
               <span className="text-muted">{SNAPSHOT_LABELS[k]}</span>
-              <span className="font-medium">{shown[k]}</span>
+              <span className="font-medium">{shown[k] ?? "—"}</span>
             </div>
           ))}
         </div>
