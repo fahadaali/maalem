@@ -4,7 +4,10 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
-import { createAssignment } from "../actions";
+import { createAssignment, createMissingAssignments } from "../actions";
+import { loadProgram } from "@/lib/participant-data";
+import { missingAssignments, weekName } from "@/lib/obligations";
+import { keyToDate, reportDueFrom, todayKey } from "@/lib/dates";
 import { formatShort, toLocalInput } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { getCompetencies } from "@/lib/content";
@@ -21,11 +24,52 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: P
   ]);
   const nextWeek = Math.max(0, Math.min(12, (await currentWeekNumber()) + 1));
   const activeWeeks = await getActiveWeeks();
+  const program = await loadProgram();
+  const missing = missingAssignments(program);
+  const now = Date.now();
+  // موعدٌ افتراضي لا يُولد متأخراً: خميس أسبوعها إن لم يمضِ، وإلا بعد أسبوع من اليوم في العاشرة مساءً
+  const defaultDue = (week: number) => {
+    const w = activeWeeks.find((x) => x.number === week);
+    const thursday = w ? reportDueFrom(w.gregorian).getTime() : 0;
+    if (thursday > now) return new Date(thursday);
+    return new Date(keyToDate(todayKey(new Date(now + 7 * 86400000))).getTime() + 22 * 3600000);
+  };
 
   return (
     <>
       <PageHeader title="المهام الأسبوعية والتقييم" subtitle="أنشئ المهام وقيّم التسليمات بسلم التقدير (ملحق 2)." />
       <FormMessage ok={ok} err={err} />
+      {missing.length > 0 && (
+        <Card title={`مهام في الجدول بلا باب تسليم (${missing.length})`} className="mb-4 border-ink">
+          <p className="text-sm text-muted -mt-1 mb-3">
+            هذه مهامّ مكتوبة في جدول الأسابيع، يراها المشارك في بطاقة أسبوعه ويرصدها في تقريره، ولا مهمةَ تسليمٍ تقابلها فلا يجد أين يسلّمها.
+            حدّد ما يُسلَّم منها وموعده ثم أنشئه. وإضافة مهمة ترفع مقام درجة المهام للجميع، فما يُنجز في صفحةٍ أخرى (كالخطة والمشروع) غير محدَّد افتراضياً.
+          </p>
+          <form action={createMissingAssignments}>
+            <div className="table-wrap mb-3">
+              <table className="table">
+                <thead><tr><th></th><th>الأسبوع</th><th>المهمة</th><th>موعد التسليم</th></tr></thead>
+                <tbody>
+                  {missing.map((m, i) => (
+                    <tr key={`${m.week}-${m.title}`}>
+                      <td><input type="checkbox" name="pick" value={i} defaultChecked={!m.native} className="accent-black" aria-label={`إنشاء «${m.title}»`} /></td>
+                      <td className="whitespace-nowrap">{weekName(m.week)}</td>
+                      <td>
+                        {m.title}
+                        {m.native && <div className="text-xs text-muted">يُنجز في صفحة: {m.native}</div>}
+                        <input type="hidden" name={`title_${i}`} value={m.title} />
+                        <input type="hidden" name={`week_${i}`} value={m.week} />
+                      </td>
+                      <td><input type="datetime-local" name={`due_${i}`} className="input" dir="ltr" defaultValue={toLocalInput(defaultDue(m.week))} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <SubmitButton>إنشاء المحدَّد وإشعار المشاركين</SubmitButton>
+          </form>
+        </Card>
+      )}
       <div className="grid md:grid-cols-[1fr_360px] gap-4 items-start">
         <div>
           {assignments.length === 0 ? <Empty>لا مهام بعد.</Empty> : (

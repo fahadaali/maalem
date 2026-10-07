@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
 import { attachmentsByUser } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
+import { openReturnsOf } from "@/lib/items";
 
 export const metadata = { title: "تقييم مهام مجموعتي" };
 
@@ -31,6 +32,7 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
       })
     : [];
   const filesByUser = selected ? await attachmentsByUser("SUBMISSION", selected.id) : new Map();
+  const returned = await openReturnsOf("SUBMISSION", rows.map((s) => s.id));
 
   return (
     <>
@@ -62,7 +64,7 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
                   <Card
                     key={s.id}
                     title={<Link href={`/mentor/participants/${s.userId}`} className="hover:underline">{s.user.name}</Link>}
-                    action={s.gradedAt ? <Badge tone="ink">مقيَّمة</Badge> : <Badge>بانتظار التقييم</Badge>}
+                    action={returned.has(s.id) ? <Badge>مُرجَع لصاحبه</Badge> : s.gradedAt ? <Badge tone="ink">مقيَّمة</Badge> : <Badge>بانتظار التقييم</Badge>}
                   >
                     <div className="text-xs text-muted mb-2">سُلّمت {formatDateTime(s.submittedAt)}</div>
                     <p className="text-sm whitespace-pre-wrap">{s.content}</p>

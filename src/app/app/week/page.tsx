@@ -1,4 +1,5 @@
 import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireParticipantView } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import WeekCard from "@/components/WeekCard";
@@ -7,14 +8,8 @@ import { buildWeekStates } from "@/lib/week-state";
 import { listAttachments } from "@/lib/attachments";
 import { activeCohort } from "@/lib/cohort";
 import { SCHEDULE_NOTE } from "@/lib/program";
-import { cn } from "@/lib/utils";
 
 export const metadata = { title: "بطاقات الأسابيع" };
-
-/** اسم الأسبوع في شريط التنقّل: مختصرٌ يسع الشريط على الجوال */
-function chip(n: number): string {
-  return n === 0 ? "الافتتاحي" : n === 13 ? "الختامي" : n === 14 ? "احتياطي" : String(n);
-}
 
 export default async function WeekCardsPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const user = await requireParticipantView();
@@ -46,17 +41,7 @@ export default async function WeekCardsPage({ searchParams }: { searchParams: Pr
         subtitle="كل أسبوع في بطاقة واحدة: ما يُطلب منك، وفي أي يوم، وما تُسلّمه في نهايته."
       />
 
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {weeks.map((w) => (
-          <Link
-            key={w.number}
-            href={`/app/week?week=${w.number}`}
-            className={cn("badge shrink-0", w.number === week?.number && "badge-ink", w.number === cur && w.number !== week?.number && "border-ink")}
-          >
-            {chip(w.number)}
-          </Link>
-        ))}
-      </div>
+      <WeekChips weeks={weeks} selected={week?.number ?? -1} current={cur} href={(n) => `/app/week?week=${n}`} />
 
       {week && (
         <WeekCard

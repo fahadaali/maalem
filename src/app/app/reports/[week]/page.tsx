@@ -5,9 +5,12 @@ import { PageHeader, Card, BackLink, Alert } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveWeeklyReport } from "../../actions";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, keyToDate } from "@/lib/dates";
 import { getWeekByNumber, getWeekTasks, reportDueDate } from "@/lib/weeks";
 import { TASK_STATUS, publishedQuizWeeks, reportSections } from "@/lib/report";
+import { loadParticipant } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "التقرير الأسبوعي" };
 
@@ -21,12 +24,18 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   const [report, quizzes, cards, tasks, quizWeeks] = await Promise.all([
     db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, include: { tasks: true } }),
     db.quizAttempt.findMany({ where: { userId: user.id, quiz: { week } }, include: { quiz: true } }),
-    db.readingCard.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 5 }),
+    // بطاقات أسبوع التقرير نفسه — لا أحدث خمسٍ أيّاً كان أسبوعها، فتقرير أسبوعٍ مضى لا يُقترح له وردُ أسبوعٍ بعده
+    db.readingCard.findMany({
+      where: { userId: user.id, date: { gte: keyToDate(info.gregorian), lt: new Date(keyToDate(info.gregorian).getTime() + 7 * 86400000) } },
+      orderBy: { date: "desc" },
+    }),
     getWeekTasks(week),
     publishedQuizWeeks(),
   ]);
   // لا يُفتح من النموذج إلا ما يطلبه الأسبوع: حقلٌ فارغٌ لا يُطلب يُقرأ إنذاراً لا خبراً
   const show = reportSections(info, { quizWeeks, taskCount: tasks.length });
+  const returned = report ? openReturnFor((await loadParticipant(user.id))?.returns ?? [], "WEEKLY_REPORT", report.id) : undefined;
+  const due = await reportDueDate(week);
   const saved = new Map(report?.tasks.map((t) => [t.taskId, t]) ?? []);
   // نطاق الصفحات من بطاقات الكتاب الأخير وحده، فلا يُخلط كتابان في سطر واحد
   const latestBook = cards[0]?.book;
@@ -37,8 +46,9 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   return (
     <>
       <BackLink href="/app/reports">التقارير الأسبوعية</BackLink>
-      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(await reportDueDate(week))}`} />
+      <PageHeader title={`تقرير الأسبوع ${info.label}`} subtitle={`${info.competency} · موعد التسليم ${formatDateTime(due)}`} />
       <FormMessage ok={ok} err={err} />
+      {returned && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={due} />}
       {report?.feedback && (
         <Alert tone="success">
           <div className="font-medium mb-1">تغذية راجعة من مدير المشروع</div>

@@ -10,8 +10,8 @@ import { taskStatusLabel } from "@/lib/report";
 
 /**
  * ملف الإنجاز كاملاً في صفحة واحدة قابلة للطباعة والأرشفة.
- * includePrivate: يشمل دفتر التأمل والعادات — لا يُعرض لمدير المشروع
- * إلا بعد أن يسلّم المشارك ملفه بنفسه.
+ * includePrivate: يشمل دفتر التأمل والعادات. يراهما مدير المشروع دائماً (وفي ملف
+ * المشارك عنده)، والمشارك يُنبَّه إلى ذلك في صفحتيهما؛ والأرشفة تتبع تسليم صاحبه.
  */
 export default async function PortfolioSheet({ userId, includePrivate }: { userId: string; includePrivate: boolean }) {
   const [continuous, rubric, cohort] = await Promise.all([getContinuous(), getProjectRubric(), activeCohort()]);
@@ -93,10 +93,10 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         <p className="text-sm">{u.attendance.map((a) => `أ${a.week} ${a.type === "INPERSON" ? "حضوري" : "بُعد"}: ${ATTENDANCE_LABELS[a.status]}`).join(" · ") || "لم يُسجَّل حضور."}</p>
       </S>
 
-      <S title={`بطاقات القراءة (${u.readingCards.length})`}>
+      <S title={`الورد القرائي (${grades.stats.readingPages} من ${grades.stats.readingRequired} صفحة · ${u.readingCards.length} بطاقة)`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>التاريخ</th><th>الكتاب</th><th>الصفحات</th><th>أهم فائدة</th></tr></thead>
-          <tbody>{u.readingCards.map((c) => <tr key={c.id}><td className="whitespace-nowrap">{formatShort(c.date)}</td><td>{c.book}</td><td>{c.fromPage}–{c.toPage}</td><td>{c.benefit}</td></tr>)}</tbody>
+          <tbody>{u.readingCards.map((c) => <tr key={c.id}><td className="whitespace-nowrap">{formatShort(c.date)}</td><td>{c.book}</td><td className="whitespace-nowrap">{c.fromPage}–{c.toPage} ({c.toPage - c.fromPage + 1})</td><td>{c.benefit}{c.feedback && <div className="text-xs text-muted mt-1">ملاحظة مدير المشروع: {c.feedback}</div>}</td></tr>)}</tbody>
         </table></div>
       </S>
 

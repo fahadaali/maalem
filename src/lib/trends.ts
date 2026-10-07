@@ -2,6 +2,7 @@ import { db } from "./db";
 import { participantsWhere } from "./cohort";
 import { getActiveWeeks, currentWeekNumber, weekResolver } from "./weeks";
 import { attendanceWeight } from "./grades";
+import { cardPages, weekQuota } from "./reading-quota";
 
 /** نسبة مئوية محصورة في 100: بطاقات الأسبوع الافتتاحي مثلاً تزيد على المتوقع فلا تتجاوز الرسم */
 function pct(part: number, whole: number) {
@@ -42,7 +43,7 @@ export async function buildTrends(): Promise<Trends> {
   const [attendance, reports, cards, attempts, fieldLogs] = await Promise.all([
     db.attendance.findMany({ where: { userId: { in: ids } }, select: { userId: true, week: true, status: true, participation: true } }),
     db.weeklyReport.findMany({ where: { userId: { in: ids } }, select: { userId: true, week: true } }),
-    db.readingCard.findMany({ where: { userId: { in: ids } }, select: { userId: true, date: true } }),
+    db.readingCard.findMany({ where: { userId: { in: ids } }, select: { userId: true, date: true, fromPage: true, toPage: true } }),
     db.quizAttempt.findMany({ where: { userId: { in: ids } }, select: { userId: true, score: true, total: true, quiz: { select: { week: true, title: true } } } }),
     db.fieldLog.findMany({ where: { userId: { in: ids }, approvedAt: { not: null } }, select: { userId: true, hours: true } }),
   ]);
@@ -82,8 +83,12 @@ export async function buildTrends(): Promise<Trends> {
     const submitted = reports.filter((r) => r.week === w.number).length;
     reportPoints.push({ label: label(w), value: pct(submitted, n), emphasis: mark(w), note: `${submitted} من ${n} مشاركاً` });
 
-    const inWeek = cards.filter((c) => weekOf(c.date) === w.number).length;
-    cardPoints.push({ label: label(w), value: pct(inWeek, n * 5), emphasis: mark(w), note: `${inWeek} بطاقة من ${n * 5} متوقعة` });
+    // صفحات الأسبوع من بطاقات الدفعة مقابل نصابه في الجدول لكل مشارك، لا عدد البطاقات
+    const quota = weekQuota(weekRows.find((x) => x.number === w.number) ?? { number: -1, reading: "" });
+    if (quota) {
+      const pages = cards.filter((c) => weekOf(c.date) === w.number).reduce((s, c) => s + cardPages(c), 0);
+      cardPoints.push({ label: label(w), value: pct(pages, n * quota.pages), emphasis: mark(w), note: `${pages} صفحة من ${n * quota.pages} مطلوبة` });
+    }
 
     const weekAttempts = attempts.filter((a) => a.quiz.week === w.number && a.total > 0);
     if (weekAttempts.length) {
@@ -94,18 +99,18 @@ export async function buildTrends(): Promise<Trends> {
     }
   }
 
-  const expectedCards = weeks.filter((w) => w.number >= 1 && w.number <= 12).length * 5;
+  const requiredPages = weekRows.reduce((s, w) => s + (weekQuota(w)?.pages ?? 0), 0);
   const perParticipant = people
     .map((p) => {
       const rows = attendance.filter((a) => a.userId === p.id && a.status !== "EXCUSED");
       const present = rows.reduce((s, a) => s + attendanceWeight(a.status), 0);
       const rep = reports.filter((r) => r.userId === p.id).length;
-      const crd = cards.filter((c) => c.userId === p.id).length;
+      const crd = cards.filter((c) => c.userId === p.id).reduce((s, c) => s + cardPages(c), 0);
       return {
         label: p.name,
         value: pct(present, rows.length),
-        note: `${rep} تقريراً · ${crd} بطاقة`,
-        sort: pct(present, rows.length) + rep + crd / 10,
+        note: `${rep} تقريراً · ${crd} صفحة`,
+        sort: pct(present, rows.length) + rep + crd / 100,
       };
     })
     .sort((a, b) => b.sort - a.sort)
@@ -124,7 +129,7 @@ export async function buildTrends(): Promise<Trends> {
     totals: {
       attendance: pct(countedAll.reduce((s, a) => s + attendanceWeight(a.status), 0), countedAll.length),
       reports: pct(reports.length, n * weeks.filter((w) => w.number >= 0 && w.number <= 12).length),
-      cards: pct(cards.length, n * expectedCards),
+      cards: pct(cards.reduce((s, c) => s + cardPages(c), 0), n * requiredPages),
       field: Math.round(fieldLogs.reduce((s, f) => s + f.hours, 0) * 10) / 10,
     },
   };

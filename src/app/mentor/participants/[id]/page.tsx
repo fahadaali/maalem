@@ -15,7 +15,7 @@ export default async function MentorMenteePage({ params }: { params: Promise<{ i
   const mentee = await db.user.findFirst({ where: { id, mentorId: me.id }, select: { id: true, name: true, active: true } });
   if (!mentee) notFound();
 
-  const [grades, entries] = await Promise.all([computeGrades(mentee.id), buildTimeline(mentee.id, 120)]);
+  const [grades, entries] = await Promise.all([computeGrades(mentee.id), buildTimeline(mentee.id, 120, "mentor")]);
 
   return (
     <>
@@ -29,7 +29,7 @@ export default async function MentorMenteePage({ params }: { params: Promise<{ i
         <Card title="مؤشرات الالتزام">
           <div className="space-y-3">
             <Progress value={grades.stats.attendancePct} max={100} label={`الحضور ${grades.stats.attendancePct}%`} />
-            <Progress value={grades.stats.cards} max={grades.stats.expectedCards} label={`بطاقات القراءة ${grades.stats.cards} من ${grades.stats.expectedCards}`} />
+            <Progress value={grades.stats.readingPages} max={Math.max(1, grades.stats.readingRequired)} label={`الورد القرائي ${grades.stats.readingPages} من ${grades.stats.readingRequired} صفحة (${grades.stats.cards} بطاقة)`} />
             <Progress value={grades.stats.fieldHours} max={12} label={`ساعات المعايشة المعتمدة ${grades.stats.fieldHours} من 12`} />
             <Progress value={grades.stats.submitted} max={Math.max(1, grades.stats.assignments)} label={`المهام المسلّمة ${grades.stats.submitted} من ${grades.stats.assignments}`} />
             <Progress value={grades.stats.reportsSubmitted} max={12} label={`التقارير الأسبوعية ${grades.stats.reportsSubmitted} من 12`} />

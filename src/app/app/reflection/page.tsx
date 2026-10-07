@@ -16,6 +16,7 @@ export default async function ReflectionPage({ searchParams }: { searchParams: P
   return (
     <>
       <PageHeader title="دفتر التأمل" subtitle="كل جمعة: 20 دقيقة تأمل ذاتي وسطر في الدفتر، وتحديث خطة التعلم. يُجمع منها تقرير التأمل الذاتي الختامي." />
+      <p className="text-xs text-muted -mt-4 mb-4">يطّلع مدير المشروع على ما تكتبه هنا ضمن ملفك، ليتابع مسيرتك ويعينك عليها.</p>
       <FormMessage ok={ok} err={err} />
       <Card>
         <form action={addReflection}>

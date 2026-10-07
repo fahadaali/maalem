@@ -6,6 +6,10 @@ import FormMessage from "@/components/FormMessage";
 import { addTadabbur, deleteTadabbur, saveLearningPlan } from "../actions";
 import { currentWeekNumber, getActiveWeeks } from "@/lib/weeks";
 import { Trash2 } from "lucide-react";
+import { loadParticipant, loadProgram } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import { originalDue } from "@/lib/obligations";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "خطة التعلم الشخصية" };
 
@@ -17,12 +21,21 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     db.tadabburStop.findMany({ where: { userId: user.id }, orderBy: { week: "asc" } }),
   ]);
   const cur = Math.max(0, Math.min(12, await currentWeekNumber()));
+  const [rows, program] = await Promise.all([loadParticipant(user.id), loadProgram()]);
+  const returned = plan ? openReturnFor(rows?.returns ?? [], "LEARNING_PLAN", plan.id) : undefined;
   const activeWeeks = await getActiveWeeks();
 
   return (
     <>
       <PageHeader title="خطة التعلم الشخصية" subtitle="تُسلَّم خلال 3 أيام من اللقاء الافتتاحي، وتُحدَّث كل جمعة. تشمل الخطة الفصلية، والخطة الأسبوعية، وخطة مراجعة المحفوظ." />
       <FormMessage ok={ok} err={err} />
+      {returned && rows && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={originalDue("LEARNING_PLAN", {}, rows, program.weeks)} />}
+      {plan?.feedback && !returned && (
+        <div className="card card-muted text-sm mb-4">
+          <div className="font-medium mb-1">ملاحظة مدير المشروع على خطتك</div>
+          <div className="whitespace-pre-wrap">{plan.feedback}</div>
+        </div>
+      )}
       <Card>
         <form action={saveLearningPlan}>
           <div className="field">
@@ -37,7 +50,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             <label className="label">خطة مراجعة المحفوظ من القرآن الكريم</label>
             <textarea name="memorization" className="textarea" rows={4} defaultValue={plan?.memorization ?? ""} placeholder="السور أو الأجزاء، وجدول المراجعة اليومي" />
           </div>
-          <SubmitButton>{plan ? "تحديث الخطة" : "تسليم الخطة"}</SubmitButton>
+          <SubmitButton>{returned ? "أعد الخطة إلى مدير المشروع" : plan ? "تحديث الخطة" : "تسليم الخطة"}</SubmitButton>
         </form>
       </Card>
 

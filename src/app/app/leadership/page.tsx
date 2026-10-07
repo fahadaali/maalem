@@ -7,6 +7,10 @@ import FormMessage from "@/components/FormMessage";
 import { addLeadershipActivity, submitPeerEvaluation, updateLeadershipReport } from "../actions";
 import { formatShort, todayKey } from "@/lib/dates";
 import { PEER_CRITERIA } from "@/lib/program";
+import { loadParticipant, loadProgram } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import { originalDue } from "@/lib/obligations";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "الدور القيادي" };
 
@@ -26,6 +30,8 @@ export default async function LeadershipPage({ searchParams }: { searchParams: P
       select: { id: true, title: true, date: true, user: { select: { name: true } }, evaluations: { where: { evaluatorId: user.id } } },
     }),
   ]);
+  const [rows, program] = await Promise.all([loadParticipant(user.id), loadProgram()]);
+  const returnOf = (id: string) => openReturnFor(rows?.returns ?? [], "LEADERSHIP", id);
   const avg = (evs: { c1: number; c2: number; c3: number; c4: number; c5: number }[]) => (evs.length ? (evs.reduce((s, e) => s + (e.c1 + e.c2 + e.c3 + e.c4 + e.c5) / 5, 0) / evs.length).toFixed(1) : "—");
 
   return (
@@ -57,8 +63,11 @@ export default async function LeadershipPage({ searchParams }: { searchParams: P
           {mine.length === 0 ? (
             <Empty>لم تسجل نشاطاً قيادياً بعد.</Empty>
           ) : (
-            mine.map((a) => (
-              <Card key={a.id}>
+            mine.map((a) => {
+              const returned = returnOf(a.id);
+              return (
+              <section key={a.id} id={`a-${a.id}`} className={`card ${returned ? "border-ink" : ""}`}>
+                {returned && rows && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={originalDue("LEADERSHIP", {}, rows, program.weeks)} action="أكمل تقرير النشاط أدناه ثم احفظه." />}
                 <div className="flex justify-between gap-2">
                   <div>
                     <div className="font-medium">{a.title}</div>
@@ -71,16 +80,17 @@ export default async function LeadershipPage({ searchParams }: { searchParams: P
                     {a.evaluations.filter((e) => e.comment).map((e) => <li key={e.id}>«{e.comment}»</li>)}
                   </ul>
                 )}
-                <details className="mt-2 text-sm">
+                <details className="mt-2 text-sm" open={!!returned}>
                   <summary className="cursor-pointer text-muted">تقرير النشاط</summary>
                   <form action={updateLeadershipReport} className="mt-2">
                     <input type="hidden" name="id" value={a.id} />
                     <textarea name="report" className="textarea" defaultValue={a.report ?? ""} />
-                    <SubmitButton className="btn-sm mt-2" secondary>حفظ التقرير</SubmitButton>
+                    <SubmitButton className="btn-sm mt-2" secondary={!returned}>{returned ? "أعد النشاط إلى مدير المشروع" : "حفظ التقرير"}</SubmitButton>
                   </form>
                 </details>
-              </Card>
-            ))
+              </section>
+              );
+            })
           )}
         </div>
       </div>

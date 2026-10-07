@@ -93,7 +93,8 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
       return { label: `بطاقة قراءة — ${r.book}`, detail: `الصفحات ${r.fromPage}–${r.toPage}`, at: r.createdAt, userId: r.userId, userName: r.user.name, payload: r };
     },
     restore: async (p) => {
-      await db.readingCard.create({ data: { id: s(p.id), userId: s(p.userId), date: d(p.date), book: s(p.book), fromPage: n(p.fromPage), toPage: n(p.toPage), benefit: s(p.benefit), question: sn(p.question), createdAt: d(p.createdAt) } });
+      // وملاحظة المدير وختم مراجعته معها، فلا تعود البطاقة من التراجع «بانتظار المراجعة» وقد رُوجعت
+      await db.readingCard.create({ data: { id: s(p.id), userId: s(p.userId), date: d(p.date), book: s(p.book), fromPage: n(p.fromPage), toPage: n(p.toPage), benefit: s(p.benefit), question: sn(p.question), createdAt: d(p.createdAt), feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
     },
   },
 
@@ -125,6 +126,42 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
       for (const e of entries.filter((e) => alive.has(s(e.taskId)))) {
         await db.weeklyReportTask.create({ data: { id: s(e.id), reportId: s(e.reportId), taskId: s(e.taskId), title: s(e.title), order: n(e.order), status: s(e.status), note: sn(e.note) } });
       }
+    },
+  },
+
+  LEARNING_PLAN: {
+    label: "خطة التعلم",
+    by: "PARTICIPANT",
+    undoNote: "تُحذف خطة التعلم فيكتبها من جديد",
+    list: async (who, take) =>
+      (await db.learningPlan.findMany({ where: { user: who }, include: withUser, orderBy: { updatedAt: "desc" }, take }))
+        .map((r) => item("LEARNING_PLAN", r, r.updatedAt, "خطة التعلم الشخصية", cut(r.goals))),
+    undo: async (id) => {
+      const r = await db.learningPlan.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.learningPlan.delete({ where: { id } });
+      return { label: "خطة التعلم الشخصية", detail: cut(r.goals), at: r.updatedAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.learningPlan.create({ data: { id: s(p.id), userId: s(p.userId), goals: s(p.goals), weeklyPlan: s(p.weeklyPlan), memorization: s(p.memorization), feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
+    },
+  },
+
+  TADABBUR: {
+    label: "وقفة تدبرية",
+    by: "PARTICIPANT",
+    undoNote: "تُحذف الوقفة من سجل وقفاته",
+    list: async (who, take) =>
+      (await db.tadabburStop.findMany({ where: { user: who }, include: withUser, orderBy: { createdAt: "desc" }, take }))
+        .map((r) => item("TADABBUR", r, r.createdAt, `وقفة تدبرية — ${r.topic}`, `الأسبوع ${r.week}${r.notes ? ` · ${cut(r.notes)}` : ""}`)),
+    undo: async (id) => {
+      const r = await db.tadabburStop.findUnique({ where: { id }, include: withUser });
+      if (!r) return null;
+      await db.tadabburStop.delete({ where: { id } });
+      return { label: `وقفة تدبرية — ${r.topic}`, detail: `الأسبوع ${r.week}`, at: r.createdAt, userId: r.userId, userName: r.user.name, payload: r };
+    },
+    restore: async (p) => {
+      await db.tadabburStop.create({ data: { id: s(p.id), userId: s(p.userId), week: n(p.week), topic: s(p.topic), notes: sn(p.notes), createdAt: d(p.createdAt) } });
     },
   },
 
@@ -365,7 +402,7 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     undoNote: "تُمحى الدرجة والتغذية الراجعة، ويبقى تسليم المشارك كما هو بانتظار تقييم جديد",
     list: async (who, take) =>
       (await db.submission.findMany({ where: { user: who, gradedAt: { not: null } }, include: { ...withUser, assignment: { select: { title: true } } }, orderBy: { gradedAt: "desc" }, take }))
-        .map((r) => item("GRADING", r, r.gradedAt!, `قيّم «${r.assignment.title}»`, `${(r.completeness ?? 0) + (r.referencing ?? 0) + (r.application ?? 0) + (r.punctuality ?? 0)} من 10${r.feedback ? ` · ${cut(r.feedback, 60)}` : ""}`, `/admin/tasks/${r.assignmentId}`)),
+        .map((r) => item("GRADING", r, r.gradedAt!, `قيّم «${r.assignment.title}»`, `${(r.completeness ?? 0) + (r.referencing ?? 0) + (r.application ?? 0) + (r.punctuality ?? 0)} من 16${r.feedback ? ` · ${cut(r.feedback, 60)}` : ""}`, `/admin/tasks/${r.assignmentId}`)),
     undo: async (id) => {
       const r = await db.submission.findUnique({ where: { id }, include: { ...withUser, assignment: { select: { title: true } } } });
       if (!r?.gradedAt) return null;

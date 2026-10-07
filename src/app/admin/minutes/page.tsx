@@ -1,4 +1,4 @@
-import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge } from "@/components/ui";
@@ -6,7 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { deleteMinutes, saveMinutes } from "../actions";
 import { getWeeks, resolveCurrentWeek } from "@/lib/weeks";
-import { cn, MINUTES_LABELS } from "@/lib/utils";
+import { MINUTES_LABELS } from "@/lib/utils";
 import { todayKey } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
 
@@ -33,13 +33,7 @@ export default async function MinutesPage({ searchParams }: { searchParams: Prom
         subtitle="المحضر شاهد متكرر في مصفوفة الكفاءات. دوّنه هنا ليُحفظ في سجل البرنامج ويطّلع عليه المشاركون."
       />
       <FormMessage ok={sp.ok} err={sp.err} />
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {weeks.filter((w) => w.number <= 13).map((w) => (
-          <Link key={w.number} href={`/admin/minutes?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>
-            {w.number === 0 ? "الافتتاحي" : w.number === 13 ? "الختامي" : w.number}
-          </Link>
-        ))}
-      </div>
+      <WeekChips weeks={weeks.filter((w) => w.number <= 13)} selected={week} current={cur} href={(n) => `/admin/minutes?week=${n}`} />
       <p className="text-sm text-muted mb-4">الأسبوع {info.label} · {info.session}</p>
       <div className="space-y-4">
         {Object.entries(MINUTES_LABELS).map(([type, label]) => {

@@ -11,11 +11,16 @@ import type { NavItem } from "@/components/shell/AppShell";
  */
 export const PARTICIPANT_NAV: NavItem[] = [
   { href: "/app", label: "الرئيسية", icon: Home, exact: true, tab: true },
+  /**
+   * «مهامي» بابٌ واحد لكل ما يُطلب: المهام والتقارير والورد والاختبارات والمعايشة
+   * والخطة والمشروع — وعليه عدّاد المتأخر والمُرجَع. كانت التبويبات تفرّقها
+   * (القراءة · المهام · التقارير) فيتشتّت المشارك بين ثلاثة أبواب لا يجمعها شيء.
+   */
+  { href: "/app/tasks", label: "مهامي", icon: ClipboardList, tab: true },
 
   { href: "/app/week", label: "بطاقات الأسابيع", icon: CalendarDays, group: "أسبوعي", tab: true, short: "الأسابيع" },
-  { href: "/app/reading", label: "القراءة", icon: BookOpen, group: "أسبوعي", tab: true },
-  { href: "/app/tasks", label: "المهام", icon: ClipboardList, group: "أسبوعي", tab: true },
-  { href: "/app/reports", label: "التقارير الأسبوعية", icon: FileText, group: "أسبوعي", tab: true, short: "التقارير" },
+  { href: "/app/reading", label: "الورد القرائي", icon: BookOpen, group: "أسبوعي", tab: true, short: "القراءة" },
+  { href: "/app/reports", label: "التقارير الأسبوعية", icon: FileText, group: "أسبوعي" },
   { href: "/app/quizzes", label: "الاختبارات", icon: ListChecks, group: "أسبوعي" },
 
   { href: "/app/field", label: "المعايشة الميدانية", icon: Users, group: "مساري" },

@@ -9,6 +9,10 @@ import { getProjectRubric } from "@/lib/content";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/lib/attachments";
+import { loadParticipant, loadProgram } from "@/lib/participant-data";
+import { openReturnFor } from "@/lib/returns";
+import { originalDue } from "@/lib/obligations";
+import ReturnedBanner from "@/components/ReturnedBanner";
 
 export const metadata = { title: "مشروع التخرج" };
 
@@ -17,7 +21,8 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
   const p = await db.graduationProject.findUnique({ where: { userId: user.id } });
-  const files = await listAttachments({ kind: "PROJECT", userId: user.id });
+  const [files, rows, program] = await Promise.all([listAttachments({ kind: "PROJECT", userId: user.id }), loadParticipant(user.id), loadProgram()]);
+  const returned = p ? openReturnFor(rows?.returns ?? [], "PROJECT", p.id) : undefined;
   const judged = p?.status === "JUDGED";
   const total = p ? (p.clarity ?? 0) + (p.grounding ?? 0) + (p.design ?? 0) + (p.integration ?? 0) + (p.presentation ?? 0) : 0;
   const scores: Record<string, number | null | undefined> = p ? { clarity: p.clarity, grounding: p.grounding, design: p.design, integration: p.integration, presentation: p.presentation } : {};
@@ -26,6 +31,7 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
     <>
       <PageHeader title="مشروع التخرج التطبيقي" subtitle="30 درجة · تحديد الموضوع في الأسبوع 10، والمسودة في الأسبوع 12، والعرض أمام لجنة التحكيم في الأسبوع 13." actions={p && <Badge tone="ink">{PROJECT_STATUS_LABELS[p.status]}</Badge>} />
       <FormMessage ok={ok} err={err} />
+      {returned && rows && <ReturnedBanner note={returned.note} by={returned.returnedBy} due={originalDue("PROJECT", {}, rows, program.weeks)} />}
       <div className="card card-muted text-sm mb-4">{PROJECT_DESCRIPTION}</div>
       {p?.adminNote && (
         <Alert>

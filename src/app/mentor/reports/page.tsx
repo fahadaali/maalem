@@ -1,4 +1,5 @@
 import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
@@ -10,6 +11,7 @@ import { mentorReviewReport } from "../actions";
 import { formatDateTime } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
+import { openReturnsOf } from "@/lib/items";
 
 export const metadata = { title: "تقارير مجموعتي" };
 
@@ -25,6 +27,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
   const ids = mentees.map((m) => m.id);
   const reports = await db.weeklyReport.findMany({ where: { week, userId: { in: ids } }, include: { user: true, tasks: { orderBy: { order: "asc" } } }, orderBy: { submittedAt: "asc" } });
   const submitted = new Set(reports.map((r) => r.userId));
+  const [returned, cur] = await Promise.all([openReturnsOf("WEEKLY_REPORT", reports.map((r) => r.id)), currentWeekNumber()]);
   const due = await reportDueDate(week);
 
   return (
@@ -38,13 +41,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
         <Empty>لم يُربط بك مشاركون بعد.</Empty>
       ) : (
         <>
-          <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-            {weeks.map((w) => (
-              <Link key={w.number} href={`/mentor/reports?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>
-                {w.number === 0 ? "الافتتاحي" : w.number}
-              </Link>
-            ))}
-          </div>
+          <WeekChips weeks={weeks} selected={week} current={cur} href={(n) => `/mentor/reports?week=${n}`} />
           <div className="flex flex-wrap gap-1 mb-4">
             {mentees.map((m) => (
               <span key={m.id} className={cn("badge", submitted.has(m.id) && "badge-ink")}>{m.name}: {submitted.has(m.id) ? "مسلّم" : "لم يسلّم"}</span>
@@ -58,7 +55,7 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
                 <Card
                   key={r.id}
                   title={<Link href={`/mentor/participants/${r.userId}`} className="hover:underline">{r.user.name}</Link>}
-                  action={r.reviewedAt ? <Badge tone="ink">روجِع</Badge> : <Badge>بانتظار المراجعة</Badge>}
+                  action={returned.has(r.id) ? <Badge>مُرجَع لصاحبه</Badge> : r.reviewedAt ? <Badge tone="ink">روجِع</Badge> : <Badge>بانتظار المراجعة</Badge>}
                 >
                   <div className="text-xs text-muted mb-2">سُلّم {formatDateTime(r.submittedAt)}{r.submittedAt > due ? " — متأخراً" : ""}</div>
                   <ReportTasks report={r} />

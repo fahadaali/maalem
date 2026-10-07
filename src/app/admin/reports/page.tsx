@@ -1,4 +1,4 @@
-import Link from "@/components/Link";
+import WeekChips from "@/components/WeekChips";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/dates";
 import { currentWeekNumber, getActiveWeeks, reportDueDate } from "@/lib/weeks";
 import { cn } from "@/lib/utils";
 import { participantsWhere } from "@/lib/cohort";
+import { openReturnsOf } from "@/lib/items";
 
 export const metadata = { title: "التقارير الأسبوعية" };
 
@@ -26,16 +27,13 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   ]);
   const byUser = new Map(reports.map((r) => [r.userId, r]));
   const due = await reportDueDate(week);
+  const [returned, cur] = await Promise.all([openReturnsOf("WEEKLY_REPORT", reports.map((r) => r.id)), currentWeekNumber()]);
 
   return (
     <>
       <PageHeader title="مراجعة التقارير الأسبوعية" subtitle={`الأسبوع ${week} · موعد التسليم ${formatDateTime(due)}`} />
       <FormMessage ok={sp.ok} err={sp.err} />
-      <div className="flex gap-1 overflow-x-auto pb-3 mb-3 -mx-4 px-4">
-        {activeWeeks.map((w) => (
-          <Link key={w.number} href={`/admin/reports?week=${w.number}`} className={cn("badge shrink-0", w.number === week && "badge-ink")}>{w.number === 0 ? "الافتتاحي" : w.number}</Link>
-        ))}
-      </div>
+      <WeekChips weeks={activeWeeks} selected={week} current={cur} href={(n) => `/admin/reports?week=${n}`} />
       <div className="flex flex-wrap gap-1 mb-4">
         {participants.map((p) => {
           const r = byUser.get(p.id);
@@ -47,7 +45,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
       ) : (
         <div className="space-y-4">
           {reports.map((r) => (
-            <Card key={r.id} title={r.user.name} action={<div className="flex gap-1">{r.submittedAt > due && <Badge>تأخر</Badge>}{r.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge>بانتظار المراجعة</Badge>}</div>}>
+            <Card key={r.id} title={r.user.name} action={<div className="flex gap-1">{r.submittedAt > due && <Badge>تأخر</Badge>}{returned.has(r.id) ? <Badge>مُرجَع لصاحبه</Badge> : r.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge>بانتظار المراجعة</Badge>}</div>}>
               <div id={`r-${r.id}`} className="text-xs text-muted mb-2">سُلّم {formatDateTime(r.submittedAt)}</div>
               <ReportTasks report={r} />
               <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-3">

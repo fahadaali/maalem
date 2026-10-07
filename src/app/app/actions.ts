@@ -15,6 +15,7 @@ import { SURVEY_QUESTIONS } from "@/lib/program";
 import { getCharter, getCompetencies } from "@/lib/content";
 import { isCorrect } from "@/lib/quiz";
 import { EXCUSE_KINDS, isExcuseKind } from "@/lib/excuses";
+import { closeReturns, findOpenReturn, markResubmitted } from "@/lib/items";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -34,31 +35,62 @@ async function participant() {
 }
 
 // ——— بطاقة القراءة اليومية ———
-export async function addReadingCard(formData: FormData) {
-  const user = await participant();
+
+/** حقول البطاقة من النموذج بعد التحقق — للإضافة والتعديل معاً فلا تفترق قواعدهما */
+function readCardForm(formData: FormData, path: string) {
   const dateKey = str(formData.get("date")) || todayKey();
   const book = str(formData.get("book")) === "__other" ? str(formData.get("bookOther")) : str(formData.get("book"));
   const fromPage = num(formData.get("fromPage"));
   const toPage = num(formData.get("toPage"));
   const benefit = str(formData.get("benefit"));
   const question = str(formData.get("question"));
-  if (!book || !benefit) fail("/app/reading", "الكتاب وأهم فائدة حقلان إلزاميان");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail("/app/reading", "تاريخ غير صحيح");
-  if (dateKey > todayKey()) fail("/app/reading", "لا تُسجَّل بطاقة ليوم لم يأتِ بعد");
-  if (fromPage < 1 || toPage < fromPage) fail("/app/reading", "أرقام الصفحات: تبدأ من 1 ولا تقل الأخيرة عن الأولى");
-  // بطاقة واحدة لكل يوم قراءة كما تنص الخطة، فلا تُضخَّم درجة الورد بتكرار بطاقات اليوم الواحد
-  const date = keyToDate(dateKey);
-  if (await db.readingCard.findFirst({ where: { userId: user.id, date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — احذفها إن أردت تعديلها");
-  await db.readingCard.create({ data: { userId: user.id, date, book, fromPage, toPage, benefit, question: question || null } });
-  revalidatePath("/app");
+  if (!book || !benefit) fail(path, "الكتاب وأهم فائدة حقلان إلزاميان");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail(path, "تاريخ غير صحيح");
+  if (dateKey > todayKey()) fail(path, "لا تُسجَّل بطاقة ليوم لم يأتِ بعد");
+  if (fromPage < 1 || toPage < fromPage) fail(path, "أرقام الصفحات: تبدأ من 1 ولا تقل الأخيرة عن الأولى");
+  return { date: keyToDate(dateKey), book, fromPage, toPage, benefit, question: question || null };
+}
+
+export async function addReadingCard(formData: FormData) {
+  const user = await participant();
+  const data = readCardForm(formData, "/app/reading");
+  // بطاقة واحدة لكل يوم قراءة كما تنص الخطة؛ ومن قرأ أكثر في يومه كتب صفحاته كلها في بطاقته — فالمقدار بالصفحات
+  if (await db.readingCard.findFirst({ where: { userId: user.id, date: data.date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — عدّلها وأضف إليها صفحاتك");
+  await db.readingCard.create({ data: { userId: user.id, ...data } });
+  revalidatePath("/app", "layout");
   ok("/app/reading", "تم حفظ بطاقة القراءة");
+}
+
+/**
+ * تعديل البطاقة. تبقى مفتوحةً لصاحبها حتى يراجعها مدير المشروع؛ وبعد المراجعة
+ * تُقفل كما يُقفل التسليم بعد تقييمه — إلا أن تُرجَع إليه، فيعدّلها ويعيدها.
+ */
+export async function updateReadingCard(formData: FormData) {
+  const user = await participant();
+  const id = str(formData.get("id"));
+  const path = `/app/reading?edit=${encodeURIComponent(id)}`;
+  const card = await db.readingCard.findFirst({ where: { id, userId: user.id }, select: { id: true, reviewedAt: true } });
+  if (!card) fail("/app/reading", "البطاقة غير موجودة");
+  const returned = await findOpenReturn("READING_CARD", id);
+  if (card.reviewedAt && !returned) fail("/app/reading", "راجع مدير المشروع هذه البطاقة فأُقفلت — اطلب منه إرجاعها إن أردت تعديلها");
+  const data = readCardForm(formData, path);
+  if (await db.readingCard.findFirst({ where: { userId: user.id, date: data.date, NOT: { id } }, select: { id: true } })) fail(path, "لك بطاقة أخرى في هذا اليوم — بطاقة واحدة لكل يوم");
+  await db.readingCard.update({ where: { id }, data });
+  const resubmitted = await markResubmitted("READING_CARD", id, user);
+  revalidatePath("/app", "layout");
+  ok("/app/reading", resubmitted ? "أُعيدت البطاقة إلى مدير المشروع" : "تم تعديل البطاقة");
 }
 
 export async function deleteReadingCard(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
+  const card = await db.readingCard.findFirst({ where: { id, userId: user.id }, select: { reviewedAt: true } });
+  if (!card) return;
+  if (card.reviewedAt && !(await findOpenReturn("READING_CARD", id))) fail("/app/reading", "راجع مدير المشروع هذه البطاقة فأُقفلت");
   await db.readingCard.deleteMany({ where: { id, userId: user.id } });
-  revalidatePath("/app/reading");
+  await closeReturns("READING_CARD", [id]);
+  revalidatePath("/app", "layout");
+  ok("/app/reading", "حُذفت البطاقة");
 }
 
 // ——— التقرير الأسبوعي ———
@@ -114,11 +146,13 @@ export async function saveWeeklyReport(formData: FormData) {
     ...(entries.length ? [db.weeklyReportTask.createMany({ data: entries.map((e) => ({ ...e, reportId: report.id })) })] : []),
   ]);
 
+  // تقريرٌ أُرجع إليه فأعاده: يُغلق الإرجاع ويعود إلى طابور المراجعة، ويُشعَر المدير
+  const resubmitted = existing ? await markResubmitted("WEEKLY_REPORT", existing.id, user) : false;
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
   }
-  revalidatePath("/app");
-  ok(path, "تم حفظ التقرير الأسبوعي");
+  revalidatePath("/app", "layout");
+  ok(path, resubmitted ? "أُعيد التقرير إلى مدير المشروع" : "تم حفظ التقرير الأسبوعي");
 }
 
 // ——— الاختبارات التكوينية ———
@@ -137,7 +171,7 @@ export async function submitQuiz(formData: FormData) {
     if (e?.code === "P2002") fail(`/app/quizzes/${quizId}`, "سبق أن أديت هذا الاختبار");
     throw e;
   });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   redirect(`/app/quizzes/${quizId}`);
 }
 
@@ -153,15 +187,17 @@ export async function submitAssignment(formData: FormData) {
   const assignment = await db.assignment.findFirst({ where: { id: assignmentId, ...(await cohortWhere()) } });
   if (!assignment) fail("/app/tasks", "المهمة غير موجودة");
   const existing = await db.submission.findUnique({ where: { assignmentId_userId: { assignmentId, userId: user.id } } });
-  if (existing?.gradedAt) fail(path, "تم تقييم هذه المهمة ولا يمكن تعديلها");
+  // المقيَّمة مقفلة على صاحبها — إلا أن يُرجعها المدير إليه للتعديل
+  if (existing?.gradedAt && !(await findOpenReturn("SUBMISSION", existing.id))) fail(path, "تم تقييم هذه المهمة ولا يمكن تعديلها");
   await db.submission.upsert({
     where: { assignmentId_userId: { assignmentId, userId: user.id } },
     create: { assignmentId, userId: user.id, content, link: link || null },
     update: { content, link: link || null, submittedAt: new Date() },
   });
+  const resubmitted = existing ? await markResubmitted("SUBMISSION", existing.id, user) : false;
   if (!existing) await notifyAdmins({ title: "تسليم مهمة", body: `${user.name} سلّم: ${assignment!.title}`, url: `/admin/tasks/${assignmentId}` });
-  revalidatePath("/app");
-  ok(path, "تم تسليم المهمة");
+  revalidatePath("/app", "layout");
+  ok(path, resubmitted ? "أُعيدت المهمة إلى مدير المشروع لتقييمها من جديد" : "تم تسليم المهمة");
 }
 
 // ——— المعايشة الميدانية ———
@@ -179,7 +215,7 @@ export async function addFieldLog(formData: FormData) {
   await notifyAdmins({ title: "سجل معايشة جديد", body, url: "/admin/field" });
   // المشرف المرافق يعتمد من لوحته هو؛ رابط منطقة الإدارة كان يُعاد توجيهه عنها
   if (me?.mentorId) await notifyUsers([me.mentorId], { title: "سجل معايشة جديد", body, url: "/mentor" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/field", "تم تسجيل المعايشة وبانتظار اعتمادها");
 }
 
@@ -187,8 +223,32 @@ export async function deleteFieldLog(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const { count } = await db.fieldLog.deleteMany({ where: { id, userId: user.id, approvedAt: null } });
-  if (count) await removeAttachments("FIELD", id);
-  revalidatePath("/app/field");
+  if (count) {
+    await removeAttachments("FIELD", id);
+    await closeReturns("FIELD_LOG", [id]);
+  }
+  revalidatePath("/app", "layout");
+}
+
+/** تعديل سجل معايشة لم يُعتمد بعد، أو أُرجع إلى صاحبه بعد اعتماده */
+export async function updateFieldLog(formData: FormData) {
+  const user = await participant();
+  const id = str(formData.get("id"));
+  const path = `/app/field?edit=${encodeURIComponent(id)}`;
+  const log = await db.fieldLog.findFirst({ where: { id, userId: user.id }, select: { approvedAt: true } });
+  if (!log) fail("/app/field", "السجل غير موجود");
+  if (log.approvedAt && !(await findOpenReturn("FIELD_LOG", id))) fail("/app/field", "اعتُمد هذا السجل فأُقفل");
+  const dateKey = str(formData.get("date")) || todayKey();
+  const hours = num(formData.get("hours"));
+  const mentorName = str(formData.get("mentorName"));
+  const note = str(formData.get("note"));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) fail(path, "تاريخ غير صحيح");
+  if (hours <= 0 || hours > 12) fail(path, "أدخل عدد ساعات صحيحاً");
+  if (!mentorName || !note) fail(path, "اسم المشرف المرافق والملاحظة حقلان إلزاميان");
+  await db.fieldLog.update({ where: { id }, data: { date: keyToDate(dateKey), hours, mentorName, note } });
+  const resubmitted = await markResubmitted("FIELD_LOG", id, user);
+  revalidatePath("/app", "layout");
+  ok("/app/field", resubmitted ? "أُعيد السجل إلى الاعتماد" : "تم تعديل السجل");
 }
 
 // ——— الدور القيادي وتقييم الأقران ———
@@ -201,7 +261,7 @@ export async function addLeadershipActivity(formData: FormData) {
   await db.leadershipActivity.create({ data: { userId: user.id, title, date: keyToDate(dateKey), report: report || null } });
   const peers = await db.user.findMany({ where: { ...(await participantsWhere()), id: { not: user.id } }, select: { id: true } });
   await notifyUsers(peers.map((p) => p.id), { title: "تقييم أقران مطلوب", body: `${user.name} قاد نشاطاً: ${title}. شارك بتقييمك.`, url: "/app/leadership" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/leadership", "تم تسجيل النشاط القيادي وإشعار الأقران لتقييمه");
 }
 
@@ -209,8 +269,10 @@ export async function updateLeadershipReport(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const report = str(formData.get("report"));
-  await db.leadershipActivity.updateMany({ where: { id, userId: user.id }, data: { report: report || null } });
-  ok("/app/leadership", "تم تحديث تقرير النشاط");
+  const { count } = await db.leadershipActivity.updateMany({ where: { id, userId: user.id }, data: { report: report || null } });
+  const resubmitted = count ? await markResubmitted("LEADERSHIP", id, user) : false;
+  revalidatePath("/app", "layout");
+  ok("/app/leadership", resubmitted ? "أُعيد النشاط إلى مدير المشروع" : "تم تحديث تقرير النشاط");
 }
 
 export async function submitPeerEvaluation(formData: FormData) {
@@ -226,7 +288,7 @@ export async function submitPeerEvaluation(formData: FormData) {
     create: { activityId, evaluatorId: user.id, c1: vals[0], c2: vals[1], c3: vals[2], c4: vals[3], c5: vals[4], comment: str(formData.get("comment")) || null },
     update: { c1: vals[0], c2: vals[1], c3: vals[2], c4: vals[3], c5: vals[4], comment: str(formData.get("comment")) || null },
   });
-  revalidatePath("/app/leadership");
+  revalidatePath("/app", "layout");
   ok("/app/leadership", "شكراً، تم حفظ تقييمك");
 }
 
@@ -256,8 +318,9 @@ export async function saveProject(formData: FormData) {
   if (!existing || changedTopic) await notifyAdmins({ title: "موضوع مشروع تخرج", body: `${user.name}: ${topic}`, url: "/admin/projects" });
   else if (status === "DRAFT" && existing.status !== "DRAFT") await notifyAdmins({ title: "مسودة مشروع تخرج", body: `${user.name} سلّم مسودة المشروع`, url: "/admin/projects" });
   else if (status === "FINAL" && existing.status !== "FINAL") await notifyAdmins({ title: "النسخة النهائية لمشروع التخرج", body: `${user.name} سلّم النسخة النهائية`, url: "/admin/projects" });
-  revalidatePath("/app");
-  ok("/app/project", "تم حفظ بيانات المشروع");
+  const resubmitted = existing ? await markResubmitted("PROJECT", existing.id, user) : false;
+  revalidatePath("/app", "layout");
+  ok("/app/project", resubmitted ? "أُعيد المشروع إلى مدير المشروع" : "تم حفظ بيانات المشروع");
 }
 
 // ——— خطة التعلم الشخصية والوقفات التدبرية ———
@@ -267,13 +330,15 @@ export async function saveLearningPlan(formData: FormData) {
   const weeklyPlan = str(formData.get("weeklyPlan"));
   const memorization = str(formData.get("memorization"));
   if (!goals) fail("/app/plan", "اكتب أهداف خطتك الفصلية");
-  await db.learningPlan.upsert({
+  const plan = await db.learningPlan.upsert({
     where: { userId: user.id },
     create: { userId: user.id, goals, weeklyPlan, memorization },
     update: { goals, weeklyPlan, memorization },
   });
-  revalidatePath("/app");
-  ok("/app/plan", "تم حفظ خطة التعلم");
+  // خطةٌ أُرجعت فأعادها صاحبها تعود إلى مراجعة المدير ويُشعَر بها
+  const resubmitted = await markResubmitted("LEARNING_PLAN", plan.id, user);
+  revalidatePath("/app", "layout");
+  ok("/app/plan", resubmitted ? "أُعيدت الخطة إلى مدير المشروع" : "تم حفظ خطة التعلم");
 }
 
 export async function addTadabbur(formData: FormData) {
@@ -289,7 +354,7 @@ export async function addTadabbur(formData: FormData) {
 export async function deleteTadabbur(formData: FormData) {
   const user = await participant();
   await db.tadabburStop.deleteMany({ where: { id: str(formData.get("id")), userId: user.id } });
-  revalidatePath("/app/plan");
+  revalidatePath("/app", "layout");
 }
 
 // ——— دفتر التأمل ———
@@ -358,7 +423,7 @@ export async function acceptCharter(formData: FormData) {
   if (signed?.charterAcceptedAt) fail("/app/charter", "وقّعت الميثاق من قبل");
   await db.user.update({ where: { id: user.id }, data: { charterAcceptedAt: new Date(), charterName: name } });
   await notifyAdmins({ title: "توقيع ميثاق المشاركة", body: `${user.name} وقّع ميثاق المشاركة`, url: "/admin/participants" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/charter", "تم توقيع الميثاق. وفقك الله");
 }
 
@@ -382,7 +447,7 @@ export async function saveDiagnostic(formData: FormData) {
     throw e;
   });
   await notifyAdmins({ title: stage === "PRE" ? "تقييم تشخيصي قبلي" : "تقييم تشخيصي بعدي", body: `${user.name} عبّأ التقييم`, url: "/admin/diagnostic" });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/diagnostic", "تم حفظ التقييم التشخيصي");
 }
 
@@ -402,7 +467,7 @@ export async function submitSurvey(formData: FormData) {
     data: { cohortId: await activeCohortId(), answers: JSON.stringify(answers), liked: str(formData.get("liked")) || null, improve: str(formData.get("improve")) || null },
   });
   await db.user.update({ where: { id: user.id }, data: { surveyDoneAt: new Date() } });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   ok("/app/survey", "شكراً لك، وصلت إجابتك مجهولة المصدر");
 }
 
@@ -413,7 +478,7 @@ export async function submitPortfolio() {
   if (me?.portfolioSubmittedAt) fail("/app/portfolio", "سلّمت ملف الإنجاز من قبل");
   await db.user.update({ where: { id: user.id }, data: { portfolioSubmittedAt: new Date() } });
   await notifyAdmins({ title: "تسليم ملف الإنجاز", body: `${user.name} سلّم ملف إنجازه النهائي`, url: "/admin/participants" });
-  revalidatePath("/app/portfolio");
+  revalidatePath("/app", "layout");
   ok("/app/portfolio", "تم تسليم ملف الإنجاز لمدير المشروع");
 }
 

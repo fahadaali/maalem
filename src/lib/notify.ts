@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { db } from "./db";
 import { PushError, sendPush } from "./webpush";
 import { getVapid } from "./secrets";
@@ -179,6 +180,28 @@ export async function deliverNow(userId: string): Promise<DrainResult> {
   });
   return deliver(queued);
 }
+
+/**
+ * إشعارٌ لمستخدمٍ واحد يُسلَّم في الحال، لا مع المُصرِّف بعد دقائق — لما ينتظره
+ * صاحبه الآن: تسليمٌ أُرجع إليه ليعدّله. يُسلَّم الصفّ الجديد بعينه، لا أقدم
+ * خمسة غير مسلَّمة كما في `deliverNow` فقد لا يكون منها. وإن تعذّر التسليم بقي
+ * في الطابور فيلتقطه المُصرِّف، فلا يضيع ولا يُسقط الإجراء الذي أشعر.
+ */
+export async function notifyNow(userId: string, payload: NotifyPayload, opts: { email?: EmailMode } = {}): Promise<DrainResult> {
+  const row = await db.notification.create({
+    data: { userId, title: payload.title, body: payload.body, url: payload.url ?? null, emailMode: opts.email ?? "fallback" },
+    select: { id: true, userId: true, title: true, body: true, url: true, emailMode: true },
+  });
+  try {
+    return await deliver([row]);
+  } catch (e) {
+    log("notify.now-failed", { reason: reason(e) });
+    return { taken: 0, pushed: 0, emailed: 0, left: 1 };
+  }
+}
+
+/** غير المقروء من إشعارات مستخدم — مرة واحدة في الطلب: يقرؤه الهيكل والرئيسية معاً */
+export const unreadCount = cache(async (userId: string): Promise<number> => db.notification.count({ where: { userId, readAt: null } }));
 
 export async function notifyRole(role: "ADMIN" | "PARTICIPANT" | "MENTOR", payload: NotifyPayload, opts: { email?: EmailMode } = {}) {
   // مديرو المشروع عامّون، وأما المشاركون والمشرفون فبحسب الدفعة النشطة

@@ -20,24 +20,20 @@ import { QUESTION_KINDS, TRUE_FALSE_OPTIONS } from "@/lib/quiz";
 import { EXCUSE_KINDS, type ExcuseKind } from "@/lib/excuses";
 import { dispatchReminder, isAudience } from "@/lib/reminders";
 import { ensureProgramData } from "@/lib/setup";
+import { seedAssignmentsFor } from "@/lib/seed";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
+import { closeReturns } from "@/lib/items";
+import { missingAssignments } from "@/lib/obligations";
+import { loadProgram } from "@/lib/participant-data";
+import { isReturnKind } from "@/lib/returns";
 import { isFolderColor } from "@/lib/folders";
 import { MAX_BATCH_FILES, kindFromContentType, titleFromFilename } from "@/lib/files";
 import { isHelpAudience } from "@/lib/help";
+// العودة برسالة تضع المعامل قبل المرساة، فتعود الإجراءات إلى عنصرها في ملف المشارك
+import { ok, fail, safeBack } from "@/lib/redirects";
 
-function ok(path: string, msg: string): never {
-  redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
-}
-function fail(path: string, msg: string): never {
-  redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(msg)}`);
-}
 const admin = () => requireRole("ADMIN");
-
-/** وجهة العودة من حقل مخفي: تُقبل داخل مناطق المنصة فقط، لا رابطاً خارجياً */
-function safeBack(raw: string, fallback: string): string {
-  return /^\/(admin|mentor|app)(\/|\?|$)/.test(raw) ? raw : fallback;
-}
 
 /** الترتيب التالي لسؤال في اختبار: بعد أعلى ترتيب قائم، فلا يتكرر الترتيب بعد حذف سؤال من الوسط */
 async function nextQuestionOrder(quizId: string): Promise<number> {
@@ -66,7 +62,8 @@ export async function createUser(formData: FormData) {
 export async function updateUser(formData: FormData) {
   const me = await admin();
   const id = str(formData.get("id"));
-  const path = `/admin/participants/${id}`;
+  // نموذج الحساب في تبويب «السجل والحساب» من الملف — وإليه يعود
+  const path = `/admin/participants/${id}?tab=log`;
   const name = str(formData.get("name"));
   const phone = str(formData.get("phone"));
   const email = str(formData.get("email"));
@@ -93,7 +90,7 @@ export async function addFeedbackSession(formData: FormData) {
   const userId = str(formData.get("userId"));
   const notes = str(formData.get("notes"));
   const dateKey = str(formData.get("date"));
-  const path = `/admin/participants/${userId}`;
+  const path = `/admin/participants/${userId}?tab=log`;
   if (!notes) fail(path, "اكتب ملاحظات الجلسة");
   await db.feedbackSession.create({ data: { userId, notes, date: dateKey ? keyToDate(dateKey) : new Date() } });
   await notifyUsers([userId], { title: "تغذية راجعة فردية", body: notes.slice(0, 120), url: "/app/portfolio" });
@@ -140,7 +137,9 @@ export async function reviewReport(formData: FormData) {
   if (!(await db.weeklyReport.findUnique({ where: { id }, select: { id: true } }))) fail("/admin/reports", "التقرير غير موجود");
   const r = await db.weeklyReport.update({ where: { id }, data: { feedback: feedback || null, reviewedAt: new Date() } });
   if (feedback) await notifyUsers([r.userId], { title: `تغذية راجعة على تقرير الأسبوع ${r.week}`, body: feedback.slice(0, 120), url: `/app/reports/${r.week}` });
-  ok(`/admin/reports?week=${r.week}`, "تم حفظ المراجعة");
+  // ومن ملف المشارك يعود إليه عند التقرير نفسه
+  revalidatePath(`/admin/participants/${r.userId}`);
+  ok(safeBack(str(formData.get("back")), `/admin/reports?week=${r.week}`), "تم حفظ المراجعة");
 }
 
 // ——— المهام ———
@@ -156,6 +155,37 @@ export async function createAssignment(formData: FormData) {
   await notifyRole("PARTICIPANT", { title: "مهمة جديدة", body: title, url: `/app/tasks/${a.id}` });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تمت إضافة المهمة وإشعار المشاركين");
+}
+
+/**
+ * إنشاء المهام الناقصة من الجدول بعد أن يراجعها المدير: لكل بندٍ محدَّد مهمةٌ في
+ * أسبوعه بالموعد الذي اختاره، وإشعارٌ واحد للمشاركين لا إشعارٌ لكل مهمة.
+ */
+export async function createMissingAssignments(formData: FormData) {
+  await admin();
+  const picks = formData.getAll("pick").map((v) => num(v, -1)).filter((i) => i >= 0);
+  if (picks.length === 0) fail("/admin/tasks", "لم تحدد مهمة لإنشائها");
+  const cohortId = await activeCohortId();
+  const rows = picks.map((i) => ({
+    title: str(formData.get(`title_${i}`)),
+    week: num(formData.get(`week_${i}`), -1),
+    due: str(formData.get(`due_${i}`)),
+  }));
+  for (const r of rows) {
+    if (!r.title || r.week < 0 || r.week > 12) fail("/admin/tasks", "بندٌ ناقص في القائمة");
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.due)) fail("/admin/tasks", `حدّد موعد «${r.title}»`);
+  }
+  // ما زال ناقصاً الآن؟ نموذجٌ قديم في تبويبٍ آخر من المتصفح، أو نقرةٌ ثانية، يُنشئ المهمة مرتين
+  const still = missingAssignments(await loadProgram());
+  const fresh = rows.filter((r) => still.some((m) => m.week === r.week && m.title === r.title));
+  if (fresh.length === 0) ok("/admin/tasks", "أُنشئت هذه المهام من قبل");
+  await db.assignment.createMany({
+    data: fresh.map((r) => ({ cohortId, title: r.title, week: r.week, dueAt: new Date(r.due + "+03:00"), description: `من مهام الأسبوع ${r.week} في جدول البرنامج.` })),
+  });
+  await notifyRole("PARTICIPANT", { title: fresh.length === 1 ? "مهمة جديدة" : `${fresh.length} مهام جديدة`, body: fresh.map((r) => r.title).join("، ").slice(0, 140), url: "/app/tasks?type=tasks" });
+  revalidatePath("/admin/tasks");
+  revalidatePath("/app", "layout");
+  ok("/admin/tasks", `أُنشئت ${fresh.length} مهمة وأُشعر المشاركون`);
 }
 
 export async function updateAssignment(formData: FormData) {
@@ -174,8 +204,10 @@ export async function updateAssignment(formData: FormData) {
 export async function deleteAssignment(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
-  // مرفقات التسليمات لا يحذفها تسلسل القاعدة، فتُحذف هنا مع ملفاتها
+  // مرفقات التسليمات لا يحذفها تسلسل القاعدة، فتُحذف هنا مع ملفاتها — وإرجاعاتها المفتوحة تُغلق
   await removeAttachments("SUBMISSION", id);
+  const subs = await db.submission.findMany({ where: { assignmentId: id }, select: { id: true } });
+  await closeReturns("SUBMISSION", subs.map((x) => x.id));
   await db.assignment.deleteMany({ where: { id } });
   revalidatePath("/admin/tasks");
   ok("/admin/tasks", "تم حذف المهمة");
@@ -187,11 +219,12 @@ export async function gradeSubmission(formData: FormData) {
   const vals = ["completeness", "referencing", "application", "punctuality"].map((k) => num(formData.get(k)));
   const s = await db.submission.findUnique({ where: { id }, include: { assignment: true } });
   if (!s) fail("/admin/tasks", "التسليم غير موجود");
-  const path = `/admin/tasks/${s.assignmentId}`;
+  const path = safeBack(str(formData.get("back")), `/admin/tasks/${s.assignmentId}`);
   if (vals.some((v) => v < 1 || v > 4)) fail(path, "قيّم كل معيار من 1 إلى 4");
   const feedback = str(formData.get("feedback"));
   await db.submission.update({ where: { id }, data: { completeness: vals[0], referencing: vals[1], application: vals[2], punctuality: vals[3], feedback: feedback || null, gradedAt: new Date() } });
   await notifyUsers([s.userId], { title: `تم تقييم: ${s.assignment.title}`, body: `الدرجة ${vals.reduce((a, b) => a + b, 0)} من 16${feedback ? " — " + feedback.slice(0, 80) : ""}`, url: `/app/tasks/${s.assignmentId}` });
+  revalidatePath(`/admin/participants/${s.userId}`);
   ok(path, "تم حفظ التقييم وإشعار المشارك");
 }
 
@@ -338,6 +371,7 @@ export async function rejectFieldLog(formData: FormData) {
   if (me.role === "MENTOR" && log.user.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
   await removeAttachments("FIELD", id);
   await db.fieldLog.deleteMany({ where: { id } });
+  await closeReturns("FIELD_LOG", [id]);
   await notifyUsers([log.userId], { title: "لم يُعتمد سجل معايشة", body: reason || `سجل ${log.hours} ساعة لم يُعتمد. راجع المشرف المرافق.`, url: "/app/field" });
   revalidatePath(back);
   redirect(back);
@@ -354,9 +388,12 @@ export async function updateProjectAdmin(formData: FormData) {
   if (!p) fail("/admin/projects", "المشروع غير موجود");
   if (!["PROPOSED", "APPROVED", "DRAFT", "FINAL", "JUDGED"].includes(status)) fail("/admin/projects", "حالة غير صحيحة");
   await db.graduationProject.update({ where: { id }, data: { status, mentorName: mentorName || null, adminNote: adminNote || null } });
+  // المحكَّم لا يُعدَّل، فإرجاعٌ مفتوح عليه لا يُغلقه صاحبه أبداً ويبقى في عدّاده
+  if (status === "JUDGED" && (await closeReturns("PROJECT", [id], "CANCELLED"))) revalidatePath("/app", "layout");
   if (status === "APPROVED" && p.status === "PROPOSED") await notifyUsers([p.userId], { title: "اعتماد موضوع مشروع التخرج", body: `${p.topic}${mentorName ? " — المرشد: " + mentorName : ""}`, url: "/app/project" });
   else if (adminNote && adminNote !== p.adminNote) await notifyUsers([p.userId], { title: "ملاحظة على مشروع التخرج", body: adminNote.slice(0, 120), url: "/app/project" });
-  ok("/admin/projects", "تم تحديث المشروع");
+  revalidatePath(`/admin/participants/${p.userId}`);
+  ok(safeBack(str(formData.get("back")), "/admin/projects"), "تم تحديث المشروع");
 }
 
 export async function judgeProject(formData: FormData) {
@@ -377,10 +414,13 @@ export async function judgeProject(formData: FormData) {
   }
   const judgeNote = str(formData.get("judgeNote"));
   await db.graduationProject.update({ where: { id }, data: { ...data, judgeNote: judgeNote || null, status: "JUDGED" } });
+  // المحكَّم لا يُعدَّل، فإرجاعٌ مفتوح عليه لا يُغلقه صاحبه أبداً ويبقى في عدّاده
+  if (await closeReturns("PROJECT", [id], "CANCELLED")) revalidatePath("/app", "layout");
+  revalidatePath(`/admin/participants/${p.userId}`);
   const total = Object.values(data).reduce((a, b) => a + b, 0);
   const projectMax = rubric.reduce((a, r) => a + r.points, 0);
   await notifyUsers([p.userId], { title: "نتيجة تحكيم مشروع التخرج", body: `${total} من ${projectMax}`, url: "/app/project" });
-  ok("/admin/projects", "تم حفظ التحكيم وإشعار المشارك");
+  ok(safeBack(str(formData.get("back")), "/admin/projects"), "تم حفظ التحكيم وإشعار المشارك");
 }
 
 // ——— الإشعارات ———
@@ -588,7 +628,8 @@ export async function saveWeek(formData: FormData) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gregorian)) fail("/admin/schedule", "تاريخ غير صحيح");
   if (remoteUrl && !/^https?:\/\//i.test(remoteUrl)) fail("/admin/schedule", "رابط الحلقة يجب أن يبدأ بـ http أو https");
   const cohortId = await requireCohortId();
-  if (!(await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true } }))) fail("/admin/schedule", "أسبوع غير موجود");
+  const before = await db.programWeek.findUnique({ where: { cohortId_number: { cohortId, number } }, select: { id: true, gregorian: true } });
+  if (!before) fail("/admin/schedule", "أسبوع غير موجود");
   await db.programWeek.update({
     where: { cohortId_number: { cohortId, number } },
     data: {
@@ -605,12 +646,25 @@ export async function saveWeek(formData: FormData) {
       note: str(formData.get("note")) || null,
     },
   });
+  /**
+   * أسبوعٌ نُقل تاريخه تنتقل معه مواعيد مهامّه بالفرق نفسه — إن اختار المدير ذلك،
+   * وهو المختار افتراضياً. كان موعد التقرير يتبع الأسبوع وموعد المهمة لا يتبعه،
+   * فيُؤجَّل أسبوعٌ وتبقى مهمته مستحقّةً في يومها القديم.
+   */
+  let moved = 0;
+  const shift = keyToDate(gregorian).getTime() - keyToDate(before.gregorian).getTime();
+  if (shift !== 0 && formData.get("moveTasks")) {
+    const tasks = await db.assignment.findMany({ where: { cohortId, week: number }, select: { id: true, dueAt: true } });
+    for (const t of tasks) await db.assignment.update({ where: { id: t.id }, data: { dueAt: new Date(t.dueAt.getTime() + shift) } });
+    moved = tasks.length;
+  }
   revalidatePath("/admin/schedule");
   revalidatePath("/program/schedule");
+  revalidatePath("/admin/tasks");
   // بطاقة الأسبوع تُرسم من هذه الحقول في لوحة المشارك أيضاً
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   revalidatePath("/app/week");
-  ok(`/admin/schedule?week=${number}`, "تم تحديث الأسبوع");
+  ok(`/admin/schedule?week=${number}`, moved ? `تم تحديث الأسبوع، ونُقلت مواعيد ${moved} من مهامّه معه` : "تم تحديث الأسبوع");
 }
 
 // ——— مهام الأسبوع: صفٌّ لكل مهمة، يرصد عليه المشارك إنجازه في تقريره الأسبوعي ———
@@ -842,10 +896,12 @@ export async function resetQuizAttempt(formData: FormData) {
   const quizId = str(formData.get("quizId"));
   const userId = str(formData.get("userId"));
   const reason = str(formData.get("reason"));
-  if (!reason) fail(`/admin/quizzes/${quizId}`, "اكتب سبب إعادة الفتح");
+  const back = safeBack(str(formData.get("back")), `/admin/quizzes/${quizId}`);
+  if (!reason) fail(back, "اكتب سبب إعادة الفتح");
   await db.quizAttempt.deleteMany({ where: { quizId, userId } });
   await notifyUsers([userId], { title: "أُعيد فتح اختبار لك", body: reason, url: `/app/quizzes/${quizId}` });
-  ok(`/admin/quizzes/${quizId}`, "أُعيد فتح الاختبار وأُشعر المشارك");
+  revalidatePath(`/admin/participants/${userId}`);
+  ok(back, "أُعيد فتح الاختبار وأُشعر المشارك");
 }
 
 // ——— وثائق الإتمام وإفادات الحضور ———
@@ -931,7 +987,9 @@ export async function createCohort(formData: FormData) {
   // بقية محتوى الوثيقة للدفعة الجديدة: الكتب والميثاق والأوزان والمستويات والكفاءات،
   // تُبذر الآن لا عند أول تشغيل تالٍ، فتكون قابلة للتحرير من ساعة إنشائها
   await ensureProgramData(cohort.id);
-  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها وميزانيتها ومحتوى وثيقتها. فعّلها للعمل عليها.`);
+  // ومهامّها المقيَّمة واختباراتها من الخطة بمواعيدها، فلا تبدأ الدفعة بلا مهمة يُسلَّم فيها
+  await seedAssignmentsFor(db, cohort);
+  ok("/admin/cohorts", `أُنشئت دفعة «${name}» بجدولها ومهامّها وميزانيتها ومحتوى وثيقتها. فعّلها للعمل عليها.`);
 }
 
 export async function activateCohort(formData: FormData) {
@@ -966,7 +1024,7 @@ export async function saveMentorEvaluation(formData: FormData) {
   const me = await requireRole("MENTOR", "ADMIN");
   const userId = str(formData.get("userId"));
   const period = str(formData.get("period"));
-  const back = me.role === "MENTOR" ? "/mentor" : `/admin/participants/${userId}`;
+  const back = me.role === "MENTOR" ? "/mentor" : safeBack(str(formData.get("back")), `/admin/participants/${userId}`);
   if (!EVAL_PERIODS.includes(period)) fail(back, "فترة تقييم غير صحيحة");
   const participant = await db.user.findUnique({ where: { id: userId }, select: { mentorId: true, role: true, name: true } });
   if (!participant || participant.role !== "PARTICIPANT") fail(back, "المشارك غير موجود");
@@ -987,7 +1045,7 @@ export async function saveMentorEvaluation(formData: FormData) {
     update: data,
   });
   await notifyUsers([userId], { title: "تقييم المشرف المرافق", body: `سُجّل تقييم ${period} لمعايشتك الميدانية`, url: "/app/field" });
-  revalidatePath(back);
+  revalidatePath(back.split(/[?#]/)[0]);
   ok(back, `تم حفظ تقييم ${participant.name}`);
 }
 
@@ -1324,7 +1382,7 @@ export async function decideExcuse(formData: FormData) {
   });
   revalidatePath("/admin/excuses");
   revalidatePath("/admin/attendance");
-  ok("/admin/excuses", approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
+  ok(safeBack(str(formData.get("back")), "/admin/excuses"), approve ? `قُبل طلب ${row.user.name}` : `رُفض طلب ${row.user.name}`);
 }
 
 // ——— مركز الأنشطة: التراجع والإعادة ———
@@ -1354,13 +1412,35 @@ export async function undoActivity(formData: FormData) {
       payload: JSON.stringify(snap.payload), at: snap.at, undoneBy: me.name,
     },
   });
+  // سجلٌ حُذف لا يبقى عليه إرجاعٌ مفتوح يظهر في «مهامي» بنداً لا وجود له
+  if (isReturnKind(kind)) await closeReturns(kind, [id]);
   await notifyUsers([snap.userId], {
     title: "تراجَع مدير المشروع عن إدخال يخصّك",
     body: `${spec.label}: ${snap.label}. ${spec.undoNote}.`,
+    url: UNDO_URL[kind] ?? "/app/tasks",
   });
   revalidatePath("/admin/activity");
+  if (snap.userId) revalidatePath(`/admin/participants/${snap.userId}`);
   ok(back, `تم التراجع عن «${snap.label}» — تجده في سجل التراجع لإعادته`);
 }
+
+/** صفحة المشارك التي يُعاد منها إدخالٌ تُرُوجِع عنه — رابط إشعار التراجع */
+const UNDO_URL: Record<string, string> = {
+  READING_CARD: "/app/reading",
+  WEEKLY_REPORT: "/app/reports",
+  SUBMISSION: "/app/tasks?type=tasks",
+  FIELD_LOG: "/app/field",
+  LEADERSHIP: "/app/leadership",
+  PROJECT: "/app/project",
+  REFLECTION: "/app/reflection",
+  QUIZ_ATTEMPT: "/app/quizzes",
+  DIAGNOSTIC: "/app/diagnostic",
+  EXCUSE: "/app/excuses",
+  PORTFOLIO: "/app/portfolio",
+  CHARTER: "/app/charter",
+  LEARNING_PLAN: "/app/plan",
+  TADABBUR: "/app/plan",
+};
 
 /** إعادة ما تُرُوجِع عنه من لقطته، كما كان بمعرّفه نفسه */
 export async function restoreActivity(formData: FormData) {
@@ -1379,8 +1459,19 @@ export async function restoreActivity(formData: FormData) {
     fail(back, "تعذّرت الإعادة — لعلّ إدخالاً جديداً حلّ مكانه. راجعه في صفحته أولاً");
   }
   await db.undoEntry.update({ where: { id }, data: { restoredAt: new Date() } });
+  // وإن كان مُرجَعاً لصاحبه حين حُذف عاد مُرجَعاً: الإرجاع الذي أُغلق مع الحذف نفسه
+  if (isReturnKind(row.kind)) {
+    const closed = await db.itemReturn.findFirst({
+      where: { kind: row.kind, recordId: row.recordId, resolution: "DELETED", resolvedAt: { gte: new Date(row.undoneAt.getTime() - 1000), lte: new Date(row.undoneAt.getTime() + 60000) } },
+      orderBy: { resolvedAt: "desc" },
+      select: { id: true },
+    });
+    if (closed) await db.itemReturn.update({ where: { id: closed.id }, data: { resolvedAt: null, resolution: null } });
+  }
   if (row.userId) {
     await notifyUsers([row.userId], { title: "أُعيد إدخالك", body: `${row.label} — عاد كما كان.` });
+    revalidatePath("/app", "layout");
+    revalidatePath(`/admin/participants/${row.userId}`);
   }
   revalidatePath("/admin/activity");
   ok(back, `أُعيد «${row.label}»`);

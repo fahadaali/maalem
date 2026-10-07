@@ -23,7 +23,7 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
     (await db.user.findMany({ where: { OR: [scope, { role: "ADMIN" }] }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
   );
 
-  const [users, materials, minutes, guests, reports, cards, assignments, quizzes, bank, comps, fieldLogs, excuses, projects] = await Promise.all([
+  const [users, materials, minutes, guests, reports, cards, assignments, quizzes, bank, comps, fieldLogs, excuses, projects, plans] = await Promise.all([
     // أشخاص الدفعة النشطة ومديرو المشروع فقط، لا مستخدمو الدفعات الأخرى
     db.user.findMany({ where: { AND: [{ OR: [scope, { role: "ADMIN" }] }, { OR: [{ name: like(term) }, { username: like(term) }, { phone: like(term) }, { email: like(term) }] }] }, take: 10 }),
     db.material.findMany({ where: { OR: [{ title: like(term) }, { author: like(term) }, { description: like(term) }] }, take: 10 }),
@@ -39,6 +39,8 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
     db.fieldLog.findMany({ where: { userId: { in: ids }, OR: [{ note: like(term) }, { mentorName: like(term) }] }, take: 10 }),
     db.excuseRequest.findMany({ where: { userId: { in: ids }, reason: like(term) }, take: 10 }),
     db.graduationProject.findMany({ where: { userId: { in: ids }, OR: [{ topic: like(term) }, { problem: like(term) }, { mentorName: like(term) }] }, take: 10 }),
+    // الخطط الذاتية: كانت لا تُقرأ في أي مكان عند المدير، فلا تُبحث أيضاً
+    db.learningPlan.findMany({ where: { userId: { in: ids }, OR: [{ goals: like(term) }, { weeklyPlan: like(term) }, { memorization: like(term) }] }, take: 10 }),
   ]);
 
   const weeks = (await getWeeks()).filter((w) =>
@@ -51,14 +53,15 @@ export async function searchAdmin(q: string): Promise<Hit[]> {
   for (const m of minutes) hits.push({ group: "محاضر اللقاءات", title: m.title ?? `محضر الأسبوع ${m.week}`, snippet: cut(m.minutes), href: "/admin/minutes" });
   for (const g of guests) hits.push({ group: "الخبراء والضيوف", title: g.name, snippet: cut(g.topic), href: "/admin/guests" });
   for (const r of reports) hits.push({ group: "التقارير الأسبوعية", title: `${names.get(r.userId) ?? ""} — الأسبوع ${r.week}`, snippet: reportSnippet(r), href: `/admin/reports?week=${r.week}#r-${r.id}` });
-  for (const c of cards) hits.push({ group: "بطاقات القراءة", title: `${names.get(c.userId) ?? ""} — ${c.book}`, snippet: cut(c.benefit), href: `/admin/participants/${c.userId}` });
+  for (const c of cards) hits.push({ group: "بطاقات القراءة", title: `${names.get(c.userId) ?? ""} — ${c.book}`, snippet: cut(c.benefit), href: `/admin/participants/${c.userId}?tab=reading&focus=i-reading_card-${c.id}#i-reading_card-${c.id}` });
   for (const a of assignments) hits.push({ group: "المهام", title: a.title, snippet: cut(a.description), meta: `الأسبوع ${a.week}`, href: `/admin/tasks/${a.id}` });
   for (const z of quizzes) hits.push({ group: "الاختبارات", title: z.title, meta: z.week != null ? `الأسبوع ${z.week}` : undefined, href: `/admin/quizzes/${z.id}` });
   for (const b of bank) hits.push({ group: "بنك الأسئلة", title: b.text, snippet: cut(b.explanation), href: "/admin/bank" });
   for (const c of comps) hits.push({ group: "مصفوفة الكفاءات", title: c.title, snippet: cut(c.indicator), meta: c.competency.name, href: `/admin/competencies?c=${c.competency.id}` });
-  for (const f of fieldLogs) hits.push({ group: "المعايشة الميدانية", title: `${names.get(f.userId) ?? ""} — ${f.mentorName}`, snippet: cut(f.note), href: "/admin/field" });
+  for (const f of fieldLogs) hits.push({ group: "المعايشة الميدانية", title: `${names.get(f.userId) ?? ""} — ${f.mentorName}`, snippet: cut(f.note), href: `/admin/participants/${f.userId}?tab=field&focus=i-field_log-${f.id}#i-field_log-${f.id}` });
   for (const e of excuses) hits.push({ group: "طلبات الاستئذان", title: names.get(e.userId) ?? "", snippet: cut(e.reason), href: "/admin/excuses" });
-  for (const g of projects) hits.push({ group: "مشاريع التخرج", title: `${names.get(g.userId) ?? ""} — ${g.topic}`, snippet: cut(g.problem), href: "/admin/projects" });
+  for (const g of projects) hits.push({ group: "مشاريع التخرج", title: `${names.get(g.userId) ?? ""} — ${g.topic}`, snippet: cut(g.problem), href: `/admin/participants/${g.userId}?tab=field&focus=i-project-${g.id}#i-project-${g.id}` });
+  for (const p of plans) hits.push({ group: "خطط التعلم", title: names.get(p.userId) ?? "", snippet: cut(p.goals), href: `/admin/participants/${p.userId}?tab=reading` });
   for (const w of weeks) hits.push({ group: "جدول البرنامج", title: `الأسبوع ${w.label}`, snippet: cut(w.session), href: `/admin/schedule?week=${w.number}` });
   return hits;
 }

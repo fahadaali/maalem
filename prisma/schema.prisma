@@ -53,6 +53,7 @@ model User {
   mentorEvaluations MentorEvaluation[]   @relation("MentorEvalOf")
   evaluationsGiven  MentorEvaluation[]   @relation("MentorEvalBy")
   finalGrade        FinalGrade?
+  itemReturns       ItemReturn[]
 }
 
 /// دفعة من دفعات البرنامج: تفصل بيانات كل دفعة عن غيرها
@@ -353,6 +354,9 @@ model ReadingCard {
   benefit   String
   question  String?
   createdAt DateTime @default(now())
+  /// ملاحظة مدير المشروع على البطاقة ووقت مراجعتها، بلا درجة
+  feedback   String?
+  reviewedAt DateTime?
 
   @@index([userId, date])
 }
@@ -562,6 +566,9 @@ model LearningPlan {
   weeklyPlan   String
   memorization String
   updatedAt    DateTime @updatedAt
+  /// ملاحظة مدير المشروع على الخطة ووقت مراجعتها، بلا درجة
+  feedback     String?
+  reviewedAt   DateTime?
 }
 
 model Reflection {
@@ -817,4 +824,29 @@ model HelpItem {
   createdAt DateTime @default(now())
 
   @@index([audience, order])
+}
+
+/// إرجاعُ إدخالٍ إلى صاحبه ليعيد تقديمه: يبقى السجل كما هو ويُفتح للتعديل، ويُقاس
+/// تأخّره بموعده الأصلي، ولا يدخل في الدرجة حتى يُعاد. أختام المراجعة على السجل لا
+/// تُمسّ عند الإرجاع — الصفّ المفتوح هو الحَكَم — وتُصفَّر عند إعادة التقديم فيعود
+/// الإدخال إلى طابور مراجِعه. `recordId` بلا مفتاح أجنبي كـ`UndoEntry.recordId`.
+model ItemReturn {
+  id         String    @id @default(cuid())
+  /// SUBMISSION | WEEKLY_REPORT | READING_CARD | LEARNING_PLAN | FIELD_LOG | LEADERSHIP | PROJECT
+  kind       String
+  recordId   String
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// ما يطلبه مدير المشروع من صاحبه
+  note       String
+  /// اسم مدير المشروع الذي أرجعه
+  returnedBy String
+  returnedAt DateTime  @default(now())
+  /// فارغةً: الإرجاع مفتوح ينتظر صاحبه
+  resolvedAt DateTime?
+  /// RESUBMITTED أعاده صاحبه | CANCELLED ألغاه المدير | DELETED حُذف السجل
+  resolution String?
+
+  @@index([userId, resolvedAt])
+  @@index([kind, recordId])
 }

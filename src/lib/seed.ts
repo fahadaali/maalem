@@ -21,6 +21,15 @@ function competencyNameFor(label: string): string | null {
 export async function seedProgramData(db: PrismaClient) {
   let cohort = await db.cohort.findFirst({ where: { active: true } });
   if (!cohort) cohort = await db.cohort.create({ data: { name: PROGRAM.cohort, startDate: PROGRAM.startDate, active: true } });
+  await seedAssignmentsFor(db, cohort);
+}
+
+/**
+ * مهام دفعةٍ بعينها واختباراتها من الخطة، بمواعيد من تاريخ انطلاقها — إن لم تكن
+ * لها مهام بعد. كان البذر عند التثبيت الأول وحده، فالدفعة المنشأة بعده تبدأ بلا
+ * مهمة واحدة يُسلَّم فيها، وبطاقة أسبوعها تذكر «المهمة الأسبوعية» نصّاً بلا باب.
+ */
+export async function seedAssignmentsFor(db: PrismaClient, cohort: { id: string; startDate: string }) {
   const cohortId = cohort.id;
   const start = new Date(`${cohort.startDate}T00:00:00+03:00`);
   if ((await db.assignment.count({ where: { cohortId } })) === 0) {
