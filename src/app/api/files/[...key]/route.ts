@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { isPreview } from "@/lib/auth";
 import { deleteObject, getObject } from "@/lib/storage";
 import { authorizeAttachment } from "@/lib/attachments";
+import { FILES_META_HEADER, etagOf } from "@/lib/file-serve";
 
 const authorize = (keyParts: string[]) => authorizeAttachment({ key: keyParts.join("/") });
 
@@ -10,6 +11,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ key: str
   const { key } = await params;
   const auth = await authorize(key);
   if (auth.status !== 200) return NextResponse.json({ error: "غير مصرح" }, { status: auth.status });
+  /**
+   * على Cloudflare لا تمرّ البايتات من هنا: غلافُ العامل يسأل بهذا الرأس عن
+   * الحكم وبيانات الملف وحدها، ثم يبثّ من R2 بنفسه — انظر `serveFile` في
+   * `src/worker.ts`. وانتحالُ الرأس لا يكشف شيئاً: الحكمُ فوقه قائم، ولا يعود
+   * إلا ما أُذن للسائل فيه أصلاً. وما بعده طريقُ `next dev` المحلي.
+   */
+  if (req.headers.get(FILES_META_HEADER)) {
+    const { key: k, name, contentType, size } = auth.att;
+    return NextResponse.json({ key: k, name, contentType, size });
+  }
   /**
    * مُصادِقٌ للتخزين المؤقّت، قيمتُه مفتاحُ التخزين: `safeKey` يولّده مرةً بـuuid
    * ولا يُعاد استعماله، فالبايتات عند المفتاح لا تتبدّل أبداً.
@@ -21,7 +32,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ key: str
    * والإذنُ مفحوصٌ **قبل** هذا السطر في كل طلب: من زال إذنه يُردّ ولا تنفعه
    * نسخته المخزَّنة، فالمراجعةُ لا تُغني عن الحراسة.
    */
-  const etag = `"${auth.att.key}"`;
+  const etag = etagOf(auth.att.key);
   if (req.headers.get("if-none-match") === etag) {
     return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "private, max-age=0, must-revalidate" } });
   }
