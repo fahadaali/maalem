@@ -3,6 +3,7 @@
 // @ts-ignore يُولَّد هذا الملف عند البناء بـ opennextjs-cloudflare build
 import nextApp from "../.open-next/worker.js";
 import { verifyTicket } from "./lib/upload-ticket";
+import { FILES_META_HEADER, etagOf, fileHeaders, parseRange, type FileMeta } from "./lib/file-serve";
 
 /**
  * سطرُ سجلٍّ بصيغة `src/lib/log.ts` نفسها، مكتوبٌ هنا لا مستورداً عمداً: هذا
@@ -85,6 +86,41 @@ async function streamUpload(req: Request, env: CloudflareEnv, ctx: ExecutionCont
   return nextApp.fetch(commit, env, ctx);
 }
 
+/**
+ * تنزيلُ المرفقات تيّاراً من R2، يُعترض قبل Next — والعلّةُ في `src/lib/file-serve.ts`.
+ *
+ * والحكمُ يبقى في Next: يُسأل مسارُ الملفات نفسُه برأس `FILES_META_HEADER`
+ * فيُجيب بالإذن وبيانات الملف وحدها، سطراً من JSON لا يضرّ تجميعُه. وكلُّ ردٍّ
+ * سواه — 401 أو 403 أو 404 — يُعاد كما هو. ولا 304 قبل الحكم: من زال إذنه
+ * لا تنفعه نسخته المخزَّنة.
+ */
+async function serveFile(req: Request, env: CloudflareEnv, ctx: ExecutionContext, url: URL): Promise<Response> {
+  const ask = new Request(`${url.origin}${url.pathname}`, {
+    headers: { cookie: req.headers.get("cookie") ?? "", [FILES_META_HEADER]: "1" },
+  });
+  const verdict = await nextApp.fetch(ask, env, ctx);
+  if (verdict.status !== 200) return verdict;
+  const meta = (await verdict.json()) as FileMeta;
+
+  const headers = fileHeaders(meta, url.searchParams.get("download") === "1");
+  if (req.headers.get("if-none-match") === etagOf(meta.key)) return new Response(null, { status: 304, headers });
+
+  const range = parseRange(req.headers.get("range"), meta.size);
+  if (range.kind === "unsatisfiable") {
+    headers.set("Content-Range", `bytes */${meta.size}`);
+    return new Response(null, { status: 416, headers });
+  }
+  const obj = await env.FILES.get(meta.key, range.kind === "part" ? { range: { offset: range.offset, length: range.length } } : {});
+  if (!obj) return json({ error: "الملف غير موجود" }, 404);
+  if (range.kind === "part") {
+    headers.set("Content-Range", `bytes ${range.offset}-${range.offset + range.length - 1}/${obj.size}`);
+    headers.set("Content-Length", String(range.length));
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers.set("Content-Length", String(obj.size));
+  return new Response(obj.body, { headers });
+}
+
 export default {
   /**
    * تُكتب دالّةً لا `fetch: nextApp.fetch`: المرجع المنفصل يفقد `this`، فيعمل
@@ -92,10 +128,13 @@ export default {
    * حينها 1101. والتغليف يكلّف إطار نداءٍ واحداً ويجعل العقد صريحاً.
    */
   async fetch(req: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response> {
-    // القراءةُ لا تُفتَّش: `new URL` لكل طلبٍ ثمنٌ بلا مقابل، والرفعُ POST وحده
+    // الرفعُ POST وحده، والتنزيلُ GET على ‎/api/files/ وحده: فحصُ النصّ أرخص من `new URL` لكل طلب
     if (req.method === "POST") {
       const url = new URL(req.url);
       if (url.pathname === "/api/upload/stream") return streamUpload(req, env, ctx, url);
+    } else if (req.method === "GET" && req.url.includes("/api/files/")) {
+      const url = new URL(req.url);
+      if (url.pathname.startsWith("/api/files/")) return serveFile(req, env, ctx, url);
     }
     return nextApp.fetch(req, env, ctx);
   },
