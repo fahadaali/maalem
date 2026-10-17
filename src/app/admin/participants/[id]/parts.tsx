@@ -9,6 +9,8 @@ import { ITEM_FIELDS, fieldValue, itemAnchor, type FileTab } from "@/lib/items";
 import { RETURN_KINDS, type OpenReturn, type ReturnKind } from "@/lib/returns";
 import { formatDateTime, todayKey } from "@/lib/dates";
 import { daysLate, overdueLabel } from "@/lib/obligations";
+import { cohortPause } from "@/lib/cohort";
+import { isFrozen } from "@/lib/pause";
 
 /**
  * أجزاء ملف المشارك عند المدير: قائمة ⋮ على كل عنصر، واللوحات التي تفتحها تحته —
@@ -129,12 +131,13 @@ export function MenuAction({ action, fields, children, confirm }: { action: (f: 
 }
 
 /** شارة الإرجاع المفتوح على العنصر: متى، ومن، وما المطلوب */
-export function ReturnedNote({ r, due, now }: { r: OpenReturn; due?: Date | null; now: Date }) {
+export async function ReturnedNote({ r, due, now }: { r: OpenReturn; due?: Date | null; now: Date }) {
+  const pause = await cohortPause();
   return (
     <div className="text-sm mt-2 border-s-2 border-ink ps-2">
       <div className="text-xs text-muted">
         أُرجع لصاحبه {formatDateTime(r.returnedAt)} — {r.returnedBy}
-        {due && due < now ? ` · ${overdueLabel(daysLate(due, now))} عن موعده الأصلي` : ""}
+        {due && isFrozen(due, pause) ? " · موقوف حتى الاستئناف" : due && due < now ? ` · ${overdueLabel(daysLate(due, now, pause))} عن موعده الأصلي` : ""}
       </div>
       <div className="whitespace-pre-wrap">{r.note}</div>
     </div>

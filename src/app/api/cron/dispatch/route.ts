@@ -19,7 +19,15 @@ export async function GET(req: Request) {
   await ensureSchema();
 
   const now = new Date();
-  const due = await db.reminder.findMany({ where: { sentAt: null, sendAt: { lte: now } }, orderBy: { sendAt: "asc" }, take: 20 });
+  /**
+   * تذكيرات الدفعة الموقوفة تُحبس: تبقى بلا ختم إرسال، ويُزيحها الاستئناف مع
+   * الجدول فتصل قبل موعدها الجديد بالمدة التي كانت قبل القديم.
+   */
+  const due = await db.reminder.findMany({
+    where: { sentAt: null, sendAt: { lte: now }, OR: [{ cohortId: null }, { cohort: { pausedAt: null } }] },
+    orderBy: { sendAt: "asc" },
+    take: 20,
+  });
   const results: { id: string; recipients: number }[] = [];
 
   for (const r of due) {

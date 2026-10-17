@@ -1,4 +1,5 @@
 import { weekResolver, type LiveWeek } from "./weeks";
+import { afterPauses, programClock, weekStartMs } from "./pause";
 
 /**
  * نصاب الورد القرائي من جدول الأسبوع نفسه.
@@ -151,7 +152,9 @@ export type ReadingTotals = {
  * «ما مضى» يُعدّ بأسبوعٍ انتهى خميسُه: الأسبوع الجاري لا يُطالَب بنصابه كاملاً
  * إلا بعد انقضاء أيام وِرده. و`joinedAt` يُسقط من «ما مضى» ما انقضى قبل الانضمام.
  */
-export function readingTotals(cards: CardRow[], weeks: LiveWeek[], now: Date, exclude?: ReadonlySet<string>, joinedAt?: Date): ReadingTotals {
+export function readingTotals(cards: CardRow[], weeks: LiveWeek[], realNow: Date, exclude?: ReadonlySet<string>, joinedAt?: Date): ReadingTotals {
+  // والدفعة موقوفةً لا يكبر «ما مضى» بأسابيع الإيقاف — فلا تنقص الدرجة ولا يُذكَّر أحدٌ بوِردٍ لم يُطلب
+  const now = programClock(realNow, weeks[0]?.pause);
   let read = 0;
   for (const c of cards) if (!exclude?.has(c.id)) read += cardPages(c);
   let required = 0;
@@ -167,9 +170,9 @@ export function readingTotals(cards: CardRow[], weeks: LiveWeek[], now: Date, ex
   return { read, required, requiredSoFar, ratio: required > 0 ? Math.min(read / required, 1) : 0 };
 }
 
-/** نهاية ورد الأسبوع: آخر الخميس بتوقيت الرياض (السبت + 5 أيام، 23:59) */
-export function readingDeadline(w: Pick<LiveWeek, "gregorian">): Date {
-  return new Date(new Date(`${w.gregorian}T23:59:59+03:00`).getTime() + 5 * 86400000);
+/** نهاية ورد الأسبوع: آخر الخميس بتوقيت الرياض (السبت + 5 أيام، 23:59) — بعد إزاحة إيقافٍ وقع فيه */
+export function readingDeadline(w: Pick<LiveWeek, "gregorian" | "pause">): Date {
+  return afterPauses(new Date(new Date(`${w.gregorian}T23:59:59+03:00`).getTime() + 5 * 86400000), weekStartMs(w), w.pause);
 }
 
 /** بطاقةٌ صفحاتها أكثر من ضعف نصاب أسبوعها — تُوسم لمدير المشروع فيتحقّق منها */

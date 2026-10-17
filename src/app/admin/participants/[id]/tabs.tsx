@@ -15,12 +15,13 @@ import { REPORT_ROWS } from "@/lib/report";
 import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, daysLabel, pagesText } from "@/lib/utils";
 import { EXCUSE_KINDS, EXCUSE_STATUS } from "@/lib/excuses";
-import { formatDateTime, formatShort, reportDueFrom, todayKey } from "@/lib/dates";
+import { formatDateTime, formatShort, todayKey } from "@/lib/dates";
 import { toItem, withFiles } from "@/lib/attachments";
 import { buildTimeline } from "@/lib/timeline";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { getCompetencies, getContinuous, getProjectRubric } from "@/lib/content";
-import { weekResolver } from "@/lib/weeks";
+import { pauseOf, reportDue, weekResolver } from "@/lib/weeks";
+import { isFrozen } from "@/lib/pause";
 import { dueFor, waitingCounts, type ParticipantRows, type ProgramData } from "@/lib/participant-data";
 import { cardPages, equivalentDays, isLargeAmount, readingByWeek, readingTotals, weekQuota } from "@/lib/reading-quota";
 import { daysLate, overdueLabel, weekName, type Obligation, type ObligationsResult } from "@/lib/obligations";
@@ -197,7 +198,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                       <Link href={`/admin/tasks/${a.id}`} prefetch={false} className="font-medium hover:underline">{a.title}</Link>
                     </div>
                     <div className="flex items-start gap-1 shrink-0">
-                      {returned ? <Badge tone="ink">مُرجَع لصاحبه</Badge> : total != null ? <Badge tone="ink">{total}/16</Badge> : s ? <Badge>بانتظار التقييم</Badge> : due < now ? <Badge tone="ink">لم يُسلَّم — {overdueLabel(daysLate(due, now))}</Badge> : <Badge tone="soft">لم يُسلَّم بعد</Badge>}
+                      {returned ? <Badge tone="ink">مُرجَع لصاحبه</Badge> : total != null ? <Badge tone="ink">{total}/16</Badge> : s ? <Badge>بانتظار التقييم</Badge> : isFrozen(due, pauseOf(program.weeks)) ? <Badge tone="soft">موقوف حتى الاستئناف</Badge> : due < now ? <Badge tone="ink">لم يُسلَّم — {overdueLabel(daysLate(due, now, pauseOf(program.weeks)))}</Badge> : <Badge tone="soft">لم يُسلَّم بعد</Badge>}
                       {s && <ItemActions userId={userId} tab="work" kind="SUBMISSION" activity="SUBMISSION" id={s.id} label={`تسليم «${a.title}»`} returned={returned} />}
                     </div>
                   </div>
@@ -228,7 +229,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
         <div className="space-y-3">
           {weeks.map((w) => {
             const r = reportOf.get(w.number);
-            const due = reportDueFrom(w.gregorian);
+            const due = reportDue(w);
             const returned = r ? openReturnFor(rows.returns, "WEEKLY_REPORT", r.id) : undefined;
             const l = itemLinks(userId, "work", "WEEKLY_REPORT", r?.id ?? String(w.number));
             const future = due > now && !r;
@@ -241,7 +242,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                     <div className="text-xs text-muted">موعده {formatDateTime(due)}{r ? ` · سُلّم ${formatDateTime(r.submittedAt)}${r.submittedAt > due ? " — بعد موعده" : ""}` : ""}</div>
                   </div>
                   <div className="flex items-start gap-1 shrink-0">
-                    {returned ? <Badge tone="ink">مُرجَع لصاحبه</Badge> : r ? (r.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge>بانتظار المراجعة</Badge>) : future ? <Badge tone="soft">لم يحن</Badge> : <Badge tone="ink">لم يُسلَّم — {overdueLabel(daysLate(due, now))}</Badge>}
+                    {returned ? <Badge tone="ink">مُرجَع لصاحبه</Badge> : r ? (r.reviewedAt ? <Badge tone="ink">تمت المراجعة</Badge> : <Badge>بانتظار المراجعة</Badge>) : future ? <Badge tone="soft">لم يحن</Badge> : isFrozen(due, pauseOf(program.weeks)) ? <Badge tone="soft">موقوف حتى الاستئناف</Badge> : <Badge tone="ink">لم يُسلَّم — {overdueLabel(daysLate(due, now, pauseOf(program.weeks)))}</Badge>}
                     {r && <ItemActions userId={userId} tab="work" kind="WEEKLY_REPORT" activity="WEEKLY_REPORT" id={r.id} label={`تقرير ${weekName(w.number)}`} returned={returned} />}
                   </div>
                 </div>

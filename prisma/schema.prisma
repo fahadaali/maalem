@@ -64,6 +64,15 @@ model Cohort {
   active    Boolean   @default(false)
   closedAt  DateTime?
   createdAt DateTime  @default(now())
+  /// بداية الإيقاف المؤقت المفتوح — فارغةً: الدفعة تعمل
+  pausedAt    DateTime?
+  pauseReason String?
+  /// اسم مدير المشروع الذي أوقفها — يُنقل إلى السجل عند الاستئناف
+  pausedBy    String?
+  /// سبت العودة المتوقع (YYYY-MM-DD) — للعرض والاقتراح، لا يُستأنف به تلقائياً
+  pauseUntil  String?
+  /// سجلّ الإيقافات المنتهية JSON: بدايتها ونهايتها وإزاحتها وما أُزيح بها (src/lib/pause.ts)
+  pauses      String    @default("[]")
 
   users         User[]
   weeks         ProgramWeek[]

@@ -1,6 +1,7 @@
 import AppShell from "@/components/shell/AppShell";
 import { isPreview, requireParticipantView } from "@/lib/auth";
 import PreviewBanner from "@/components/PreviewBanner";
+import PauseBanner from "@/components/PauseBanner";
 import { PARTICIPANT_NAV } from "./nav";
 import { optional } from "@/lib/db";
 import { getObligations } from "@/lib/obligations";
@@ -20,7 +21,10 @@ export default async function ParticipantLayout({ children }: { children: React.
   return (
     <AppShell user={user} items={PARTICIPANT_NAV} base="/app" badges={{ "/app/tasks": outstanding }}>
       {preview && <PreviewBanner />}
-      <div className={preview ? "preview-readonly" : undefined}>{children}</div>
+      <div className={preview ? "preview-readonly" : undefined}>
+        <PauseBanner audience="participant" />
+        {children}
+      </div>
     </AppShell>
   );
 }

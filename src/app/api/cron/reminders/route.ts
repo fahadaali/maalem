@@ -6,7 +6,8 @@ import { currentWeekNumber, getWeekByNumber, getWeeks } from "@/lib/weeks";
 import { readingTotals, weekQuota } from "@/lib/reading-quota";
 import { pagesText } from "@/lib/utils";
 import { peekCronSecret, secretMatches } from "@/lib/secrets";
-import { cohortWhere, participantsWhere } from "@/lib/cohort";
+import { activePause, cohortWhere, participantsWhere } from "@/lib/cohort";
+import { routineClock } from "@/lib/pause";
 import { ensureSchema } from "@/lib/setup";
 
 /**
@@ -29,9 +30,20 @@ export async function GET(req: Request) {
 
   const now = new Date();
   const today = todayKey(now);
-  const wd = weekdayIndex(now);
+  /**
+   * الدفعة موقوفة: لا روتين ولا «يحين غداً». البرنامج لا يجري، والمواعيد التي
+   * تقع في الإيقاف تُزاح عند الاستئناف فلا يُذكَّر أحدٌ بموعدٍ ليس موعده.
+   */
+  if (await activePause()) return NextResponse.json({ ok: true, today, paused: true, sent: [] });
   const weekNo = await currentWeekNumber(now);
   const week = await getWeekByNumber(weekNo);
+  /**
+   * الأسبوع الذي أُوقف في منتصفه يمتدّ بالإزاحة: أيامُه بعد الاستئناف تقابل ما لم
+   * يمرّ منه قبل الإيقاف، فيُقرأ يومُ الروتين من ذلك المقابل — ويأتي تذكير التقرير
+   * يوم خميسه الجديد. وما قبلها فاصلٌ لا روتين فيه، فلا يتكرر لقاءٌ ولا حلقة.
+   */
+  const routine = week ? routineClock(week, now) : now;
+  const wd = weekdayIndex(routine ?? now);
   const sent: string[] = [];
 
   /**
@@ -55,7 +67,7 @@ export async function GET(req: Request) {
   const joinedAt = new Map(participantRows.map((u) => [u.id, u.createdAt]));
   const admins = (await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } })).map((u) => u.id);
 
-  if (week && weekNo >= 0 && weekNo <= 13) {
+  if (week && routine && weekNo >= 0 && weekNo <= 13) {
     if (wd === 6) {
       await once("saturday", async () => {
         await notifyUsers(participants, { title: `اللقاء الحضوري — الأسبوع ${week.label}`, body: week.session, url: `/app/week?week=${weekNo}` });

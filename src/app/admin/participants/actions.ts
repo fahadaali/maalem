@@ -10,6 +10,8 @@ import { isReturnKind, RETURN_KINDS, type ReturnKind } from "@/lib/returns";
 import { closeReturns, fileHref, findOpenReturn, itemOwner } from "@/lib/items";
 import { loadParticipant, loadProgram } from "@/lib/participant-data";
 import { originalDue, daysLate, overdueLabel } from "@/lib/obligations";
+import { pauseOf } from "@/lib/weeks";
+import { isFrozen } from "@/lib/pause";
 
 /**
  * إجراءات مدير المشروع على إدخالات المشارك من ملفه: الإرجاع للتعديل، وإلغاؤه،
@@ -61,7 +63,14 @@ export async function returnItem(formData: FormData) {
   const [rows, program] = await Promise.all([loadParticipant(owner.userId), loadProgram()]);
   const due = rows ? originalDue(kind, owner.due, rows, program.weeks) : null;
   const now = new Date();
-  const when = due ? (due < now ? ` — ${overdueLabel(daysLate(due, now))} عن موعده الأصلي (${formatDateTime(due)})` : ` — موعده ${formatDateTime(due)}`) : "";
+  const pause = pauseOf(program.weeks);
+  const when = due
+    ? isFrozen(due, pause)
+      ? ` — موعده ${formatDateTime(due)}، موقوفٌ مع البرنامج حتى الاستئناف`
+      : due < now
+        ? ` — ${overdueLabel(daysLate(due, now, pause))} عن موعده الأصلي (${formatDateTime(due)})`
+        : ` — موعده ${formatDateTime(due)}`
+    : "";
   const sent = await notifyNow(owner.userId, {
     title: `أُرجع إليك للتعديل: ${owner.title}`,
     body: `${note.slice(0, 140)}${when}`,

@@ -1,6 +1,7 @@
 import AppShell from "@/components/shell/AppShell";
 import { requireRole } from "@/lib/auth";
 import { ADMIN_NAV } from "./nav";
+import PauseBanner from "@/components/PauseBanner";
 
 /** لا تُفهرس: منطقة خلف الجلسة */
 export const metadata = { robots: { index: false, follow: false } };
@@ -9,6 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await requireRole("ADMIN");
   return (
     <AppShell user={user} items={ADMIN_NAV} base="/admin">
+      <PauseBanner audience="admin" />
       {children}
     </AppShell>
   );

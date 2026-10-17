@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { WEEKS } from "./program";
 import { keyToDate } from "./dates";
+import { afterPauses, isFrozen, isHeld, schedulePause, weekStartMs, type SchedulePause } from "./pause";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -87,36 +88,55 @@ export async function buildCalendar(userId: string, cohortId: string | null, app
   const now = new Date();
   const times = await scheduleTimes();
   let weeks: { number: number; label: string; gregorian: string; session: string; circle: string; task: string; meetingPlace?: string | null; remoteUrl?: string | null }[] = WEEKS;
+  let pause: SchedulePause | undefined;
   try {
     const rows = await db.programWeek.findMany({ where: cohortId ? { cohortId } : {}, orderBy: { number: "asc" } });
     if (rows.length) weeks = rows;
   } catch {
     // القاعدة غير مهيأة بعد
   }
+  try {
+    const c = cohortId ? await db.cohort.findUnique({ where: { id: cohortId }, select: { pausedAt: true, pauseReason: true, pauseUntil: true, pauses: true } }) : null;
+    pause = c ? schedulePause(c) : undefined;
+  } catch {
+    // ترحيل الإيقاف لم يُطبَّق بعد
+  }
+  /**
+   * والدفعة موقوفةً لا يُنشر في تقويم الجوال موعدٌ مؤقت: أحداث الأسابيع المؤجَّلة
+   * والمواعيد الواقعة في الإيقاف تغيب حتى الاستئناف، ثم تعود بمواعيدها المُزاحة.
+   */
+  const frozen = (d: Date) => isFrozen(d, pause);
 
   const events: Event[] = [];
   for (const w of weeks) {
     if (w.number < 0 || w.number > 13) continue;
-    events.push({
+    if (isHeld({ ...w, pause })) continue;
+    // ما لم يمضِ من الأسبوع لحظة الإيقاف يُزاح معه، كتذكيرات الروتين
+    const at = (day: number, time: string) => afterPauses(riyadh(keyToDate(w.gregorian), day, time), weekStartMs(w), pause);
+    const sessionAt = at(0, times.sessionTime);
+    const circleAt = at(3, times.circleTime);
+    if (!frozen(sessionAt)) events.push({
       uid: `maalem-session-${w.number}-${userId}@maalem`,
-      start: riyadh(keyToDate(w.gregorian), 0, times.sessionTime),
+      start: sessionAt,
       minutes: times.sessionMinutes,
       summary: `لقاء حضوري — الأسبوع ${w.label}`,
       description: w.session,
       location: w.meetingPlace ?? undefined,
     });
-    events.push({
+    if (!frozen(circleAt)) events.push({
       uid: `maalem-circle-${w.number}-${userId}@maalem`,
-      start: riyadh(keyToDate(w.gregorian), 3, times.circleTime),
+      start: circleAt,
       minutes: times.circleMinutes,
       summary: `حلقة نقاش عن بُعد — الأسبوع ${w.label}`,
       description: w.circle,
       url: w.remoteUrl ?? undefined,
     });
-    if (w.number <= 12) {
+    // التقرير بموعده بعد إزاحة إيقافٍ وقع في أسبوعه
+    const reportAt = at(5, "21:30");
+    if (w.number <= 12 && !frozen(reportAt)) {
       events.push({
         uid: `maalem-report-${w.number}-${userId}@maalem`,
-        start: riyadh(keyToDate(w.gregorian), 5, "21:30"),
+        start: reportAt,
         minutes: 30,
         summary: `تسليم التقرير الأسبوعي — الأسبوع ${w.label}`,
         description: `المهمة: ${w.task}`,
@@ -128,7 +148,7 @@ export async function buildCalendar(userId: string, cohortId: string | null, app
   try {
     const assignments = await db.assignment.findMany({ where: cohortId ? { cohortId } : {}, orderBy: { dueAt: "asc" } });
     for (const a of assignments) {
-      if (!a.dueAt) continue;
+      if (!a.dueAt || frozen(a.dueAt)) continue;
       events.push({
         uid: `maalem-task-${a.id}-${userId}@maalem`,
         start: new Date(a.dueAt.getTime() - 30 * 60_000),

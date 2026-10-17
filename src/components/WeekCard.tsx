@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "@/components/Link";
 import { Video } from "lucide-react";
 import { formatGregorian, keyToDate } from "@/lib/dates";
+import { isHeld } from "@/lib/pause";
 import { cn } from "@/lib/utils";
 import type { LiveWeek } from "@/lib/weeks";
 import type { RowState, WeekState } from "@/lib/week-state";
@@ -53,6 +54,8 @@ export default function WeekCard({
           {week.hijri} · {formatGregorian(keyToDate(week.gregorian))}
         </p>
         {current && <span className="inline-flex items-center rounded-full bg-paper text-ink px-2.5 py-0.5 text-xs mt-3">الأسبوع الحالي</span>}
+        {/* والدفعة موقوفةً تاريخ هذا الأسبوع مؤقت: يُحدَّد عند الاستئناف */}
+        {isHeld(week) && <span className="inline-flex items-center rounded-full bg-paper text-ink px-2.5 py-0.5 text-xs mt-3">مؤجَّل حتى الاستئناف</span>}
       </header>
 
       {week.note && (
