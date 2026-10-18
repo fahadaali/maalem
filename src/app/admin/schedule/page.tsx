@@ -12,6 +12,7 @@ import { SCHEDULE_NOTE } from "@/lib/program";
 import { DEFAULT_WEEKLY_PAGES, weekQuota } from "@/lib/reading-quota";
 import { pagesText } from "@/lib/utils";
 import type { LiveWeek } from "@/lib/weeks";
+import { isHeld } from "@/lib/pause";
 
 export const metadata = { title: "جدول البرنامج" };
 
@@ -61,7 +62,12 @@ export default async function AdminSchedulePage({ searchParams }: { searchParams
         يتراكم مع كل نقرة، ويحفظ في أسبوعه القديم. والمفتاح الواحد على الحاوية يُعيد
         رسم البطاقة بنماذجها كلها مع كل أسبوع.
       */}
-      <Card key={w.number} title={`الأسبوع ${w.label}`} action={w.number === cur ? <span className="badge badge-ink">الأسبوع الحالي</span> : undefined}>
+      <Card key={w.number} title={`الأسبوع ${w.label}`} action={w.number === cur ? <span className="badge badge-ink">الأسبوع الحالي</span> : isHeld(w) ? <span className="badge">مؤجَّل حتى الاستئناف</span> : undefined}>
+        {isHeld(w) && (
+          <p className="text-xs text-muted mb-3">
+            الدفعة موقوفة مؤقتاً، وهذا الأسبوع يبدأ بعد الإيقاف: تاريخه هنا مؤقت، ويُزاح مع مهامّه عند الاستئناف بأسابيع كاملة.
+          </p>
+        )}
         <form action={saveWeek}>
           <input type="hidden" name="number" value={w.number} />
           <div className="grid md:grid-cols-2 gap-3">

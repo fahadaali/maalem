@@ -1,6 +1,7 @@
 import { cache } from "react";
-import { keyToDate, reportDueFrom, todayKey } from "./dates";
-import { resolveCurrentWeek, weekResolver, type LiveWeek } from "./weeks";
+import { calendarDays, keyToDate } from "./dates";
+import { pauseOf, reportDue, resolveCurrentWeek, weekResolver, type LiveWeek } from "./weeks";
+import { afterPauses, isFrozen, lateDays, programClock, weekStartMs, type SchedulePause } from "./pause";
 import { dueFor, loadParticipant, loadParticipantsOnce, loadProgram, type ParticipantRows, type ProgramData } from "./participant-data";
 import { readingByWeek, readingDeadline, weekQuota } from "./reading-quota";
 import { RETURN_KINDS, returnedIds, type OpenReturn, type ReturnKind } from "./returns";
@@ -64,18 +65,20 @@ export type ObligationsResult = {
   otherCohort: boolean;
   /** رقم الأسبوع الحالي: -1 قبل البرنامج، 15 بعد انتهائه */
   currentWeek: number;
+  /** حالة إيقاف الدفعة: منها يُكتب العدّاد تحت كل بند، ويُعرف المجمَّد */
+  pause?: SchedulePause;
 };
 
 const DAY = 86400000;
 
-/** آخر لحظة في أسبوع البرنامج: الجمعة 23:59:59 بتوقيت الرياض */
-export function weekEnd(w: Pick<LiveWeek, "gregorian">): Date {
-  return new Date(keyToDate(w.gregorian).getTime() + 7 * DAY - 1000);
+/** آخر لحظة في أسبوع البرنامج: الجمعة 23:59:59 بتوقيت الرياض — بعد إزاحة إيقافٍ وقع فيه */
+export function weekEnd(w: Pick<LiveWeek, "gregorian" | "pause">): Date {
+  return afterPauses(new Date(keyToDate(w.gregorian).getTime() + 7 * DAY - 1000), weekStartMs(w), w.pause);
 }
 
 /** ثلاثة أيام بعد اللقاء الافتتاحي، العاشرة مساءً — موعد الخطة والميثاق والتشخيص القبلي */
-function openingDeadline(w0: Pick<LiveWeek, "gregorian">): Date {
-  return new Date(keyToDate(w0.gregorian).getTime() + 3 * DAY + 22 * 3600000);
+function openingDeadline(w0: Pick<LiveWeek, "gregorian" | "pause">): Date {
+  return afterPauses(new Date(keyToDate(w0.gregorian).getTime() + 3 * DAY + 22 * 3600000), weekStartMs(w0), w0.pause);
 }
 
 /**
@@ -124,14 +127,12 @@ export function overdueLabel(days: number): string {
   return `متأخر ${days} يوماً`;
 }
 
-/** الأيام بين تاريخين بأيام التقويم في الرياض لا بفترات أربعٍ وعشرين ساعة */
-function calendarDays(from: Date, to: Date): number {
-  return Math.round((keyToDate(todayKey(to)).getTime() - keyToDate(todayKey(from)).getTime()) / DAY);
-}
-
-/** أيام التأخر بأيام التقويم: ما فات مساء أمس متأخرٌ يوماً، وما فات صباح اليوم «فات موعده اليوم» */
-export function daysLate(due: Date, now: Date): number {
-  return Math.max(0, calendarDays(due, now));
+/**
+ * أيام التأخر بأيام التقويم: ما فات مساء أمس متأخرٌ يوماً، وما فات صباح اليوم «فات موعده اليوم».
+ * وأيام إيقاف الدفعة لا تُحسب تأخيراً، وأثناءه يقف العدّاد — فيُمرَّر الإيقاف من الجدول.
+ */
+export function daysLate(due: Date, now: Date, pause?: SchedulePause): number {
+  return lateDays(due, now, pause);
 }
 
 /** الأيام الباقية بأيام التقويم: موعدٌ الليلة «التسليم اليوم»، وغداً «بقي يوم واحد» */
@@ -139,10 +140,11 @@ export function daysLeft(due: Date, now: Date): number {
   return Math.max(0, calendarDays(now, due));
 }
 
-/** سطر العدّاد تحت البند: كم بقي، أو كم تأخّر عن موعده (الأصلي للمُرجَع) */
-export function timingLabel(o: Pick<Obligation, "dueAt" | "state">, now: Date): string {
+/** سطر العدّاد تحت البند: كم بقي، أو كم تأخّر عن موعده (الأصلي للمُرجَع)، أو أنه موقوفٌ مع الدفعة */
+export function timingLabel(o: Pick<Obligation, "dueAt" | "state">, now: Date, pause?: SchedulePause): string {
   if (!o.dueAt || o.state === "done") return "";
-  if (o.dueAt.getTime() < now.getTime()) return overdueLabel(daysLate(o.dueAt, now));
+  if (isFrozen(o.dueAt, pause)) return "موقوف حتى الاستئناف";
+  if (o.dueAt.getTime() < now.getTime()) return overdueLabel(daysLate(o.dueAt, now, pause));
   return remaining(daysLeft(o.dueAt, now));
 }
 
@@ -154,10 +156,16 @@ function hoursText(n: number): string {
   return v <= 10 ? `${v} ساعات` : `${v} ساعة`;
 }
 
-export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now: Date = new Date()): ObligationsResult {
+export function obligationsFrom(rows: ParticipantRows, program: ProgramData, realNow: Date = new Date()): ObligationsResult {
   const { weeks } = program;
+  /**
+   * ساعة البرنامج لا ساعة الحائط: والدفعة موقوفةً يقف الزمن عند بدء الإيقاف، فما
+   * فات موعده قبله متأخرٌ كما كان، وما موعده بعده لا يتأخر — ولا يتقدّم الأسبوع.
+   */
+  const pause = pauseOf(weeks);
+  const now = programClock(realNow, pause);
   const cur = resolveCurrentWeek(weeks, now);
-  const empty: ObligationsResult = { items: [], outstanding: 0, counts: { returned: 0, overdue: 0, due: 0, upcoming: 0, done: 0 }, otherCohort: false, currentWeek: cur };
+  const empty: ObligationsResult = { items: [], outstanding: 0, counts: { returned: 0, overdue: 0, due: 0, upcoming: 0, done: 0 }, otherCohort: false, currentWeek: cur, pause };
   if (rows.user.role !== "PARTICIPANT") return empty;
   if (rows.user.cohortId && program.cohortId && rows.user.cohortId !== program.cohortId) return { ...empty, otherCohort: true };
 
@@ -228,7 +236,7 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
   const tasksOf = (n: number) => program.weekTasks.filter((t) => t.week === n).map((t) => t.title);
   for (const w of weeks) {
     if (w.number < 0 || w.number > 12) continue;
-    const due = reportDueFrom(w.gregorian);
+    const due = reportDue(w);
     if (due.getTime() < joinedAt) continue;
     const r = reportOf.get(w.number);
     const tasks = tasksOf(w.number);
@@ -410,7 +418,7 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
 
   // ——— ما يُنجز مرة واحدة ———
   // ومن انضمّ بعد الافتتاح فمهلته ثلاثة أيام من انضمامه، لا موعدٌ فات قبل أن يأتي
-  const openDue = w0 ? new Date(Math.max(openingDeadline(w0).getTime(), joinedAt + 3 * DAY)) : null;
+  const openDue = w0 ? new Date(Math.max(openingDeadline(w0).getTime(), afterPauses(new Date(joinedAt + 3 * DAY), joinedAt, pause).getTime())) : null;
   if (!rows.user.charterAcceptedAt) {
     items.push({ key: "charter", kind: "CHARTER", group: "other", title: "توقيع ميثاق المشاركة", dueAt: openDue, state: stateOf(false, openDue), href: "/app/charter", action: "وقّع الميثاق", detail: "شرطٌ لبدء البرنامج ومنح وثيقة الإتمام" });
   }
@@ -500,7 +508,7 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, now
   for (const i of items) counts[i.state]++;
   // بعد انتهاء البرنامج لا عدّاد يلاحق صاحبه — والمتأخر باقٍ في «مهامي» يُرى
   const outstanding = cur >= 15 ? counts.returned : counts.returned + counts.overdue;
-  return { items: sortObligations(items), outstanding, counts, otherCohort: false, currentWeek: cur };
+  return { items: sortObligations(items), outstanding, counts, otherCohort: false, currentWeek: cur, pause };
 }
 
 /** أُنجز ما تُذكر به الوحدة داخل مهمةٍ مطويّةٍ فيها؟ */
@@ -584,7 +592,7 @@ export function originalDue(
       return rec.assignment ? dueFor(rec.assignment, rows.extensions) : null;
     case "WEEKLY_REPORT": {
       const w = rec.week != null ? byNumber.get(rec.week) : undefined;
-      return w ? reportDueFrom(w.gregorian) : null;
+      return w ? reportDue(w) : null;
     }
     case "READING_CARD": {
       const w = weekOfDate(rec.date);

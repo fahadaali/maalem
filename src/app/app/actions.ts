@@ -16,6 +16,8 @@ import { getCharter, getCompetencies } from "@/lib/content";
 import { isCorrect } from "@/lib/quiz";
 import { EXCUSE_KINDS, isExcuseKind } from "@/lib/excuses";
 import { closeReturns, findOpenReturn, markResubmitted } from "@/lib/items";
+import { activePause } from "@/lib/cohort";
+import { getObligations, type Obligation } from "@/lib/obligations";
 
 function ok(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
@@ -33,6 +35,26 @@ async function participant() {
   }
   redirect(homeFor(user.role));
 }
+
+/**
+ * والبرنامج موقوف لا يُسلَّم إلا ما تأخّر قبل الإيقاف: ما لم يحن موعده، أو يقع
+ * موعده في الإيقاف، يُفتح عند الاستئناف بموعده المُزاح. والحَكَم بنود «مهامي»
+ * نفسها بساعة البرنامج الواقفة، فما يراه المشارك متأخراً هو ما يُقبل منه.
+ * ولا كلفة لها والدفعة تعمل.
+ */
+async function pauseGate(userId: string, match: (o: Obligation) => boolean, back: string) {
+  const pause = await activePause();
+  if (!pause) return;
+  const ob = await getObligations(userId);
+  // مشاركٌ في دفعةٍ غير النشطة لا يمسّه إيقافها
+  if (!ob || ob.otherCohort) return;
+  const open = ob.items.some((o) => match(o) && (o.state === "overdue" || (o.state === "returned" && !!o.dueAt && o.dueAt.getTime() < pause.since)));
+  if (!open) fail(back, "البرنامج موقوف مؤقتاً: يُتاح تسليم ما تأخّر قبل الإيقاف وحده، ويُفتح الباقي عند الاستئناف");
+}
+
+/** البند نفسه، أو مهمةٌ مطويّةٌ فيها وحدته («خطة التعلم + خطة المحفوظ» تُكتب في صفحة الخطة) */
+const keyOr = (keys: string[], href?: string) => (o: Obligation) =>
+  keys.some((k) => (k.endsWith(":") ? o.key.startsWith(k) : o.key === k)) || (!!href && o.kind === "ASSIGNMENT" && !!o.related?.some((r) => r.href === href));
 
 // ——— بطاقة القراءة اليومية ———
 
@@ -53,6 +75,7 @@ function readCardForm(formData: FormData, path: string) {
 
 export async function addReadingCard(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["reading"]), "/app/reading");
   const data = readCardForm(formData, "/app/reading");
   // بطاقة واحدة لكل يوم قراءة كما تنص الخطة؛ ومن قرأ أكثر في يومه كتب صفحاته كلها في بطاقته — فالمقدار بالصفحات
   if (await db.readingCard.findFirst({ where: { userId: user.id, date: data.date }, select: { id: true } })) fail("/app/reading", "سجّلت بطاقة لهذا اليوم من قبل — عدّلها وأضف إليها صفحاتك");
@@ -69,6 +92,7 @@ export async function updateReadingCard(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const path = `/app/reading?edit=${encodeURIComponent(id)}`;
+  await pauseGate(user.id, keyOr([`card:${id}`, "reading"]), path);
   const card = await db.readingCard.findFirst({ where: { id, userId: user.id }, select: { id: true, reviewedAt: true } });
   if (!card) fail("/app/reading", "البطاقة غير موجودة");
   const returned = await findOpenReturn("READING_CARD", id);
@@ -99,6 +123,7 @@ export async function saveWeeklyReport(formData: FormData) {
   const week = num(formData.get("week"), -1);
   const path = `/app/reports/${week}`;
   if (week < 0 || week > 12) fail("/app/reports", "أسبوع غير صحيح");
+  await pauseGate(user.id, keyOr([`report:${week}`]), path);
   const info = await getWeekByNumber(week);
   if (!info) fail("/app/reports", "أسبوع غير موجود");
 
@@ -159,6 +184,7 @@ export async function saveWeeklyReport(formData: FormData) {
 export async function submitQuiz(formData: FormData) {
   const user = await participant();
   const quizId = str(formData.get("quizId"));
+  await pauseGate(user.id, keyOr([`quiz:${quizId}`]), `/app/quizzes/${quizId}`);
   const quiz = await db.quiz.findFirst({ where: { id: quizId, ...(await cohortWhere()) }, include: { questions: { orderBy: { order: "asc" } } } });
   if (!quiz || !quiz.published) fail("/app/quizzes", "الاختبار غير متاح");
   if (quiz.questions.length === 0) fail(`/app/quizzes/${quizId}`, "هذا الاختبار بلا أسئلة بعد");
@@ -182,6 +208,7 @@ export async function submitAssignment(formData: FormData) {
   const content = str(formData.get("content"));
   const link = str(formData.get("link"));
   const path = `/app/tasks/${assignmentId}`;
+  await pauseGate(user.id, keyOr([`assignment:${assignmentId}`]), path);
   if (!content) fail(path, "اكتب وصف ما أنجزته");
   if (link && !/^https?:\/\//i.test(link)) fail(path, "الرابط يجب أن يبدأ بـ http أو https");
   const assignment = await db.assignment.findFirst({ where: { id: assignmentId, ...(await cohortWhere()) } });
@@ -203,6 +230,7 @@ export async function submitAssignment(formData: FormData) {
 // ——— المعايشة الميدانية ———
 export async function addFieldLog(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["field"], "/app/field"), "/app/field");
   const dateKey = str(formData.get("date")) || todayKey();
   const hours = num(formData.get("hours"));
   const mentorName = str(formData.get("mentorName"));
@@ -235,6 +263,7 @@ export async function updateFieldLog(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
   const path = `/app/field?edit=${encodeURIComponent(id)}`;
+  await pauseGate(user.id, keyOr([`fieldlog:${id}`, "field"], "/app/field"), path);
   const log = await db.fieldLog.findFirst({ where: { id, userId: user.id }, select: { approvedAt: true } });
   if (!log) fail("/app/field", "السجل غير موجود");
   if (log.approvedAt && !(await findOpenReturn("FIELD_LOG", id))) fail("/app/field", "اعتُمد هذا السجل فأُقفل");
@@ -254,6 +283,7 @@ export async function updateFieldLog(formData: FormData) {
 // ——— الدور القيادي وتقييم الأقران ———
 export async function addLeadershipActivity(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["leadership"]), "/app/leadership");
   const title = str(formData.get("title"));
   const dateKey = str(formData.get("date")) || todayKey();
   const report = str(formData.get("report"));
@@ -268,6 +298,7 @@ export async function addLeadershipActivity(formData: FormData) {
 export async function updateLeadershipReport(formData: FormData) {
   const user = await participant();
   const id = str(formData.get("id"));
+  await pauseGate(user.id, keyOr([`leadership:${id}`, "leadership"]), "/app/leadership");
   const report = str(formData.get("report"));
   const { count } = await db.leadershipActivity.updateMany({ where: { id, userId: user.id }, data: { report: report || null } });
   const resubmitted = count ? await markResubmitted("LEADERSHIP", id, user) : false;
@@ -277,6 +308,8 @@ export async function updateLeadershipReport(formData: FormData) {
 
 export async function submitPeerEvaluation(formData: FormData) {
   const user = await participant();
+  // تقييم الأقران بلا موعد، فلا يتأخر قبل الإيقاف — يُفتح عند الاستئناف
+  await pauseGate(user.id, keyOr(["peer-eval"]), "/app/leadership");
   const activityId = str(formData.get("activityId"));
   // نشاط زميل في الدفعة نفسها فقط، لا نشاط مشارك موقوف أو من دفعة أخرى
   const activity = await db.leadershipActivity.findFirst({ where: { id: activityId, user: await participantsWhere() } });
@@ -295,6 +328,7 @@ export async function submitPeerEvaluation(formData: FormData) {
 // ——— مشروع التخرج ———
 export async function saveProject(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["project:"], "/app/project"), "/app/project");
   const topic = str(formData.get("topic"));
   const problem = str(formData.get("problem"));
   // حقلا الروابط لا يظهران إلا بعد اعتماد الموضوع، فلا يُمحى رابط محفوظ حين يُحفظ نموذج بلا حقل له
@@ -326,6 +360,7 @@ export async function saveProject(formData: FormData) {
 // ——— خطة التعلم الشخصية والوقفات التدبرية ———
 export async function saveLearningPlan(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["plan"], "/app/plan"), "/app/plan");
   const goals = str(formData.get("goals"));
   const weeklyPlan = str(formData.get("weeklyPlan"));
   const memorization = str(formData.get("memorization"));
@@ -343,6 +378,7 @@ export async function saveLearningPlan(formData: FormData) {
 
 export async function addTadabbur(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["tadabbur"]), "/app/plan");
   const week = num(formData.get("week"), -1);
   const topic = str(formData.get("topic"));
   const notes = str(formData.get("notes"));
@@ -415,6 +451,7 @@ export async function markAllRead(formData: FormData) {
 // ——— ميثاق المشاركة ———
 export async function acceptCharter(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["charter"]), "/app/charter");
   const name = str(formData.get("name"));
   const agreed = (await getCharter()).every((_, i) => formData.get(`item_${i}`) === "on");
   if (!agreed) fail("/app/charter", "أقرّ ببنود الميثاق كلها قبل التوقيع");
@@ -431,6 +468,7 @@ export async function acceptCharter(formData: FormData) {
 export async function saveDiagnostic(formData: FormData) {
   const user = await participant();
   const stage = str(formData.get("stage")) === "POST" ? "POST" : "PRE";
+  await pauseGate(user.id, keyOr([stage === "POST" ? "diagnostic:post" : "diagnostic:pre"]), "/app/diagnostic");
   const scores: Record<string, number> = {};
   for (const c of await getCompetencies()) {
     const v = num(formData.get(c.slug), 0);
@@ -454,6 +492,7 @@ export async function saveDiagnostic(formData: FormData) {
 // ——— استبانة رضا المشاركين (مجهولة: لا تُربط الإجابات بصاحبها) ———
 export async function submitSurvey(formData: FormData) {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["survey"]), "/app/survey");
   const me = await db.user.findUnique({ where: { id: user.id }, select: { surveyDoneAt: true } });
   if (me?.surveyDoneAt) fail("/app/survey", "سبق أن عبّأت الاستبانة، شكراً لك");
   const answers: Record<string, number> = {};
@@ -474,6 +513,7 @@ export async function submitSurvey(formData: FormData) {
 // ——— تسليم ملف الإنجاز النهائي ———
 export async function submitPortfolio() {
   const user = await participant();
+  await pauseGate(user.id, keyOr(["portfolio"], "/app/portfolio"), "/app/portfolio");
   const me = await db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } });
   if (me?.portfolioSubmittedAt) fail("/app/portfolio", "سلّمت ملف الإنجاز من قبل");
   await db.user.update({ where: { id: user.id }, data: { portfolioSubmittedAt: new Date() } });

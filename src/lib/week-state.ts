@@ -1,6 +1,7 @@
 import { ATTENDANCE_LABELS } from "./utils";
-import { daysUntil, reportDueFrom } from "./dates";
-import { weekResolver, type LiveWeek } from "./weeks";
+import { daysUntil } from "./dates";
+import { reportDue, weekResolver, type LiveWeek } from "./weeks";
+import { isFrozen } from "./pause";
 import { loadParticipant, loadProgram } from "./participant-data";
 import { readingByWeek } from "./reading-quota";
 import { returnedIds } from "./returns";
@@ -96,8 +97,9 @@ export async function buildWeekStates(userId: string, weeks: LiveWeek[], now: Da
       if (reported.has(n)) {
         state.report = { done: true, label: "التقرير مسلَّم" };
       } else {
-        const left = daysUntil(reportDueFrom(w.gregorian), now);
-        state.report = { done: false, label: left >= 0 ? remaining(left) : "فات الموعد" };
+        const due = reportDue(w);
+        const left = daysUntil(due, now);
+        state.report = { done: false, label: isFrozen(due, w.pause) ? "موقوف حتى الاستئناف" : left >= 0 ? remaining(left) : "فات الموعد" };
       }
     }
 

@@ -6,11 +6,11 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { notifyUsers, notifyRole } from "@/lib/notify";
 import { num, str } from "@/lib/utils";
-import { formatHijri, keyToDate, todayKey } from "@/lib/dates";
+import { formatGregorian, formatHijri, keyToDate, todayKey } from "@/lib/dates";
 import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
-import { activeCohortId, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
+import { activeCohortId, activePause, cohortWhere, participantsWhere, requireCohortId } from "@/lib/cohort";
 import { deleteObject } from "@/lib/storage";
 import { computeGrades, levelFor } from "@/lib/grades";
 import { saveEmailConfig, clearEmailConfig, sendEmail } from "@/lib/email";
@@ -24,12 +24,14 @@ import { seedAssignmentsFor } from "@/lib/seed";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
 import { closeReturns } from "@/lib/items";
-import { missingAssignments } from "@/lib/obligations";
+import { missingAssignments, weekName } from "@/lib/obligations";
 import { loadProgram } from "@/lib/participant-data";
 import { isReturnKind } from "@/lib/returns";
 import { isFolderColor } from "@/lib/folders";
 import { MAX_BATCH_FILES, kindFromContentType, titleFromFilename } from "@/lib/files";
 import { isHelpAudience } from "@/lib/help";
+import { countShift, isSaturdayKey, parsePauseLog, resumeError, shiftDaysFor, weeksText, type PauseEntry } from "@/lib/pause";
+import { applyShift, loadResumeInputs, resumeItems, savePending, unfinished } from "@/lib/resume";
 // العودة برسالة تضع المعامل قبل المرساة، فتعود الإجراءات إلى عنصرها في ملف المشارك
 import { ok, fail, safeBack } from "@/lib/redirects";
 
@@ -1013,8 +1015,170 @@ export async function closeCohort(formData: FormData) {
   const id = str(formData.get("id"));
   const c = await db.cohort.findUnique({ where: { id } });
   if (!c) fail("/admin/cohorts", "الدفعة غير موجودة");
+  // دفعةٌ موقوفة مواعيدها معلّقة على الاستئناف: إغلاقها يتركها بلا جدولٍ صحيح
+  if (!c.closedAt && c.pausedAt) fail("/admin/cohorts", "الدفعة موقوفة مؤقتاً — استأنفها أولاً ثم أغلقها");
   await db.cohort.update({ where: { id }, data: { closedAt: c.closedAt ? null : new Date() } });
   ok("/admin/cohorts", c.closedAt ? "أُعيد فتح الدفعة" : "أُغلقت الدفعة");
+}
+
+// ——— الإيقاف المؤقت والاستئناف ———
+
+/** مشاركو الدفعة ومشرفوها النشطون: لكلٍّ منهم إشعارٌ برابط منطقته */
+async function cohortAudience(cohortId: string) {
+  const users = await db.user.findMany({ where: { cohortId, active: true, role: { in: ["PARTICIPANT", "MENTOR"] } }, select: { id: true, role: true } });
+  return { participants: users.filter((u) => u.role === "PARTICIPANT").map((u) => u.id), mentors: users.filter((u) => u.role === "MENTOR").map((u) => u.id) };
+}
+
+async function notifyCohort(cohortId: string, title: string, body: string) {
+  const { participants, mentors } = await cohortAudience(cohortId);
+  await notifyUsers(participants, { title, body, url: "/app/tasks" });
+  await notifyUsers(mentors, { title, body, url: "/mentor" });
+}
+
+/** «السبت 12 جمادى الأولى 1448هـ (2 نوفمبر 2026)» */
+function saturdayText(key: string): string {
+  const d = keyToDate(key);
+  return `السبت ${formatHijri(d)} (${formatGregorian(d)})`;
+}
+
+/** سبت العودة المتوقع: فارغ، أو سبتٌ بعد اليوم */
+function untilFrom(formData: FormData): string | null {
+  const until = str(formData.get("until"));
+  if (!until) return null;
+  if (!isSaturdayKey(until)) fail("/admin/cohorts", "العودة المتوقعة يوم سبت");
+  if (until <= todayKey()) fail("/admin/cohorts", "العودة المتوقعة بعد اليوم");
+  return until;
+}
+
+function refreshPaused() {
+  revalidatePath("/admin", "layout");
+  revalidatePath("/app", "layout");
+  revalidatePath("/mentor", "layout");
+  revalidatePath("/program/schedule");
+}
+
+/**
+ * إيقاف الدفعة النشطة مؤقتاً. لا تُمسّ مواعيدها الآن — مدة الإيقاف لا تُعرف بعد —
+ * وإنما يقف زمن البرنامج عند هذه اللحظة: الأسبوع الحالي، وعدّاد التأخير،
+ * والتذكيرات، والتسليم إلا ما تأخّر قبلها. والإزاحة عند الاستئناف.
+ */
+export async function pauseCohort(formData: FormData) {
+  const me = await admin();
+  const id = str(formData.get("id"));
+  const reason = str(formData.get("reason")).slice(0, 300) || null;
+  const until = untilFrom(formData);
+  const c = await db.cohort.findUnique({ where: { id } });
+  if (!c) fail("/admin/cohorts", "الدفعة غير موجودة");
+  // المنصة تعمل على الدفعة النشطة، فإيقاف غيرها لا أثر له فيما يراه أحد
+  if (!c.active) fail("/admin/cohorts", "يُوقَف مؤقتاً الدفعةُ النشطة وحدها — فعّلها أولاً");
+  if (c.closedAt) fail("/admin/cohorts", "الدفعة مغلقة");
+  // المطالبة قبل العمل: نقرتان أو مديران معاً لا يُوقفانها مرتين ولا يُشعران مرتين
+  const claimed = await db.cohort.updateMany({ where: { id, pausedAt: null, closedAt: null, active: true }, data: { pausedAt: new Date(), pauseReason: reason, pauseUntil: until, pausedBy: me.name } });
+  if (claimed.count === 0) fail("/admin/cohorts", "الدفعة موقوفة من قبل");
+  await notifyCohort(
+    id,
+    "توقّف البرنامج مؤقتاً",
+    [reason, until ? `العودة المتوقعة ${saturdayText(until)}.` : null, "مواعيدك محفوظة، ولا يُحسب عليك تأخيرٌ مدة الإيقاف، ويُتاح تسليم ما تأخّر قبله."].filter(Boolean).join(" "),
+  );
+  refreshPaused();
+  ok("/admin/cohorts", `أُوقفت «${c.name}» مؤقتاً وأُشعر مشاركوها ومشرفوها`);
+}
+
+/** تعديل العودة المتوقعة أثناء الإيقاف، أو مسحها */
+export async function updatePauseUntil(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const until = untilFrom(formData);
+  const c = await db.cohort.findUnique({ where: { id } });
+  if (!c?.pausedAt) fail("/admin/cohorts", "الدفعة ليست موقوفة");
+  if ((c.pauseUntil ?? null) === until) ok("/admin/cohorts", "لم يتغيّر موعد العودة");
+  await db.cohort.updateMany({ where: { id, pausedAt: c.pausedAt }, data: { pauseUntil: until } });
+  await notifyCohort(id, "تغيّر موعد العودة المتوقع", until ? `يُتوقّع استئناف البرنامج ${saturdayText(until)}.` : "لم يُحدَّد بعدُ موعد استئناف البرنامج، وستُشعَر به.");
+  refreshPaused();
+  ok("/admin/cohorts", until ? `العودة المتوقعة الآن ${saturdayText(until)}` : "مُسح موعد العودة المتوقع");
+}
+
+/**
+ * الاستئناف: كل ما يبدأ أو يحين بعد بدء الإيقاف يُزاح أسابيع كاملةً إلى سبت
+ * الاستئناف — الأسابيع والمهام والتمديدات والتذكيرات المحبوسة. والإيقاف يُختم في
+ * السجل، فتُطرح مدته من عدّاد كل متأخر، ويُزاح ما بقي من الأسبوع الذي أُوقف فيه.
+ */
+export async function resumeCohort(formData: FormData) {
+  const me = await admin();
+  const id = str(formData.get("id"));
+  const resumeOn = str(formData.get("resumeOn"));
+  const c = await db.cohort.findUnique({ where: { id } });
+  if (!c) fail("/admin/cohorts", "الدفعة غير موجودة");
+  if (!c.pausedAt) fail("/admin/cohorts", "الدفعة ليست موقوفة");
+  const now = new Date();
+  const paused = { id: c.id, startDate: c.startDate, pausedAt: c.pausedAt };
+  const { ref } = await loadResumeInputs(paused);
+  const bad = resumeError(resumeOn, ref, now);
+  if (bad) fail("/admin/cohorts", bad);
+  const shiftDays = shiftDaysFor(ref, resumeOn);
+  const { items, weeks } = await resumeItems(paused, shiftDays);
+  const log = parsePauseLog(c.pauses);
+  const entry: PauseEntry = {
+    at: c.pausedAt.toISOString(),
+    end: now.toISOString(),
+    shiftDays,
+    resumeOn,
+    reason: c.pauseReason,
+    until: c.pauseUntil,
+    by: c.pausedBy ?? "",
+    resumedBy: me.name,
+    moved: countShift(items),
+    pending: items.length ? items : undefined,
+  };
+  // المطالبة قبل الكتابة، والبنود كلها محفوظةٌ معها: إن انقطع الطلب بعدها أكملها «أكمل الإزاحة»
+  const claimed = await db.cohort.updateMany({
+    where: { id, pausedAt: c.pausedAt },
+    data: { pausedAt: null, pauseReason: null, pauseUntil: null, pausedBy: null, pauses: JSON.stringify([...log, entry]) },
+  });
+  if (claimed.count === 0) fail("/admin/cohorts", "استُؤنفت الدفعة من قبل");
+  const left = await applyShift(items);
+  await savePending(id, [...log, entry], left);
+
+  const next = weeks.filter((w) => w.gregorian >= ref).sort((a, b) => a.gregorian.localeCompare(b.gregorian))[0];
+  const moved = entry.moved;
+  await notifyCohort(
+    id,
+    "استؤنف البرنامج",
+    [
+      next ? `يُستأنف بلقاء ${weekName(next.number)} ${saturdayText(resumeOn)}.` : null,
+      shiftDays ? `وأُزيحت المواعيد المتبقية ${weeksText(shiftDays)}، فلا يُحسب عليك ما وقع في الإيقاف.` : "وتبقى المواعيد كما كانت، ولا تُحسب عليك أيام الإيقاف.",
+      "راجع «مهامي».",
+    ].filter(Boolean).join(" "),
+  );
+  refreshPaused();
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/tasks");
+  revalidatePath("/admin/reminders");
+  const parts = [
+    moved.weeks ? `${moved.weeks} أسبوعاً` : null,
+    moved.tasks ? `${moved.tasks} مهمة` : null,
+    moved.extensions ? `${moved.extensions} تمديداً` : null,
+    moved.reminders ? `${moved.reminders} تذكيراً` : null,
+  ].filter(Boolean);
+  const summary = shiftDays ? (parts.length ? `، وأُزيح ${weeksText(shiftDays)}: ${parts.join("، ")}` : "") : " بلا إزاحة";
+  if (left.length) ok("/admin/cohorts", `استؤنفت «${c.name}»${summary}. بقي ${left.length} بنداً من الإزاحة — اضغط «أكمل الإزاحة»`);
+  ok("/admin/cohorts", `استؤنفت «${c.name}»${summary}، وأُشعر مشاركوها ومشرفوها`);
+}
+
+/** يُكمل إزاحةً انقطع طلبها أو تجاوزت ما يُكتب في طلبٍ واحد */
+export async function completeResume(formData: FormData) {
+  await admin();
+  const id = str(formData.get("id"));
+  const c = await db.cohort.findUnique({ where: { id }, select: { pauses: true } });
+  const u = c ? unfinished(c.pauses) : null;
+  if (!u) ok("/admin/cohorts", "اكتملت الإزاحة");
+  const left = await applyShift(u.pending);
+  await savePending(id, u.log, left);
+  refreshPaused();
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/tasks");
+  revalidatePath("/admin/reminders");
+  ok("/admin/cohorts", left.length ? `بقي ${left.length} بنداً — اضغط «أكمل الإزاحة» مرة أخرى` : "اكتملت إزاحة المواعيد");
 }
 
 // ——— تقييم المشرف المرافق للمشارك ———
@@ -1075,6 +1239,8 @@ export async function saveReminder(formData: FormData) {
     data: { title, body, url: url || null, audience, userId: audience === "ONE" ? userId : null, sendAt, channels, cohortId: await activeCohortId() },
   });
   revalidatePath("/admin/reminders");
+  // تذكيرات الدفعة الموقوفة تُحبس ولا تُرسل، ثم تُزاح مع الجدول عند الاستئناف
+  if (await activePause()) ok("/admin/reminders", "جُدول التذكير — والدفعة موقوفة، فيُحبس حتى الاستئناف ويُزاح موعده مع الجدول");
   ok("/admin/reminders", "جُدول التذكير");
 }
 

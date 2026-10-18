@@ -3,6 +3,8 @@ import type { LucideIcon } from "lucide-react";
 import { BookOpen, ClipboardList, FileText, FolderOpen, Gauge, GraduationCap, ListChecks, Megaphone, MessageSquareHeart, ScrollText, Sparkles, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STATE_LABELS, timingLabel, weekName, type Obligation, type ObligationKind } from "@/lib/obligations";
+import { cohortPause } from "@/lib/cohort";
+import { isFrozen } from "@/lib/pause";
 
 const ICONS: Record<ObligationKind, LucideIcon> = {
   ASSIGNMENT: ClipboardList,
@@ -45,7 +47,7 @@ const KIND_LABELS: Record<ObligationKind, string> = {
  * والمنظومة أحادية اللون: الحال تُقرأ من وزن الشارة لا من لونها — الداكنة لما
  * يحتاج عملاً الآن (المُرجَع والمتأخر)، والخفيفة لما لم يحن أو أُنجز.
  */
-export default function ObligationList({
+export default async function ObligationList({
   items,
   now,
   readOnly,
@@ -56,11 +58,13 @@ export default function ObligationList({
   readOnly?: boolean;
   hrefFor?: (o: Obligation) => string | undefined;
 }) {
+  // أيام إيقاف الدفعة لا تُعدّ تأخيراً، وما موعده في الإيقاف «موقوف»
+  const pause = await cohortPause();
   return (
     <ul className="divide-y divide-line">
       {items.map((o) => {
         const Icon = ICONS[o.kind];
-        const timing = timingLabel(o, now);
+        const timing = timingLabel(o, now, pause);
         const urgent = o.state === "returned" || o.state === "overdue";
         const href = hrefFor ? hrefFor(o) : o.href;
         const badge = o.state === "done" ? `✓ ${o.doneLabel ?? STATE_LABELS.done}` : o.state === "returned" ? STATE_LABELS.returned : timing || STATE_LABELS[o.state];
@@ -81,7 +85,7 @@ export default function ObligationList({
                 <div className="text-sm mt-1 border-s-2 border-ink ps-2 whitespace-pre-wrap">
                   <span className="text-muted">ملاحظة {o.returned.by}: </span>
                   {o.returned.note}
-                  {timing && o.dueAt && o.dueAt < now && <div className="text-xs mt-0.5">{timing} عن موعده الأصلي</div>}
+                  {timing && o.dueAt && o.dueAt < now && !isFrozen(o.dueAt, pause) && <div className="text-xs mt-0.5">{timing} عن موعده الأصلي</div>}
                 </div>
               )}
               {o.detail && <div className="text-xs text-muted mt-0.5">{o.detail}</div>}

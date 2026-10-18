@@ -9,7 +9,8 @@ import { addReadingCard, deleteReadingCard, updateReadingCard } from "../actions
 import { READING_NOTE } from "@/lib/program";
 import { getBookTitles, bookProgress } from "@/lib/content";
 import { formatShort, todayKey } from "@/lib/dates";
-import { resolveCurrentWeek, weekResolver } from "@/lib/weeks";
+import { pauseOf, resolveCurrentWeek, weekResolver } from "@/lib/weeks";
+import { isFrozen } from "@/lib/pause";
 import { loadParticipant, loadProgram } from "@/lib/participant-data";
 import { cardPages, daysLabel, equivalentDays, readingByWeek, readingTotals, weekQuota } from "@/lib/reading-quota";
 import { pagesText } from "@/lib/utils";
@@ -86,7 +87,7 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
                   <div className="min-w-0">
                     <div className="font-medium">{c.book} · ص {c.fromPage}–{c.toPage}</div>
                     <div className="text-muted whitespace-pre-wrap">ملاحظة مدير المشروع: {r.note}</div>
-                    {due && due < now && <div className="text-xs mt-0.5">{overdueLabel(daysLate(due, now))} عن موعد ورد {weekName(wk?.number)}</div>}
+                    {due && due < now && !isFrozen(due, pauseOf(weeks)) && <div className="text-xs mt-0.5">{overdueLabel(daysLate(due, now, pauseOf(weeks)))} عن موعد ورد {weekName(wk?.number)}</div>}
                   </div>
                   <Link href={`/app/reading?edit=${c.id}#form`} className="btn btn-sm shrink-0">عدّل وأعدها</Link>
                 </li>

@@ -86,6 +86,11 @@ export function toLocalInput(d: Date): string {
   return fmt("sv-SE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d).replace(" ", "T");
 }
 
+/** الأيام بين تاريخين بأيام التقويم في الرياض لا بفترات أربعٍ وعشرين ساعة */
+export function calendarDays(from: Date, to: Date): number {
+  return Math.round((keyToDate(todayKey(to)).getTime() - keyToDate(todayKey(from)).getTime()) / DAY_MS);
+}
+
 export function daysUntil(d: Date, now: Date = new Date()): number {
   return Math.ceil((d.getTime() - now.getTime()) / DAY_MS);
 }
