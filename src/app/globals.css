@@ -279,3 +279,65 @@ body:has(.update-banner) { --float-bottom: calc(9.6rem + env(safe-area-inset-bot
   .library-fab, .library-fab-space { display: none; }
   .library-new-bar { display: inline-flex; }
 }
+
+/*
+  شريط التنقّل: يمتدّ من بداية السطر (اليمين) ببطءٍ يتباطأ ولا يبلغ آخره حتى تصل
+  الصفحة فيختفي. يظهر بعد لحظةٍ قصيرة، فالانتقال الفوري لا يُومض به.
+*/
+.nav-progress {
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  height: 2px;
+  z-index: 60;
+  background: var(--ink);
+  transform-origin: right;
+  transform: scaleX(0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.nav-progress.is-active {
+  opacity: 1;
+  transition: opacity 150ms ease 120ms;
+  animation: nav-progress 8s cubic-bezier(0.1, 0.6, 0.2, 1) 120ms forwards;
+}
+@keyframes nav-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(0.92); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress.is-active { animation: none; transform: scaleX(1); opacity: 0.5; }
+}
+
+/*
+  رسالة الحفظ العائمة: تتكرّر رسالةُ أعلى الصفحة في ذيلها حين لا تُرى — الإجراء
+  يعيد إلى عنصرٍ في وسط الصفحة فتبقى رسالته أعلاها خارج الشاشة.
+*/
+.flash-toast {
+  position: fixed;
+  inset-inline: 1rem;
+  bottom: var(--float-bottom);
+  z-index: 55;
+  margin-inline: auto;
+  max-width: 32rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.875rem;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+  animation: flash-in 180ms ease-out;
+}
+.flash-toast[data-tone="error"] { background: var(--paper-3); }
+@keyframes flash-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash-toast { animation: none; }
+}

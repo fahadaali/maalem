@@ -1,3 +1,4 @@
+import DraftKeeper from "@/components/DraftKeeper";
 import Link from "@/components/Link";
 import { notFound } from "next/navigation";
 import { requireParticipantView } from "@/lib/auth";
@@ -65,7 +66,8 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
         {/* مفتاحٌ بالأسبوع: التنقّل بين الأسابيع من طرف العميل يبقي الحقول مركَّبة
             فلا تتبع قيمُها الأسبوعَ الجديد. وحقول المهام مسمّاة بمعرّفاتها، فلولا
             المفتاح لرُصدت إجابةُ أسبوعٍ على مهامّ أسبوعٍ آخر. */}
-        <form key={week} action={saveWeeklyReport}>
+        <DraftKeeper key={week} formId={`report-${week}`} storageKey={`report:${user.id}:${week}`} />
+        <form key={week} id={`report-${week}`} action={saveWeeklyReport}>
           <input type="hidden" name="week" value={week} />
           {show.tasks && (
             <div className="field">
