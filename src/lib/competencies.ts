@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { getCompetencies, programExpectations } from "./content";
 import { emptyParticipant, loadParticipant, loadProgram } from "./participant-data";
-import { readingTotals } from "./reading-quota";
+import { progressFrom } from "./progress";
 import { returnedIds } from "./returns";
 
 /**
@@ -37,12 +37,11 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
   const returnedLogs = returnedIds(rows.returns, "FIELD_LOG");
   const returnedSubs = returnedIds(rows.returns, "SUBMISSION");
   const returnedActs = returnedIds(rows.returns, "LEADERSHIP");
-  const returnedReports = returnedIds(rows.returns, "WEEKLY_REPORT");
-  const reading = readingTotals(rows.cards, program.weeks, new Date(), returnedIds(rows.returns, "READING_CARD"));
+  // ما يُقاس على البرنامج كله — الورد والمعايشة والتقارير — بمقام الدرجة نفسه: بلا ما انقضى قبل الانضمام
+  const due = progressFrom(rows, program);
   const fieldLogs = rows.fieldLogs.filter((f) => f.approvedAt && !returnedLogs.has(f.id));
   const attempts = rows.attempts;
   const tadabbur = rows.tadabbur;
-  const reports = rows.reports.filter((r) => !returnedReports.has(r.id)).length;
   const counted = rows.activities.filter((a) => !returnedActs.has(a.id));
   const activities = counted.length;
   const evals = counted.flatMap((a) => a.evaluations);
@@ -66,8 +65,8 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
 
   const extra: Record<string, Signal[]> = {
     educational: [
-      { label: "صفحات الورد القرائي", value: reading.read, max: reading.required },
-      { label: "ساعات المعايشة المعتمدة", value: Math.round(fieldHours * 10) / 10, max: expected.fieldHours },
+      { label: "صفحات الورد القرائي", value: due.reading.done, max: due.reading.total },
+      { label: "ساعات المعايشة المعتمدة", value: Math.round(fieldHours * 10) / 10, max: due.field.total || expected.fieldHours },
     ],
     sharia: [
       { label: "متوسط الاختبارات", value: Math.round(quizAvg * 100), max: 100 },
@@ -79,7 +78,8 @@ export async function computeCompetencies(userId: string): Promise<CompetencyAtt
       { label: "الأنشطة القيادية", value: activities, max: 1 },
       { label: "تقييم الأقران", value: Math.round(peerAvg * 10) / 10, max: 5 },
     ],
-    technical: [{ label: "التقارير الأسبوعية الرقمية", value: reports, max: expected.reports }],
+    // التقارير من الافتتاحي حتى الثاني عشر — ثلاثة عشر لا اثنا عشر كما كان يُقسم
+    technical: [{ label: "التقارير الأسبوعية الرقمية", value: due.reports.done, max: due.reports.total || expected.reports }],
     administrative: [],
     self: [
       { label: "أيام متتبع العادات", value: habitLogs, max: EXPECTED_HABIT_DAYS },

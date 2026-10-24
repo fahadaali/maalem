@@ -96,8 +96,15 @@ export { attendanceWeight };
  */
 export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown {
   const { weights, projectRubric, levels, expected, program } = cfg;
-  const assignments = program.assignments.length;
   const weeks = program.weeks;
+  /**
+   * المنجز والمستحق لكل بند، بقواعد «مهامي». ومنه مقامُ الدرجة التراكمية أيضاً:
+   * المنضمّ بعد بدء البرنامج لا يُحسب عليه ما انقضى موعده قبل انضمامه — مهمةً
+   * ووِرداً وساعاتِ معايشة — كما لا يُطالَب به في «مهامي» ولا في المؤشرات. ومن
+   * انضمّ قبل البداية فمقامه البرنامج كله كما كان.
+   */
+  const due = progressFrom(rows, program, cfg.now);
+  const assignments = due.tasks.total;
   const { attendance, attempts, project, mentorEvals } = rows;
   const reports = rows.reports.length;
   const returnedSubmissions = returnedIds(rows.returns, "SUBMISSION");
@@ -129,7 +136,7 @@ export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown 
    * والصفحات تراكمية بنصاب الجدول — لا عددُ البطاقات — فبطاقةٌ بمئة صفحة تُحسب
    * مئة صفحة، والاستدراك في أسبوعٍ لاحق يُحتسب.
    */
-  const reading = readingTotals(rows.cards, weeks, cfg.now, returnedCards);
+  const reading = readingTotals(rows.cards, weeks, cfg.now, returnedCards, rows.user.createdAt);
   const readingRatio = reading.ratio;
   const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
   const circleAvg = circleRatio ?? 0;
@@ -143,13 +150,15 @@ export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown 
     (s, g) => s + ((g.completeness ?? 0) + (g.referencing ?? 0) + (g.application ?? 0) + (g.punctuality ?? 0)) / 16,
     0,
   );
-  const tasksScore = assignments ? round1((rubricSum / assignments) * w("tasks", 20)) : 0;
+  const tasksScore = assignments ? round1(Math.min(1, rubricSum / assignments) * w("tasks", 20)) : 0;
 
   const approved = fieldLogs.filter((f) => f.approvedAt);
   const fieldHours = approved.reduce((s, f) => s + f.hours, 0);
   const pendingFieldHours = fieldLogs.filter((f) => !f.approvedAt).reduce((s, f) => s + f.hours, 0);
   // المعايشة: الساعات المعتمدة 70% وتقييم المشرف المرافق 30% متى وُجد
-  const hoursRatio = Math.min(fieldHours / expected.fieldHours, 1);
+  // والمطلوب ساعاتُ البرنامج بعد إسقاط أسابيع المعايشة التي انقضت قبل الانضمام
+  const fieldRequired = due.field.total > 0 ? due.field.total : expected.fieldHours;
+  const hoursRatio = Math.min(fieldHours / fieldRequired, 1);
   const mentorRatio = rate(mentorEvals.map((e) => (e.regularity + e.engagement + e.application + e.conduct + e.growth) / 5));
   const mentorAvg = mentorRatio ?? 0;
   const fieldScore = round1((mentorRatio === null ? hoursRatio : hoursRatio * 0.7 + mentorRatio * 0.3) * w("field", 10));
@@ -167,7 +176,6 @@ export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown 
   const lvl = levels.find((l) => total >= l.min) ?? levels[levels.length - 1];
 
   // ——— الدرجة المرحلية: المقام ما استُحقّ ———
-  const due = progressFrom(rows, program, cfg.now);
   const mix = (main: number | null, side: number | null, mainShare: number) =>
     main == null ? side : side == null ? main : main * mainShare + side * (1 - mainShare);
   const scaled = (ratio: number | null, key: string, fallback: number) => (ratio == null ? null : round1(ratio * w(key, fallback)));

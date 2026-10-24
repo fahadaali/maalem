@@ -84,8 +84,8 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
           ) : (
             <p className="text-xs text-muted mb-2">لم تُستحقّ ساعات معايشة بعد — تبدأ في أسابيعها من الجدول.</p>
           )}
-          <div className="mt-3"><Progress label="البرنامج كله" value={approved} max={expected.fieldHours} /></div>
-          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من {expected.fieldHours}{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
+          <div className="mt-3"><Progress label="البرنامج كله" value={approved} max={fieldDue?.total || expected.fieldHours} /></div>
+          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من {fieldDue?.total || expected.fieldHours}{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
         </Card>
       </div>
 
