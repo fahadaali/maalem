@@ -1,36 +1,37 @@
-import { Card, Progress, Stat } from "@/components/ui";
+import { Card, Stat } from "@/components/ui";
 import { Skeleton } from "@/components/Skeleton";
+import { DueBars, InterimBars, InterimNote } from "@/components/DueProgress";
 import { computeGrades } from "@/lib/grades";
-import { getContinuous, programExpectations } from "@/lib/content";
+import { getContinuous } from "@/lib/content";
 
 /**
  * ملخّص التقدّم: أثقل جزء في الصفحة لأنه يقرأ كل سجلات المشارك.
  * يُعرض داخل Suspense فتُرسم بقية الصفحة فوراً ويصل هو بعدها،
  * بدل أن ينتظر المستخدمُ الصفحةَ كلها ريثما تُحتسب الدرجة.
+ *
+ * والأرقام كلها من المستحق حتى الآن لا من البرنامج كله: «4 من 4 مهام» لمن سلّم
+ * كل ما حان موعده، لا «4 من 20» تقرأ تقصيراً وهو ملتزم.
  */
-export default async function ProgressSummary({ userId, fallbackAssignments }: { userId: string; fallbackAssignments: number }) {
-  const [grades, continuous, expected] = await Promise.all([computeGrades(userId), getContinuous(), programExpectations()]);
-  const max = grades.maxes.continuous + grades.maxes.project;
+export default async function ProgressSummary({ userId }: { userId: string }) {
+  const [grades, continuous] = await Promise.all([computeGrades(userId), getContinuous()]);
+  const { due, interim } = grades;
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label="المجموع الحالي" value={`${grades.total}`} hint={`من ${max} · ${grades.level}`} href="/app/portfolio" />
-        <Stat label="صفحات الورد" value={grades.stats.readingPages} hint={`من ${grades.stats.readingRequired} في الجدول`} href="/app/reading" />
-        <Stat label="ساعات المعايشة" value={grades.stats.fieldHours} hint={`من ${expected.fieldHours} معتمدة`} href="/app/field" />
-        <Stat label="المهام المسلّمة" value={`${grades.stats.submitted}/${grades.stats.assignments || fallbackAssignments}`} hint={`تم تقييم ${grades.stats.graded}`} href="/app/tasks?type=tasks" />
+        <Stat label="الدرجة المرحلية" value={interim.total ?? "—"} hint={interim.total != null ? `من 100 على المستحق · ${interim.level}` : "تظهر حين يُستحقّ شيء"} href="/app/portfolio" />
+        <Stat label="الإنجاز من المستحق" value={due.percent != null ? `${due.percent}%` : "—"} hint="متوسط بنودك المستحقة" href="/app/tasks" />
+        <Stat label="المهام المسلّمة" value={`${due.tasks.done}/${due.tasks.due}`} hint={`المستحقة حتى الآن · قُيّم ${due.tasks.graded}`} href="/app/tasks?type=tasks" />
+        <Stat label="صفحات الورد" value={due.reading.done} hint={`من ${due.reading.due} مستحقة · ${due.reading.total} في الجدول`} href="/app/reading" />
       </div>
-      <Card title={`التقييم المستمر (${grades.maxes.continuous})`}>
-        <div className="space-y-3">
-          {continuous.map((c) => (
-            <Progress
-              key={c.key}
-              label={`${c.label} (${c.points})`}
-              value={{ attendance: grades.attendance, reading: grades.reading, quizzes: grades.quizzes, tasks: grades.tasks, field: grades.field, leadership: grades.leadership }[c.key] ?? 0}
-              max={c.points}
-            />
-          ))}
-        </div>
-      </Card>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card title="المنجز من المستحق">
+          <DueBars due={due} />
+        </Card>
+        <Card title="الدرجة المرحلية بمكوّناتها">
+          <InterimBars grades={grades} continuous={continuous} />
+          <InterimNote grades={grades} />
+        </Card>
+      </div>
     </>
   );
 }
@@ -48,16 +49,20 @@ export function ProgressSummarySkeleton() {
           </div>
         ))}
       </div>
-      <div className="card">
-        <Skeleton className="h-5 w-40 mb-4" />
-        <div className="space-y-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i}>
-              <Skeleton className="h-3 w-44 mb-1.5" />
-              <Skeleton className="h-1.5 w-full" />
+      <div className="grid md:grid-cols-2 gap-4">
+        {Array.from({ length: 2 }).map((_, c) => (
+          <div key={c} className="card">
+            <Skeleton className="h-5 w-40 mb-4" />
+            <div className="space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i}>
+                  <Skeleton className="h-3 w-44 mb-1.5" />
+                  <Skeleton className="h-1.5 w-full" />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </>
   );

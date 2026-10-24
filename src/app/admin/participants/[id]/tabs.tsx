@@ -28,6 +28,8 @@ import { daysLate, overdueLabel, weekName, type Obligation, type ObligationsResu
 import { itemAnchor, type FileTab } from "@/lib/items";
 import { openReturnFor, returnedIds } from "@/lib/returns";
 import type { GradeBreakdown } from "@/lib/grades";
+import { progressFrom } from "@/lib/progress";
+import { DueBars, InterimBars, InterimNote } from "@/components/DueProgress";
 
 /**
  * تبويبات ملف المشارك عند المدير. يجلب كلُّ تبويبٍ ما يعرضه وحده — فالملف كاملاً
@@ -114,12 +116,21 @@ export async function OverviewTab({ ctx, grades }: { ctx: Ctx; grades: GradeBrea
             </ul>
           )}
         </Card>
-        <Card title={`التقييم المستمر (${grades.maxes.continuous})`}>
+        <Card title="المنجز من المستحق" action={<Badge tone="soft">{grades.due.percent != null ? `${grades.due.percent}%` : "—"}</Badge>}>
+          <DueBars due={grades.due} />
+        </Card>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card title="الدرجة المرحلية" action={<Badge tone="ink">{grades.interim.total ?? "—"} / {grades.maxes.continuous + grades.maxes.project}{grades.interim.level ? ` · ${grades.interim.level}` : ""}</Badge>}>
+          <InterimBars grades={grades} continuous={continuous} />
+          <InterimNote grades={grades} />
+        </Card>
+        <Card title={`الدرجة التراكمية (${grades.total} من ${grades.maxes.continuous + grades.maxes.project})`}>
           <div className="space-y-2">
             {continuous.map((c) => <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key] ?? 0} max={c.points} />)}
           </div>
           <div className="text-xs text-muted mt-3">
-            مشروع التخرج: {grades.project}/{grades.maxes.project} · {grades.stats.projectStatus ? PROJECT_STATUS_LABELS[grades.stats.projectStatus] : "لم يُحدد"} · الورد {grades.stats.readingPages} من {grades.stats.readingRequired} صفحة
+            على البرنامج كله، وبها تُعتمد الدرجة النهائية. مشروع التخرج: {grades.project}/{grades.maxes.project} · {grades.stats.projectStatus ? PROJECT_STATUS_LABELS[grades.stats.projectStatus] : "لم يُحدد"}
           </div>
         </Card>
       </div>
@@ -175,11 +186,13 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
   const subOf = new Map(subs.map((s) => [s.assignmentId, s]));
   const reportOf = new Map(reports.map((r) => [r.week, r]));
   const weeks = program.weeks.filter((w) => w.number >= 0 && w.number <= 12);
+  // العناوين من المستحق حتى الآن، بقواعد «مهامي»: المُرجَع غير منجز، وما قبل الانضمام لا يُطالَب به
+  const due = progressFrom(rows, program, now);
 
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-xl mb-3">المهام المقيَّمة ({subs.length} من {program.assignments.length} مسلَّمة)</h2>
+        <h2 className="text-xl mb-3">المهام المقيَّمة <span className="text-base text-muted tabular-nums">({due.tasks.done} من {due.tasks.due} مستحقة · {program.assignments.length} في البرنامج)</span></h2>
         {program.assignments.length === 0 ? <Empty>لا مهام منشورة في الدفعة. أنشئها من «المهام والتقييم».</Empty> : (
           <div className="space-y-3">
             {program.assignments.map((a) => {
@@ -225,7 +238,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <h2 className="text-xl mb-3">التقارير الأسبوعية ({reports.length} من {weeks.length})</h2>
+        <h2 className="text-xl mb-3">التقارير الأسبوعية <span className="text-base text-muted tabular-nums">({due.reports.done} من {due.reports.due} مستحقة · {weeks.length} في البرنامج)</span></h2>
         <div className="space-y-3">
           {weeks.map((w) => {
             const r = reportOf.get(w.number);
@@ -298,7 +311,7 @@ export async function ReadingTab({ ctx }: { ctx: Ctx }) {
 
   return (
     <div className="space-y-6">
-      <Card title="الورد القرائي بالصفحات" action={<Badge tone="ink">{totals.read} / {totals.required} صفحة</Badge>}>
+      <Card title="الورد القرائي بالصفحات" action={<Badge tone="ink" className="tabular-nums">{totals.read} من {totals.requiredSoFar} مستحقة · {totals.required} في البرنامج</Badge>}>
         <p className="text-xs text-muted mb-2">
           يُحسب الورد بصفحات البطاقات مقابل نصاب كل أسبوع في الجدول، تراكمياً. المطلوب حتى نهاية آخر أسبوع مضى: {totals.requiredSoFar} صفحة
           {totals.requiredSoFar > totals.read ? ` — ينقصه ${totals.requiredSoFar - totals.read}` : ""}.
@@ -561,7 +574,8 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
 // ——— الاختبارات والحضور ———
 
 export async function QuizzesTab({ ctx }: { ctx: Ctx }) {
-  const { userId, program } = ctx;
+  const { userId, program, rows, now } = ctx;
+  const due = progressFrom(rows, program, now);
   const [attempts, attendance, excuses, diagnostics, comps] = await Promise.all([
     db.quizAttempt.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
     db.attendance.findMany({ where: { userId }, orderBy: [{ week: "asc" }, { type: "asc" }] }),
@@ -585,7 +599,7 @@ export async function QuizzesTab({ ctx }: { ctx: Ctx }) {
 
   return (
     <div className="space-y-6">
-      <Card title={`الاختبارات التكوينية (${attempts.length} من ${quizzes.length})`}>
+      <Card title={`الاختبارات التكوينية (${due.quizzes.done} من ${due.quizzes.due} مستحقة · ${quizzes.length} منشورة)`}>
         {quizzes.length === 0 ? <p className="text-sm text-muted">لا اختبارات منشورة.</p> : (
           <div className="table-wrap">
             <table className="table">

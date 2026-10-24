@@ -61,7 +61,12 @@ export default async function ParticipantFile({
         actions={
           isParticipant && (
             <div className="flex flex-wrap gap-1 items-center">
-              {total != null && <Badge tone="ink">{total} / 100{u.finalGrade ? " · معتمدة" : ""}{grades ? ` · ${grades.level}` : ""}</Badge>}
+              {u.finalGrade && total != null ? (
+                <Badge tone="ink">{total} / 100 · معتمدة</Badge>
+              ) : grades ? (
+                <Badge tone="ink" className="tabular-nums">مرحلية {grades.interim.total ?? "—"}{grades.interim.level ? ` · ${grades.interim.level}` : ""} · تراكمية {grades.total}</Badge>
+              ) : null}
+              {grades && grades.due.percent != null && <Badge tone="soft">الإنجاز من المستحق {grades.due.percent}%</Badge>}
               {obligations && <Badge tone={obligations.counts.overdue ? "ink" : "soft"}>متأخر {obligations.counts.overdue}</Badge>}
               {obligations && obligations.counts.returned > 0 && <Badge tone="ink">مُرجَع {obligations.counts.returned}</Badge>}
               <Badge tone={waitingTotal ? "default" : "soft"}>بانتظار مراجعتك {waitingTotal}</Badge>

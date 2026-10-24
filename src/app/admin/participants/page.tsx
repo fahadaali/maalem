@@ -29,12 +29,12 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <PageHeader title="المشاركون وسجل الأداء" subtitle="ملحق 3: سجل الأداء يُحتسب آلياً من الحضور، وصفحات الورد، والاختبارات، والمهام، والمعايشة، والدور القيادي." />
+      <PageHeader title="المشاركون وسجل الأداء" subtitle="ملحق 3: سجل الأداء يُحتسب آلياً من الحضور، وصفحات الورد، والاختبارات، والمهام، والمعايشة، والدور القيادي — والإنجاز فيه من المستحق حتى الآن لا من البرنامج كله." />
       <FormMessage ok={ok} err={err} />
       <div className="table-wrap mb-6">
         <table className="table">
           <thead>
-            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th>الورد (صفحات)</th><th>الاختبارات (متوسط)</th><th>المهام المسلمة</th><th>ساعات المعايشة</th><th>الدور القيادي</th><th>المجموع</th><th>متأخر</th><th>بانتظار مراجعتك</th><th></th></tr>
+            <tr><th>#</th><th>المشارك</th><th>الحضور %</th><th title="الصفحات المقروءة من المستحقة حتى الآن">الورد</th><th>الاختبارات (متوسط)</th><th title="المسلَّمة من المستحقة حتى الآن">المهام</th><th title="المعتمدة من المستحقة حتى الآن، وبين قوسين ما ينتظر الاعتماد">المعايشة</th><th>الدور القيادي</th><th title="متوسط نسب البنود المستحقة">الإنجاز</th><th title="كل مكوّن بما استُحقّ منه، مردودةً إلى 100 — وتحتها التراكمية">المرحلية</th><th>متأخر</th><th>بانتظار مراجعتك</th><th></th></tr>
           </thead>
           <tbody>
             {participants.map((p, i) => {
@@ -44,12 +44,13 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
                   <td>{i + 1}</td>
                   <td className="font-medium whitespace-nowrap"><Link href={`/admin/participants/${p.id}`} className="hover:underline">{p.name}</Link>{!p.active && <Badge className="ms-1">موقوف</Badge>}</td>
                   <td>{g.stats.attendancePct}%</td>
-                  <td className="tabular-nums">{g.stats.readingPages}/{g.stats.readingRequired}</td>
+                  <td className="tabular-nums">{g.due.reading.done}/{g.due.reading.due}</td>
                   <td>{g.stats.quizCount ? `${g.stats.quizAvgPct}%` : "—"}</td>
-                  <td>{g.stats.submitted}/{g.stats.assignments}</td>
-                  <td>{g.stats.fieldHours}{g.stats.pendingFieldHours ? ` (+${g.stats.pendingFieldHours})` : ""}</td>
+                  <td className="tabular-nums">{g.due.tasks.done}/{g.due.tasks.due}</td>
+                  <td className="tabular-nums">{g.due.field.done}/{g.due.field.due}{g.due.field.pending ? ` (+${g.due.field.pending})` : ""}</td>
                   <td>{g.stats.leadershipActivities ? `${g.stats.peerAvg}/5` : "—"}</td>
-                  <td className="font-bold">{g.total}</td>
+                  <td className="tabular-nums">{g.due.percent != null ? `${g.due.percent}%` : "—"}</td>
+                  <td className="tabular-nums"><span className="font-bold">{g.interim.total ?? "—"}</span><div className="text-[11px] text-muted">تراكمي {g.total}</div></td>
                   {/* ما تأخّر عليه وما أُرجع إليه، وما ينتظر مراجعتك من إدخالاته — يُفتح كلٌّ في ملفه */}
                   <td>{(() => { const o = obligations.get(p.id); const n = o ? o.counts.overdue + o.counts.returned : 0; return n ? <Link href={`/admin/participants/${p.id}`} className="badge badge-ink">{n}</Link> : <span className="text-muted">—</span>; })()}</td>
                   <td>{waiting(p.id) ? <Link href={`/admin/participants/${p.id}`} className="badge">{waiting(p.id)}</Link> : <span className="text-muted">—</span>}</td>
@@ -57,7 +58,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
                 </tr>
               );
             })}
-            {participants.length === 0 && <tr><td colSpan={12} className="text-center text-muted">لا مشاركون بعد. أضف المشاركين (3–5) من النموذج أدناه.</td></tr>}
+            {participants.length === 0 && <tr><td colSpan={13} className="text-center text-muted">لا مشاركون بعد. أضف المشاركين (3–5) من النموذج أدناه.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -116,9 +116,14 @@ export default async function ReadingPage({ searchParams }: { searchParams: Prom
             <p className="text-sm text-muted">لا ورد مقرّراً في هذا الأسبوع.</p>
           )}
         </Card>
-        <Card title="ورد البرنامج كله">
+        <Card title="وردك من المستحق">
           <div className="flex justify-between text-xs mb-1">
-            <span>مجموع ما قرأته</span>
+            <span>ما قرأته من المستحق حتى الآن</span>
+            <span className="tabular-nums">{totals.requiredSoFar > 0 ? `${totals.read} / ${totals.requiredSoFar} صفحة` : "لم يُستحقّ شيء بعد"}</span>
+          </div>
+          <div className="progress"><span style={{ width: `${totals.requiredSoFar > 0 ? Math.min(100, Math.round((totals.read / totals.requiredSoFar) * 100)) : 0}%` }} /></div>
+          <div className="flex justify-between text-xs text-muted mt-3 mb-1">
+            <span>البرنامج كله</span>
             <span className="tabular-nums">{totals.read} / {totals.required} صفحة</span>
           </div>
           <div className="progress"><span style={{ width: `${Math.round(totals.ratio * 100)}%` }} /></div>

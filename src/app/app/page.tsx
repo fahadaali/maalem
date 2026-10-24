@@ -144,7 +144,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       {/* التقدم — يتدفّق بعد رسم الصفحة، فلا يحبسها احتساب الدرجة */}
       <Suspense fallback={<ProgressSummarySkeleton />}>
-        <ProgressSummary userId={user.id} fallbackAssignments={program.assignments.length} />
+        <ProgressSummary userId={user.id} />
       </Suspense>
     </>
   );

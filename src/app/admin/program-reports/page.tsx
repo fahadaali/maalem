@@ -5,7 +5,7 @@ import { PageHeader, Card, Badge } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveProgramReport } from "../actions";
-import { buildSnapshot, SNAPSHOT_LABELS, type Snapshot } from "@/lib/snapshot";
+import { buildSnapshot, snapshotRows, type Snapshot } from "@/lib/snapshot";
 import { cohortWhere } from "@/lib/cohort";
 import { formatShort } from "@/lib/dates";
 import { parseJSON } from "@/lib/utils";
@@ -51,16 +51,19 @@ export default async function ProgramReportsPage({ searchParams }: { searchParam
         ))}
       </div>
 
-      <Card title="أرقام المنصة الآن" className="mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
-          {(Object.keys(SNAPSHOT_LABELS) as (keyof Snapshot)[]).map((k) => (
-            <div key={k} className="flex justify-between border-b border-line py-1">
-              <span className="text-muted">{SNAPSHOT_LABELS[k]}</span>
-              <span className="font-medium">{shown[k] ?? "—"}</span>
+      <Card title={saved ? "أرقام المنصة المحفوظة مع التقرير" : "أرقام المنصة الآن"} className="mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+          {snapshotRows(shown).map((r) => (
+            <div key={r.label} className="flex justify-between gap-3 border-b border-line py-1">
+              <span className="text-muted">{r.label}</span>
+              <span className="font-medium tabular-nums text-end">{r.value}</span>
             </div>
           ))}
         </div>
-        {saved && <p className="text-xs text-muted mt-2">هذه أرقام محفوظة مع التقرير. الأرقام الحية الآن: متوسط الدرجات {snapshot.gradeAvg}، الحضور {snapshot.attendanceAvg}%.</p>}
+        <p className="text-xs text-muted mt-2">
+          الإنجاز يُقاس بالمستحق حتى تاريخه لا بالبرنامج كله: ما حان موعده من المهام والتقارير والورد والمعايشة والاختبارات، بعد طرح ما فات قبل انضمام المشارك وأيامِ الإيقاف.
+          {saved && <> الأرقام الحية الآن: الإنجاز من المستحق {snapshot.completionPct ?? "—"}%، والدرجة المرحلية {snapshot.interimAvg ?? "—"}، والحضور {snapshot.attendanceAvg}%. يُحدَّث المحفوظ بإعادة حفظ التقرير.</>}
+        </p>
       </Card>
 
       <Card title={`${kind === "FINAL" ? "التقرير الختامي" : "التقرير الشهري"} — ${period}`}>

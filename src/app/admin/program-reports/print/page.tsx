@@ -2,7 +2,7 @@ import Link from "@/components/Link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PROGRAM } from "@/lib/program";
-import { SNAPSHOT_LABELS, type Snapshot, buildSnapshot } from "@/lib/snapshot";
+import { snapshotRows, type Snapshot, buildSnapshot } from "@/lib/snapshot";
 import { formatGregorian, formatHijri } from "@/lib/dates";
 import { parseJSON } from "@/lib/utils";
 import PrintButton from "@/components/PrintButton";
@@ -46,11 +46,12 @@ export default async function PrintReportsPage({ searchParams }: { searchParams:
               <Block title="الدروس المستفادة" body={r.lessons} />
               <Block title="التوصيات للدفعة القادمة" body={r.recommendations} />
               <h3 className="text-base mt-4 mb-1">مؤشرات البرنامج</h3>
+              <p className="text-xs text-muted mb-1">الإنجاز من المستحق حتى تاريخ إعداد التقرير، لا من البرنامج كله.</p>
               <div className="table-wrap">
                 <table className="table">
                   <tbody>
-                    {(Object.keys(SNAPSHOT_LABELS) as (keyof Snapshot)[]).map((k) => (
-                      <tr key={k}><td className="text-muted">{SNAPSHOT_LABELS[k]}</td><td className="font-medium">{snap[k] ?? "—"}</td></tr>
+                    {snapshotRows(snap).map((row) => (
+                      <tr key={row.label}><td className="text-muted">{row.label}</td><td className="font-medium">{row.value}</td></tr>
                     ))}
                   </tbody>
                 </table>

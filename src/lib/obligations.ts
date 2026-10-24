@@ -76,6 +76,25 @@ export function weekEnd(w: Pick<LiveWeek, "gregorian" | "pause">): Date {
   return afterPauses(new Date(keyToDate(w.gregorian).getTime() + 7 * DAY - 1000), weekStartMs(w), w.pause);
 }
 
+/**
+ * خطة ساعات المعايشة: المطلوب ما تقيسه الدرجة — ساعةٌ عن كل أسبوع تطويري (12 في
+ * الجدول الأصلي) — تُقضى في أسابيع المعايشة (الثالث حتى الثاني عشر)، فيُطلب بعد
+ * الأسبوع k من n أسابيعها round(الساعات × k ÷ n): 1، 2، 4، 5، 6، 7، 8، 10، 11، 12.
+ * وما انقضى قبل الانضمام لا يُطالَب به. يتقاسمها بند «مهامي» ومؤشر «المنجز من المستحق»
+ * (`progress.ts`)، فلا يفترق ما يُطالَب به المشارك عمّا يُحسب عليه في التقارير.
+ */
+export function fieldPlan(weeks: LiveWeek[], now: Date, joinedAt: number) {
+  const allFieldWeeks = weeks.filter((w) => w.field && w.number >= 0 && w.number <= 12).sort((a, b) => a.number - b.number);
+  const fieldHours = weeks.filter((w) => w.number >= 1 && w.number <= 12).length || 12;
+  const requiredBy = (k: number) => (allFieldWeeks.length ? Math.round((fieldHours * k) / allFieldWeeks.length) : 0);
+  const skipped = allFieldWeeks.filter((w) => weekEnd(w).getTime() < joinedAt).length;
+  const base = requiredBy(skipped);
+  const steps = allFieldWeeks.slice(skipped).map((w, i) => ({ week: w, need: requiredBy(skipped + i + 1) - base, passed: weekEnd(w).getTime() <= now.getTime() }));
+  // الأسابيع مرتّبة فما انقضى منها سابقٌ لما لم ينقضِ: المستحق حتى الآن مطلوبُ آخر ما انقضى
+  const passed = steps.filter((s) => s.passed);
+  return { steps, total: fieldHours - base, soFar: passed.length ? passed[passed.length - 1].need : 0 };
+}
+
 /** ثلاثة أيام بعد اللقاء الافتتاحي، العاشرة مساءً — موعد الخطة والميثاق والتشخيص القبلي */
 function openingDeadline(w0: Pick<LiveWeek, "gregorian" | "pause">): Date {
   return afterPauses(new Date(keyToDate(w0.gregorian).getTime() + 3 * DAY + 22 * 3600000), weekStartMs(w0), w0.pause);
@@ -350,35 +369,23 @@ export function obligationsFrom(rows: ParticipantRows, program: ProgramData, rea
   }
 
   // ——— المعايشة الميدانية: ساعات البرنامج موزّعةً على أسابيع المعايشة، تراكمياً ———
-  // المطلوب ما تقيسه الدرجة: ساعةٌ عن كل أسبوع تطويري (12 في الجدول الأصلي)، تُقضى
-  // في أسابيع المعايشة (الثالث حتى الثاني عشر) — فيُطلب بعد الأسبوع k من n أسابيعها
-  // round(الساعات × k ÷ n): 1، 2، 4، 5، 6، 7، 8، 10، 11، 12.
-  const allFieldWeeks = weeks.filter((w) => w.field && w.number >= 0 && w.number <= 12).sort((a, b) => a.number - b.number);
-  const fieldHours = weeks.filter((w) => w.number >= 1 && w.number <= 12).length || 12;
-  const requiredBy = (k: number) => (allFieldWeeks.length ? Math.round((fieldHours * k) / allFieldWeeks.length) : 0);
-  const skipped = allFieldWeeks.filter((w) => weekEnd(w).getTime() < joinedAt).length;
-  const fieldWeeks = allFieldWeeks.slice(skipped);
-  if (fieldWeeks.length) {
+  const plan = fieldPlan(weeks, now, joinedAt);
+  if (plan.steps.length) {
     const returnedLogs = returnedIds(returns, "FIELD_LOG");
     const logged = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id)).reduce((s, f) => s + f.hours, 0);
     const pending = rows.fieldLogs.filter((f) => !returnedLogs.has(f.id) && !f.approvedAt).reduce((s, f) => s + f.hours, 0);
-    // ما فات قبل انضمامه لا يُطالَب به
-    const base = requiredBy(skipped);
-    let soFar = 0;
+    const { soFar, total } = plan;
     let missedSince: Date | null = null;
     let current: LiveWeek | undefined;
     let currentNeed = 0;
-    for (const [i, w] of fieldWeeks.entries()) {
-      const need = requiredBy(skipped + i + 1) - base;
-      if (weekEnd(w).getTime() <= now.getTime()) {
-        soFar = need;
-        if (!missedSince && logged < soFar) missedSince = weekEnd(w);
+    for (const step of plan.steps) {
+      if (step.passed) {
+        if (!missedSince && logged < step.need) missedSince = weekEnd(step.week);
       } else if (!current) {
-        current = w;
-        currentNeed = need;
+        current = step.week;
+        currentNeed = step.need;
       }
     }
-    const total = fieldHours - base;
     const behind = Math.max(0, soFar - logged);
     const inProgress = cur >= 0 && !!current && current.number <= cur;
     const needed = inProgress ? currentNeed : soFar;

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { computeGradesFor } from "@/lib/grades";
-import { finalTotalOf, getContinuous } from "@/lib/content";
+import { finalTotalOf, getCompletionLevels, getContinuous, levelOf } from "@/lib/content";
 import { ATTENDANCE_LABELS } from "@/lib/utils";
 import { cohortWhere } from "@/lib/cohort";
 import { taskStatusLabel } from "@/lib/report";
@@ -38,14 +38,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ kind: s
     const continuous = await getContinuous();
     const contMax = continuous.reduce((s, c) => s + c.points, 0);
     const projMax = grades[0]?.maxes.project ?? 30;
-    const finals = await db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } });
-    rows = [["المشارك", "اسم المستخدم", ...continuous.map((c) => `${c.label} (${c.points})`), `التقييم المستمر (${contMax})`, `مشروع التخرج (${projMax})`, "المحتسَب", "التعديل", "مسوّغ التعديل", "النهائي المعتمد", "المستوى", "الحالة"]];
+    const [finals, levels] = await Promise.all([db.finalGrade.findMany({ where: { userId: { in: participants.map((p) => p.id) } } }), getCompletionLevels()]);
+    rows = [["المشارك", "اسم المستخدم", ...continuous.map((c) => `${c.label} (${c.points})`), `التقييم المستمر (${contMax})`, `مشروع التخرج (${projMax})`, "المحتسَب (تراكمي)", "الإنجاز من المستحق %", "الدرجة المرحلية (من المستحق)", "التعديل", "مسوّغ التعديل", "النهائي المعتمد", "المستوى", "الحالة"]];
     participants.forEach((p, i) => {
       const g = grades[i];
       const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
       const f = finals.find((x) => x.userId === p.id);
       const finalTotal = f ? finalTotalOf(f) : "";
-      rows.push([p.name, p.username, ...continuous.map((c) => parts[c.key]), g.continuous, g.project, g.total, f?.adjustment ?? "", f?.reason ?? "", finalTotal, g.level, p.active ? "نشط" : "موقوف"]);
+      // مستوى المعتمدة من مجموعها بعد التعديل
+      const level = f ? levelOf(levels, finalTotalOf(f)).level : g.level;
+      rows.push([p.name, p.username, ...continuous.map((c) => parts[c.key]), g.continuous, g.project, g.total, g.due.percent ?? "", g.interim.total ?? "", f?.adjustment ?? "", f?.reason ?? "", finalTotal, level, p.active ? "نشط" : "موقوف"]);
     });
   } else if (kind === "attendance") {
     const att = await db.attendance.findMany({ where: ofCohort, orderBy: [{ week: "asc" }] });
