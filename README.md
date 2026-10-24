@@ -103,6 +103,8 @@ WebCrypto
 | فرع الإنتاج | `main` |
 | إصدار Node | 22 (محدد في `.node-version`) |
 
+و`cf:build` يمرّر لـOpenNext `--dangerouslyUseUnsupportedNextVersion`: انتهت نافذة دعم Next 15 (سنتان من إصداره في أكتوبر 2024)، فصار OpenNext يرفض بناءه ويسقط النشر كله. والعلاج الدائم الترقية إلى Next 16، ثم يُحذف الوسم.
+
 تنبيه: `npm run build` وحده لا يكفي — فهو يبني تطبيق
 Next
 فقط دون حزمة العامل، فيفشل النشر. وكذلك `npx wrangler deploy` وحده لا يبني الحزمة.
