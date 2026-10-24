@@ -1,3 +1,4 @@
+import { tallyText } from "@/lib/progress";
 import { db } from "@/lib/db";
 import { computeGrades } from "@/lib/grades";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
@@ -100,14 +101,14 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         <p className="text-sm">{u.attendance.map((a) => `أ${a.week} ${a.type === "INPERSON" ? "حضوري" : "بُعد"}: ${ATTENDANCE_LABELS[a.status]}`).join(" · ") || "لم يُسجَّل حضور."}</p>
       </S>
 
-      <S title={`الورد القرائي (${due.reading.done} من ${due.reading.due} صفحة مستحقة · ${u.readingCards.length} بطاقة)`}>
+      <S title={`الورد القرائي (${tallyText(due.reading, "صفحة مستحقة")} · ${u.readingCards.length} بطاقة)`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>التاريخ</th><th>الكتاب</th><th>الصفحات</th><th>أهم فائدة</th></tr></thead>
           <tbody>{u.readingCards.map((c) => <tr key={c.id}><td className="whitespace-nowrap">{formatShort(c.date)}</td><td>{c.book}</td><td className="whitespace-nowrap">{c.fromPage}–{c.toPage} ({c.toPage - c.fromPage + 1})</td><td>{c.benefit}{c.feedback && <div className="text-xs text-muted mt-1">ملاحظة مدير المشروع: {c.feedback}</div>}</td></tr>)}</tbody>
         </table></div>
       </S>
 
-      <S title={`التقارير الأسبوعية (${due.reports.done} من ${due.reports.due} مستحقة)`}>
+      <S title={`التقارير الأسبوعية (${tallyText(due.reports, "مستحقة")})`}>
         {u.weeklyReports.map((r) => (
           <div key={r.id} className="mb-3 text-sm">
             <div className="font-medium">الأسبوع {r.week}</div>
@@ -126,14 +127,14 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         {u.weeklyReports.length === 0 && <p className="text-sm text-muted">لا تقارير.</p>}
       </S>
 
-      <S title={`المهام (${due.tasks.done} من ${due.tasks.due} مستحقة · قُيّم ${due.tasks.graded})`}>
+      <S title={`المهام (${tallyText(due.tasks, "مستحقة")} · قُيّم ${due.tasks.graded})`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>المهمة</th><th>التسليم</th><th>الدرجة</th></tr></thead>
           <tbody>{u.submissions.map((s) => <tr key={s.id}><td>{s.assignment.title}</td><td className="whitespace-nowrap">{formatShort(s.submittedAt)}</td><td>{s.gradedAt ? `${(s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0)}/16` : "—"}</td></tr>)}</tbody>
         </table></div>
       </S>
 
-      <S title={`سجل المعايشة الميدانية (${due.field.done} من ${due.field.due} ساعة مستحقة معتمدة)`}>
+      <S title={`سجل المعايشة الميدانية (${tallyText(due.field, "ساعة معتمدة من المستحقة")})`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>التاريخ</th><th>الساعات</th><th>المشرف المرافق</th><th>الملاحظة</th></tr></thead>
           <tbody>{u.fieldLogs.map((f) => <tr key={f.id}><td className="whitespace-nowrap">{formatShort(f.date)}</td><td>{f.hours}</td><td>{f.mentorName}</td><td>{f.note}</td></tr>)}</tbody>

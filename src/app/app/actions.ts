@@ -7,7 +7,7 @@ import { isPreview, requireUser } from "@/lib/auth";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { keyToDate, todayKey } from "@/lib/dates";
 import { cohortWhere, participantsWhere } from "@/lib/cohort";
-import { currentWeekNumber, getWeekByNumber, getWeekTasks } from "@/lib/weeks";
+import { currentWeekNumber, getWeekTasks, getWeeks, resolveCurrentWeek } from "@/lib/weeks";
 import { isTaskStatus, publishedQuizWeeks, reportSections } from "@/lib/report";
 import { removeAttachments } from "@/lib/attachments";
 import { num, str } from "@/lib/utils";
@@ -132,11 +132,21 @@ export async function saveWeeklyReport(formData: FormData) {
   const path = `/app/reports/${week}`;
   if (week < 0 || week > 12) fail("/app/reports", "أسبوع غير صحيح");
   await pauseGate(user.id, keyOr([`report:${week}`]), path);
-  const info = await getWeekByNumber(week);
+  // الجدول مرةً واحدة: `cache` لا يعمل في إجراءات الخادم، وكل قراءةٍ له ثلاثة طلبات فرعية
+  const weeks = await getWeeks();
+  const info = weeks.find((w) => w.number === week);
   if (!info) fail("/app/reports", "أسبوع غير موجود");
-  // التقرير عمّا أُنجز في أسبوعه: لا يُكتب لأسبوعٍ لم يبدأ — والأسبوع الحالي بساعة البرنامج الواقفة في الإيقاف
-  const cur = await currentWeekNumber();
-  if (week > cur && cur < 15) fail(path, "يُفتح تقرير هذا الأسبوع مع بدايته");
+  const existing = await db.weeklyReport.findUnique({
+    where: { userId_week: { userId: user.id, week } },
+    select: { id: true, reviewedAt: true, reading: true, benefits: true, fieldNote: true, quizResult: true, application: true, difficulty: true, tasks: { select: { taskId: true, status: true, note: true } } },
+  });
+  /**
+   * التقرير عمّا أُنجز في أسبوعه: لا يُكتب جديدٌ لأسبوعٍ لم يبدأ — بساعة البرنامج
+   * الواقفة في الإيقاف. وأما المسلَّم من قبل فيُعدَّل ويُعاد وإن أُجِّل أسبوعه بعد
+   * تسليمه، وإلا بقي المُرجَع منه معلّقاً في «مهامي» لا يُعاد.
+   */
+  const cur = resolveCurrentWeek(weeks);
+  if (!existing && week > cur && cur < 15) fail(path, "يُفتح تقرير هذا الأسبوع مع بدايته");
 
   /**
    * المهام تُقرأ من جدول أسبوع الدفعة لا من مفاتيح النموذج: لو اعتُمدت المفاتيح
@@ -170,7 +180,15 @@ export async function saveWeeklyReport(formData: FormData) {
   };
   if (show.reading && (!data.reading || !data.benefits)) fail(path, "الورد المنجز والفوائد حقلان إلزاميان");
 
-  const existing = await db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, select: { id: true, reviewedAt: true } });
+  // تبدّل شيءٌ عمّا روجع؟ — الحفظ بلا تعديل لا يعيده إلى طابور المراجعة ولا يُشعر أحداً
+  const changed =
+    !!existing &&
+    ((["reading", "benefits", "fieldNote", "quizResult", "application", "difficulty"] as const).some((k) => (existing[k] ?? "") !== (data[k] ?? "")) ||
+      entries.length !== existing.tasks.length ||
+      entries.some((e) => {
+        const old = existing.tasks.find((t) => t.taskId === e.taskId);
+        return !old || old.status !== e.status || (old.note ?? "") !== (e.note ?? "");
+      }));
   const report = await db.weeklyReport.upsert({
     where: { userId_week: { userId: user.id, week } },
     create: { userId: user.id, week, ...data },
@@ -186,7 +204,7 @@ export async function saveWeeklyReport(formData: FormData) {
   const resubmitted = existing ? await markResubmitted("WEEKLY_REPORT", existing.id, user) : false;
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
-  } else if (existing.reviewedAt && !resubmitted) {
+  } else if (existing.reviewedAt && !resubmitted && changed) {
     /**
      * عدّله صاحبه بعد مراجعته: كان يبقى «تمت المراجعة» بتغذيةٍ راجعة على نصٍّ تبدّل.
      * فيعود إلى طابور المراجعة، ويُشعَر المدير والمشرف المرافق ليقرآ الجديد.

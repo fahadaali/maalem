@@ -684,6 +684,8 @@ export async function saveWeek(formData: FormData) {
     const tasks = await db.assignment.findMany({ where: { cohortId, week: number }, select: { id: true, dueAt: true } });
     for (const t of tasks) await db.assignment.update({ where: { id: t.id }, data: { dueAt: new Date(t.dueAt.getTime() + shift) } });
     moved = tasks.length;
+    // كتغيير موعد مهمةٍ من صفحتها: يُخبَر أصحابها بموعدها الجديد لا يكتشفونه متأخرين
+    if (moved) await notifyRole("PARTICIPANT", { title: moved === 1 ? "تغيّر موعد مهمة" : "تغيّرت مواعيد مهام", body: `انتقل ${weekName(number)} في الجدول، ونُقلت معه مواعيد ${moved === 1 ? "مهمته" : `${moved} من مهامّه`} — راجعها في «مهامي».`, url: "/app/tasks?type=tasks" });
   }
   revalidatePath("/admin/schedule");
   revalidatePath("/program/schedule");

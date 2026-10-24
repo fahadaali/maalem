@@ -45,11 +45,21 @@ export function ratioOf(t: Pick<Tally, "done" | "due">): number | null {
   return t.due > 0 ? Math.min(1, t.done / t.due) : null;
 }
 
-/** «4 من 5» — والمستحق صفرٌ يُقرأ «لم يُستحقّ بعد» */
+/**
+ * «4 من 5» — والمستحق صفرٌ يُقرأ «لم يُستحقّ بعد»، وما أُنجز قبل أن يُستحقّ شيءٌ
+ * «20 مبكراً» لا «20 من 0».
+ */
 export function tallyText(t: Pick<Tally, "done" | "due">, unit = ""): string {
-  if (t.due <= 0 && t.done <= 0) return "لم يُستحقّ بعد";
   const r = (n: number) => Math.round(n * 10) / 10;
+  if (t.due <= 0) return t.done > 0 ? `${r(t.done)}${unit ? ` ${unit.split(" ")[0]}` : ""} مبكراً — لم يُستحقّ شيء بعد` : "لم يُستحقّ بعد";
   return `${r(t.done)} من ${r(t.due)}${unit ? ` ${unit}` : ""}`;
+}
+
+/** «4/5» للجداول الضيّقة — و«20 مبكراً» و«—» حين لا مستحقّ */
+export function tallyShort(t: Pick<Tally, "done" | "due">): string {
+  const r = (n: number) => Math.round(n * 10) / 10;
+  if (t.due <= 0) return t.done > 0 ? `${r(t.done)} مبكراً` : "—";
+  return `${r(t.done)}/${r(t.due)}`;
 }
 
 export function progressFrom(rows: ParticipantRows, program: ProgramData, realNow: Date = new Date()): DueProgress {

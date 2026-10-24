@@ -1,3 +1,4 @@
+import { tallyShort } from "@/lib/progress";
 import Link from "@/components/Link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -44,10 +45,10 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
                   <td>{i + 1}</td>
                   <td className="font-medium whitespace-nowrap"><Link href={`/admin/participants/${p.id}`} className="hover:underline">{p.name}</Link>{!p.active && <Badge className="ms-1">موقوف</Badge>}</td>
                   <td>{g.stats.attendancePct}%</td>
-                  <td className="tabular-nums">{g.due.reading.done}/{g.due.reading.due}</td>
+                  <td className="tabular-nums">{tallyShort(g.due.reading)}</td>
                   <td>{g.stats.quizCount ? `${g.stats.quizAvgPct}%` : "—"}</td>
-                  <td className="tabular-nums">{g.due.tasks.done}/{g.due.tasks.due}</td>
-                  <td className="tabular-nums">{g.due.field.done}/{g.due.field.due}{g.due.field.pending ? ` (+${g.due.field.pending})` : ""}</td>
+                  <td className="tabular-nums">{tallyShort(g.due.tasks)}</td>
+                  <td className="tabular-nums">{tallyShort(g.due.field)}{g.due.field.pending ? ` (+${g.due.field.pending})` : ""}</td>
                   <td>{g.stats.leadershipActivities ? `${g.stats.peerAvg}/5` : "—"}</td>
                   <td className="tabular-nums">{g.due.percent != null ? `${g.due.percent}%` : "—"}</td>
                   <td className="tabular-nums"><span className="font-bold">{g.interim.total ?? "—"}</span><div className="text-[11px] text-muted">تراكمي {g.total}</div></td>

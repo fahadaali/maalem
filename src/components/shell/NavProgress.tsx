@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+/** يُعلَّم به حدثُ النقر الذي أُلغي انتقاله (مغادرةُ نموذجٍ لم يُحفظ — DraftKeeper) */
+export const NAV_CANCELLED = "maalemNavCancelled";
+
 /**
  * شريطٌ رفيع أعلى الشاشة من النقر على رابطٍ داخلي حتى تصل صفحته.
  *
@@ -11,6 +14,10 @@ import { usePathname, useSearchParams } from "next/navigation";
  * ولم يُستعمل loading.tsx لذلك: جُرّب فأفرغ الصفحة بعد كل إجراءٍ يعيد التوجيه
  * (انظر src/app/layout.tsx). وهذا لا يلفّ المحتوى بشيء، وإنما يُصغي إلى النقر
  * ويختفي حين يتبدّل المسار أو معاملاته.
+ *
+ * والإصغاء في طور الالتقاط لا الفقاعة: رابط Next يُلغي السلوك الافتراضي للنقر
+ * ليتولّى الانتقال بنفسه، فلو أُصغي بعده لبدا كل نقرٍ ملغىً ولم يظهر الشريط أبداً.
+ * والقرار بعد انتهاء الحدث: إن ألغى أحدٌ الانتقال (سؤال المغادرة) لم يظهر.
  */
 export default function NavProgress() {
   const pathname = usePathname();
@@ -40,14 +47,18 @@ export default function NavProgress() {
       if (url.pathname === location.pathname && url.search === location.search) return;
       // الملفات والواجهات البرمجية تُنزَّل ولا تُصيَّر صفحةً
       if (url.pathname.startsWith("/api/")) return;
-      setActive(true);
-      // ولا يبقى الشريط معلّقاً إن لم تكتمل الملاحة لسببٍ ما
-      if (safety.current) window.clearTimeout(safety.current);
-      safety.current = window.setTimeout(() => setActive(false), 15000);
+      const ev = e as MouseEvent & { [NAV_CANCELLED]?: boolean };
+      window.setTimeout(() => {
+        if (ev[NAV_CANCELLED]) return;
+        setActive(true);
+        // ولا يبقى الشريط معلّقاً إن لم تكتمل الملاحة لسببٍ ما
+        if (safety.current) window.clearTimeout(safety.current);
+        safety.current = window.setTimeout(() => setActive(false), 15000);
+      }, 0);
     };
-    document.addEventListener("click", onClick);
+    document.addEventListener("click", onClick, true);
     return () => {
-      document.removeEventListener("click", onClick);
+      document.removeEventListener("click", onClick, true);
       if (safety.current) window.clearTimeout(safety.current);
     };
   }, []);

@@ -4,7 +4,7 @@ import { pauseOf, reportDue, resolveCurrentWeek, weekResolver } from "./weeks";
 import { programClock } from "./pause";
 import { cardPages, readingDeadline, weekQuota } from "./reading-quota";
 import { loadParticipantsOnce, loadProgram } from "./participant-data";
-import { attendanceWeight, progressFrom, sumProgress } from "./progress";
+import { attendanceWeight, progressFrom, sumProgress, tallyShort } from "./progress";
 import { returnedIds } from "./returns";
 
 /** نسبة مئوية محصورة في 100: بطاقات الأسبوع الافتتاحي مثلاً تزيد على المتوقع فلا تتجاوز الرسم */
@@ -130,7 +130,7 @@ export async function buildTrends(): Promise<Trends> {
       return {
         label: p.name,
         value: att,
-        note: pr ? `${pr.reports.done}/${pr.reports.due} تقريراً مستحقاً · ${pr.reading.done}/${pr.reading.due} صفحة · الإنجاز ${pr.percent ?? "—"}%` : undefined,
+        note: pr ? `التقارير ${tallyShort(pr.reports)} · الورد ${tallyShort(pr.reading)} صفحة · الإنجاز ${pr.percent ?? "—"}%` : undefined,
         sort: (pr?.percent ?? 0) * 1000 + att,
       };
     })

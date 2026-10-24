@@ -1,3 +1,4 @@
+import { tallyShort } from "@/lib/progress";
 import { Card, Stat } from "@/components/ui";
 import { Skeleton } from "@/components/Skeleton";
 import { DueBars, InterimBars, InterimNote } from "@/components/DueProgress";
@@ -20,8 +21,8 @@ export default async function ProgressSummary({ userId }: { userId: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Stat label="الدرجة المرحلية" value={interim.total ?? "—"} hint={interim.total != null ? `من 100 على المستحق · ${interim.level}` : "تظهر حين يُستحقّ شيء"} href="/app/portfolio" />
         <Stat label="الإنجاز من المستحق" value={due.percent != null ? `${due.percent}%` : "—"} hint="متوسط بنودك المستحقة" href="/app/tasks" />
-        <Stat label="المهام المسلّمة" value={`${due.tasks.done}/${due.tasks.due}`} hint={`المستحقة حتى الآن · قُيّم ${due.tasks.graded}`} href="/app/tasks?type=tasks" />
-        <Stat label="صفحات الورد" value={due.reading.done} hint={`من ${due.reading.due} مستحقة · ${due.reading.total} في الجدول`} href="/app/reading" />
+        <Stat label="المهام المسلّمة" value={tallyShort(due.tasks)} hint={`المستحقة حتى الآن · قُيّم ${due.tasks.graded}`} href="/app/tasks?type=tasks" />
+        <Stat label="صفحات الورد" value={due.reading.done} hint={`${due.reading.due > 0 ? `من ${due.reading.due} مستحقة` : "لم يُستحقّ بعد"} · ${due.reading.total} في الجدول`} href="/app/reading" />
       </div>
       <div className="grid md:grid-cols-2 gap-4">
         <Card title="المنجز من المستحق">

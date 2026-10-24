@@ -37,7 +37,7 @@ export type Snapshot = {
   leadership: number;
   projectsApproved: number;
   charterSigned: number;
-  /** متوسط الدرجات التراكمية — في اللقطات القديمة وحدها */
+  /** متوسط الدرجات التراكمية على البرنامج كله — وبه يُقرأ التقرير الختامي */
   gradeAvg?: number;
 };
 
@@ -76,6 +76,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     leadership,
     projectsApproved: projects,
     charterSigned: participants.filter((p) => p.charterAcceptedAt).length,
+    gradeAvg: avg(grades.map((g) => g.total)) ?? 0,
   };
 }
 
@@ -93,16 +94,24 @@ function ofDue(done: number | undefined, due: number | undefined, unit = ""): st
  * وحقلٌ لم تحمله اللقطة لا يُعرض سطراً فارغاً.
  */
 export function snapshotRows(s: Snapshot): { label: string; value: string }[] {
+  /**
+   * لقطةٌ حُفظت قبل قياس المستحق: «التقارير المتوقعة» فيها عدد المشاركين في الأسابيع
+   * الماضية لا المستحقُّ بقواعد «مهامي»، فتُعرض بتسميتها الأولى لا «من المستحقة».
+   */
+  const legacy = s.tasksDue == null;
   const rows: { label: string; value: string | null }[] = [
     { label: "الأسبوع", value: String(s.week) },
     { label: "عدد المشاركين", value: String(s.participants) },
     { label: "نسبة الإنجاز من المستحق", value: s.completionPct != null ? `${s.completionPct}%` : null },
     { label: "متوسط الدرجة المرحلية (من المستحق)", value: s.interimAvg != null ? `${s.interimAvg} من 100` : null },
+    // والتراكمية على البرنامج كله إلى جانبها: بها يُقرأ التقرير الختامي، وهي وحدها في اللقطات القديمة
+    { label: "متوسط الدرجات التراكمية (من 100)", value: s.gradeAvg != null ? String(s.gradeAvg) : null },
     { label: "متوسط الحضور", value: `${s.attendanceAvg}%` },
     { label: s.tasksDue != null ? "المهام المسلّمة من المستحقة" : "المهام المسلّمة", value: ofDue(s.tasksSubmitted, s.tasksDue) },
     { label: "المهام المقيّمة", value: String(s.tasksGraded) },
-    // اللقطة القديمة كانت تقيس التقارير المتوقعة بأسابيع مضت — وهي مستحقٌّ تقريبي
-    { label: "التقارير المسلّمة من المستحقة", value: ofDue(s.reportsSubmitted, s.reportsExpected) },
+    legacy
+      ? { label: "التقارير المسلّمة / المتوقعة", value: `${s.reportsSubmitted} / ${s.reportsExpected}` }
+      : { label: "التقارير المسلّمة من المستحقة", value: ofDue(s.reportsSubmitted, s.reportsExpected) },
     { label: s.readingDue != null ? "صفحات الورد من المستحقة" : "صفحات الورد المقروءة", value: s.readingPages != null ? ofDue(s.readingPages, s.readingDue, "صفحة") : null },
     { label: "بطاقات القراءة", value: String(s.readingCards) },
     { label: s.fieldDue != null ? "ساعات المعايشة المعتمدة من المستحقة" : "ساعات المعايشة المعتمدة", value: ofDue(s.fieldHours, s.fieldDue, "ساعة") },
@@ -111,7 +120,6 @@ export function snapshotRows(s: Snapshot): { label: string; value: string }[] {
     { label: "الأنشطة القيادية", value: String(s.leadership) },
     { label: "مشاريع معتمدة", value: String(s.projectsApproved) },
     { label: "موقّعو الميثاق", value: String(s.charterSigned) },
-    { label: "متوسط الدرجات (تراكمي من 100)", value: s.gradeAvg != null ? String(s.gradeAvg) : null },
   ];
   return rows.filter((r): r is { label: string; value: string } => r.value != null);
 }

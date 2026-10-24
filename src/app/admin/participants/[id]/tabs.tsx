@@ -28,7 +28,7 @@ import { daysLate, overdueLabel, weekName, type Obligation, type ObligationsResu
 import { itemAnchor, type FileTab } from "@/lib/items";
 import { openReturnFor, returnedIds } from "@/lib/returns";
 import type { GradeBreakdown } from "@/lib/grades";
-import { progressFrom } from "@/lib/progress";
+import { progressFrom, tallyText } from "@/lib/progress";
 import { DueBars, InterimBars, InterimNote } from "@/components/DueProgress";
 
 /**
@@ -157,7 +157,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-xl mb-3">المهام المقيَّمة <span className="text-base text-muted tabular-nums">({due.tasks.done} من {due.tasks.due} مستحقة · {program.assignments.length} في البرنامج)</span></h2>
+        <h2 className="text-xl mb-3">المهام المقيَّمة <span className="text-base text-muted tabular-nums">({tallyText(due.tasks, "مستحقة")} · {program.assignments.length} في البرنامج)</span></h2>
         {program.assignments.length === 0 ? <Empty>لا مهام منشورة في الدفعة. أنشئها من «المهام والتقييم».</Empty> : (
           <div className="space-y-3">
             {program.assignments.map((a) => {
@@ -207,7 +207,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <h2 className="text-xl mb-3">التقارير الأسبوعية <span className="text-base text-muted tabular-nums">({due.reports.done} من {due.reports.due} مستحقة · {weeks.length} في البرنامج)</span></h2>
+        <h2 className="text-xl mb-3">التقارير الأسبوعية <span className="text-base text-muted tabular-nums">({tallyText(due.reports, "مستحقة")} · {weeks.length} في البرنامج)</span></h2>
         <div className="space-y-3">
           {weeks.map((w) => {
             const r = reportOf.get(w.number);
@@ -572,7 +572,7 @@ export async function QuizzesTab({ ctx }: { ctx: Ctx }) {
 
   return (
     <div className="space-y-6">
-      <Card title={`الاختبارات التكوينية (${due.quizzes.done} من ${due.quizzes.due} مستحقة · ${quizzes.length} منشورة)`}>
+      <Card title={`الاختبارات التكوينية (${tallyText(due.quizzes, "مستحقة")} · ${quizzes.length} منشورة)`}>
         {quizzes.length === 0 ? <p className="text-sm text-muted">لا اختبارات منشورة.</p> : (
           <div className="table-wrap">
             <table className="table">

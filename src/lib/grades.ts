@@ -137,7 +137,8 @@ export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown 
    * مئة صفحة، والاستدراك في أسبوعٍ لاحق يُحتسب.
    */
   const reading = readingTotals(rows.cards, weeks, cfg.now, returnedCards, rows.user.createdAt);
-  const readingRatio = reading.ratio;
+  // منضمٌّ بعد آخر نصابٍ للورد لا مقام له: يُقاس بنصاب البرنامج كله كما كان، لا يُعطى صفراً على ما قرأ
+  const readingRatio = reading.required > 0 ? reading.ratio : readingTotals(rows.cards, weeks, cfg.now, returnedCards).ratio;
   const circleRatio = rate(attendance.filter((a) => a.type === "REMOTE").map((a) => a.circleScore).filter((v): v is number => typeof v === "number"));
   const circleAvg = circleRatio ?? 0;
   const readingScore = round1((circleRatio === null ? readingRatio : readingRatio * 0.7 + circleRatio * 0.3) * w("reading", 15));
@@ -184,14 +185,16 @@ export function computeFrom(rows: ParticipantRows, cfg: Config): GradeBreakdown 
   const leadershipDue = !!w12 && weekEnd(w12).getTime() <= clock && weekEnd(w12).getTime() >= rows.user.createdAt.getTime();
   // المهام: المقيَّم من المستحق — والمسلَّم الذي ينتظر التقييم لا يُحسب عليه حتى يُقيَّم
   const taskBase = due.tasks.due - due.tasks.pending;
+  const fieldBase = Math.max(0, due.field.due - due.field.pending);
   const interimParts = {
     attendance: counted.length ? attendanceScore : null,
     reading: scaled(mix(due.reading.due > 0 ? Math.min(1, reading.read / due.reading.due) : null, circleRatio, 0.7), "reading", 15),
     quizzes: attempts.length ? quizScore : due.quizzes.due > 0 ? 0 : null,
     tasks: taskBase > 0 ? round1(Math.min(1, rubricSum / taskBase) * w("tasks", 20)) : null,
-    field: scaled(mix(due.field.due > 0 ? Math.min(1, fieldHours / due.field.due) : null, mentorRatio, 0.7), "field", 10),
-    // النشاط بلا تقييم أقرانٍ بعدُ ينتظرهم لا يُحسب عليه
-    leadership: evals.length ? leadershipScore : leadershipDue ? 0 : null,
+    // والساعات التي تنتظر اعتماد المشرف تنتظره لا صاحبها: تخرج من المقام حتى تُعتمد أو تُرفض
+    field: scaled(mix(fieldBase > 0 ? Math.min(1, fieldHours / fieldBase) : null, mentorRatio, 0.7), "field", 10),
+    // النشاط بلا تقييم أقرانٍ بعدُ ينتظرهم لا يُحسب عليه — ولو انقضى أسبوعه
+    leadership: evals.length ? leadershipScore : activities.length ? null : leadershipDue ? 0 : null,
     project: project?.status === "JUDGED" ? projectScore : null,
   };
   const partMax: Record<keyof typeof interimParts, number> = {

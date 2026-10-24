@@ -44,11 +44,13 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
       {a.submissions.length === 0 ? <Empty>لا تسليمات بعد.</Empty> : (
         <div className="space-y-4">
           {a.submissions.map((s) => {
-            const dueFor = extensions.get(s.userId) ?? a.dueAt;
+            // الأبعد من موعد المهمة وتمديد صاحبها — كما في ملفه وصفحة المشرف (`dueFor`): موعدٌ نُقل بعد التمديد لا يُقصّره التمديد
+            const ext = extensions.get(s.userId);
+            const dueFor = ext && ext > a.dueAt ? ext : a.dueAt;
             const late = s.submittedAt > dueFor;
             const total = s.gradedAt ? (s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0) : null;
             return (
-              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{extensions.has(s.userId) && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{returned.has(s.id) && <Badge>مُرجَع لصاحبه</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
+              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{dueFor.getTime() !== a.dueAt.getTime() && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{returned.has(s.id) && <Badge>مُرجَع لصاحبه</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
                 <div className="text-xs text-muted mb-1">سُلّم {formatDateTime(s.submittedAt)}</div>
                 <div className="text-sm whitespace-pre-wrap mb-2">{s.content}</div>
                 {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}

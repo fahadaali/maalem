@@ -1,46 +1,105 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { NAV_CANCELLED } from "@/components/shell/NavProgress";
 
 type Draft = { v: Record<string, string>; at: number };
+type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 const PREFIX = "maalem-draft:";
 /** مسودةٌ أقدم من أسبوع لا تُعرض: كُتب بعدها ما يغني عنها */
 const MAX_AGE = 7 * 86400000;
+/** علامة «أُرسل هذا النموذج للتوّ» تصلح دقيقتين: انقطاعٌ بلا ردّ لا يُبقيها فتُنسب إليه نتيجةُ نموذجٍ آخر */
+const SENT_AGE = 2 * 60000;
 
-/** حقول النموذج النصّية والاختيارية بقيمها — لا المخفيّة ولا الأزرار ولا الملفات */
-function fieldsOf(form: HTMLFormElement): (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] {
-  return (Array.from(form.elements) as unknown as (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[]).filter((el) => {
+/** حقول النموذج النصّية والاختيارية — لا المخفيّة ولا الأزرار ولا الملفات ولا المعطّلة */
+function fieldsOf(form: HTMLFormElement): Field[] {
+  return (Array.from(form.elements) as unknown as Field[]).filter((el) => {
     if (!el.name || el.disabled) return false;
     if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;
     return el.tagName === "INPUT" && ["text", "url", "number", "date", "search", "email", "tel"].includes((el as HTMLInputElement).type);
   });
 }
 
-function snapshot(form: HTMLFormElement): Record<string, string> {
+/** ما في الحقول الآن */
+function current(form: HTMLFormElement): Record<string, string> {
   const out: Record<string, string> = {};
   for (const el of fieldsOf(form)) out[el.name] = el.value;
   return out;
 }
 
+/**
+ * ما حفظه الخادم: القيمة الافتراضية التي رُسم بها الحقل. هي المرجع لـ«ما لم يُحفظ»
+ * لا ما كان في الحقول حين فُتحت الصفحة — نجاحُ نموذجٍ آخر في الصفحة نفسها يعيد
+ * رسمها والحقولُ ما زالت تحمل ما كُتب ولم يُحفظ.
+ */
+function saved(form: HTMLFormElement): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const el of fieldsOf(form)) {
+    if (el.tagName === "SELECT") {
+      const opts = Array.from((el as HTMLSelectElement).options) as unknown as { value: string; defaultSelected: boolean }[];
+      out[el.name] = (opts.find((o) => o.defaultSelected) ?? opts[0])?.value ?? "";
+    } else {
+      out[el.name] = (el as HTMLInputElement | HTMLTextAreaElement).defaultValue;
+    }
+  }
+  return out;
+}
+
 const same = (a: Record<string, string>, b: Record<string, string>) => Object.keys({ ...a, ...b }).every((k) => (a[k] ?? "") === (b[k] ?? ""));
+
+function storage(kind: "local" | "session"): Storage | null {
+  try {
+    return kind === "local" ? window.localStorage : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 function read(key: string): Draft | null {
   try {
-    const raw = localStorage.getItem(PREFIX + key);
+    const raw = storage("local")?.getItem(PREFIX + key);
     if (!raw) return null;
     const d = JSON.parse(raw) as Draft;
-    if (!d || typeof d.at !== "number" || Date.now() - d.at > MAX_AGE) return null;
+    if (!d || typeof d.at !== "number" || !d.v || Date.now() - d.at > MAX_AGE) return null;
     return d;
   } catch {
     return null;
   }
 }
 
+function write(key: string, v: Record<string, string>) {
+  try {
+    storage("local")?.setItem(PREFIX + key, JSON.stringify({ v, at: Date.now() } satisfies Draft));
+  } catch {
+    // امتلأ التخزين أو مُنع: تبقى الصفحة تعمل بلا مسودة
+  }
+}
+
 function drop(key: string) {
   try {
-    localStorage.removeItem(PREFIX + key);
+    storage("local")?.removeItem(PREFIX + key);
+  } catch {
+    // لا تخزين متاح
+  }
+}
+
+/** أُرسل هذا النموذج بعينه للتوّ؟ — فنتيجةُ الصفحة (`ok`/`err`) نتيجتُه هو لا نتيجةُ نموذجٍ جاره */
+function takeSent(key: string): boolean {
+  const s = storage("session");
+  try {
+    const at = Number(s?.getItem(PREFIX + "sent:" + key) ?? 0);
+    s?.removeItem(PREFIX + "sent:" + key);
+    return at > 0 && Date.now() - at < SENT_AGE;
+  } catch {
+    return false;
+  }
+}
+
+function markSent(key: string) {
+  try {
+    storage("session")?.setItem(PREFIX + "sent:" + key, String(Date.now()));
   } catch {
     // لا تخزين متاح
   }
@@ -51,12 +110,13 @@ function drop(key: string) {
  * والخطة، والمشروع:
  *
  * - رفض الحفظ لنقصٍ ما كان يعيد النموذج بقيمه المحفوظة سابقاً، فيضيع ما كُتب للتوّ.
- *   فإن عاد الإجراء بخطأ (`?err=`) أُعيد ما كُتب كما كان.
+ *   فإن عاد هذا النموذج بخطأ (`?err=`) أُعيد ما كُتب كما كان.
  * - ومن غادر الصفحة وفي النموذج ما لم يُحفظ سُئل أولاً، ووجد مسودته إن عاد.
- * - وتُمحى المسودة حين يعود الإجراء بنجاح (`?ok=`).
+ * - وتُمحى المسودة حين يُحفظ هذا النموذج نفسه (`?ok=` بعد إرساله)، لا حين ينجح
+ *   نموذجٌ آخر في الصفحة — كالوقفة التدبرية تحت الخطة.
  *
  * والمسودة في جهاز صاحبها وحده (localStorage)، ومفتاحها يحمل معرّفه، فلا تظهر
- * لغيره على جهازٍ مشترك.
+ * لغيره على جهازٍ مشترك. والنموذج المقفل (مهمةٌ قُيّمت، مشروعٌ حُكِّم) لا مسودة له.
  */
 export default function DraftKeeper(props: { formId: string; storageKey: string }) {
   // يقرأ معاملات الرابط، فيُعزل في حدّ تعليقٍ لا يلفّ غيره
@@ -70,12 +130,10 @@ export default function DraftKeeper(props: { formId: string; storageKey: string 
 function Keeper({ formId, storageKey }: { formId: string; storageKey: string }) {
   const [offer, setOffer] = useState<Draft | null>(null);
   const [restored, setRestored] = useState(false);
-  const initial = useRef<Record<string, string>>({});
-  const submitting = useRef(false);
   /**
    * المعاملات كما صُيّرت بها الصفحة لا كما في الشريط ساعةَ الأثر: رسالة الحفظ
-   * تمحو `ok` و`err` من الشريط بعد عرضها. والأثر يُعاد مع كل تبدّلٍ فيها — الإجراء
-   * يعود إلى الصفحة نفسها والمكوّن مركَّبٌ — فيُقاس «ما لم يُحفظ» من المحفوظ الجديد.
+   * تمحو `ok` و`err` من الشريط بعد عرضها. والأثر يُعاد مع كل تبدّلٍ فيها، فالإجراء
+   * يعود إلى الصفحة نفسها والمكوّن مركَّبٌ.
    */
   const search = useSearchParams();
   const flag = search.has("ok") ? "ok" : search.has("err") ? "err" : "";
@@ -83,13 +141,18 @@ function Keeper({ formId, storageKey }: { formId: string; storageKey: string }) 
   useEffect(() => {
     const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) return;
-    submitting.current = false;
-    initial.current = snapshot(form);
-    const draft = read(storageKey);
-    if (flag === "ok") {
+    // نموذجٌ مقفلٌ كله: لا يُكتب فيه شيء، فلا مسودة تُعرض عليه ولا تبقى
+    if (fieldsOf(form).length === 0) {
       drop(storageKey);
-    } else if (draft && !same(draft.v, initial.current)) {
-      if (flag === "err") {
+      return;
+    }
+    let submitting = false;
+    const sent = flag ? takeSent(storageKey) : false;
+    const draft = read(storageKey);
+    if (flag === "ok" && sent) {
+      drop(storageKey);
+    } else if (draft && !same(draft.v, current(form))) {
+      if (flag === "err" && sent) {
         apply(form, draft.v);
         setRestored(true);
       } else {
@@ -97,30 +160,31 @@ function Keeper({ formId, storageKey }: { formId: string; storageKey: string }) 
       }
     }
 
+    const dirty = () => !same(current(form), saved(form));
+    const persist = () => {
+      if (dirty()) write(storageKey, current(form));
+      else drop(storageKey);
+    };
     let t: number | null = null;
-    const dirty = () => !same(snapshot(form), initial.current);
     const save = () => {
       if (t) window.clearTimeout(t);
-      t = window.setTimeout(() => {
-        try {
-          if (dirty()) localStorage.setItem(PREFIX + storageKey, JSON.stringify({ v: snapshot(form), at: Date.now() } satisfies Draft));
-          else drop(storageKey);
-        } catch {
-          // امتلأ التخزين أو مُنع: تبقى الصفحة تعمل بلا مسودة
-        }
-      }, 500);
+      t = window.setTimeout(persist, 400);
     };
     const onSubmit = () => {
-      submitting.current = true;
+      // ما كُتب في اللحظة الأخيرة قبل الإرسال يُحفظ الآن، فرفضٌ سريعٌ لا يسبقه
+      if (t) window.clearTimeout(t);
+      persist();
+      markSent(storageKey);
+      submitting = true;
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (submitting.current || !dirty()) return;
+      if (submitting || !dirty()) return;
       e.preventDefault();
       e.returnValue = "";
     };
     // الانتقال داخل التطبيق لا يُطلق beforeunload: يُسأل عنه عند النقر على رابط
     const onClick = (e: MouseEvent) => {
-      if (submitting.current || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (submitting || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const a = (e.target as Element | null)?.closest?.("a");
       if (!a || !a.href || a.target === "_blank" || a.hasAttribute("download")) return;
       if (form.contains(a)) return;
@@ -132,7 +196,9 @@ function Keeper({ formId, storageKey }: { formId: string; storageKey: string }) 
       }
       if (url.pathname === window.location.pathname && url.search === window.location.search) return;
       if (!dirty()) return;
+      persist();
       if (!window.confirm("في النموذج ما لم يُحفظ بعد. تبقى مسودته في جهازك وتجدها إن عدت. أتغادر الصفحة؟")) {
+        (e as MouseEvent & { [NAV_CANCELLED]?: boolean })[NAV_CANCELLED] = true;
         e.preventDefault();
         e.stopPropagation();
       }

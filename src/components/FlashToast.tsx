@@ -30,7 +30,10 @@ export default function FlashToast({ tone, message, anchorId }: { tone: "success
       if (url.searchParams.has("ok") || url.searchParams.has("err")) {
         url.searchParams.delete("ok");
         url.searchParams.delete("err");
-        window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+        // حالةٌ فارغة لا حالةُ التاريخ نفسها: Next يرقّع replaceState، فيُحدّث رابطه المعتمد
+        // ومعاملاته بما يُكتب هنا — إلا أن تحمل الحالةُ علامته (__NA) فيحسبها من داخله ويتركها.
+        // ولو بقي رابطه القديم لعادت `ok` مع أول إجراءٍ لا يعيد التوجيه، ومعها الرسالة نفسها.
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       }
     } catch {
       // عنوانٌ لا يُحلَّل: تبقى المعاملات كما هي
