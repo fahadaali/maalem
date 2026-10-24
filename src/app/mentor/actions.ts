@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { notifyUsers } from "@/lib/notify";
+import { findOpenReturn } from "@/lib/items";
 import { num, str } from "@/lib/utils";
 
 function ok(path: string, msg: string): never {
@@ -31,6 +32,8 @@ export async function mentorReviewReport(formData: FormData) {
   if (!report) fail("/mentor/reports", "التقرير غير موجود");
   const path = `/mentor/reports?week=${report.week}`;
   await mentorOf(report.userId, path);
+  // المُرجَع ينتظر صاحبه، كما في لوحة مدير المشروع
+  if (await findOpenReturn("WEEKLY_REPORT", id)) fail(path, "هذا التقرير مُرجَع لصاحبه — يُراجَع بعد أن يعيده");
   const feedback = str(formData.get("feedback"));
   if (!feedback) fail(path, "اكتب تغذية راجعة قبل الحفظ");
   await db.weeklyReport.update({ where: { id }, data: { feedback, reviewedAt: new Date() } });
@@ -50,6 +53,7 @@ export async function mentorGradeSubmission(formData: FormData) {
   if (!s) fail("/mentor/tasks", "التسليم غير موجود");
   const path = `/mentor/tasks?a=${s.assignmentId}`;
   await mentorOf(s.userId, path);
+  if (await findOpenReturn("SUBMISSION", id)) fail(path, "هذا التسليم مُرجَع لصاحبه — يُقيَّم بعد أن يعيده");
   const vals = ["completeness", "referencing", "application", "punctuality"].map((k) => num(formData.get(k)));
   if (vals.some((v) => v < 1 || v > 4)) fail(path, "قيّم كل معيار من 1 إلى 4");
   const feedback = str(formData.get("feedback"));

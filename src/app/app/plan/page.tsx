@@ -86,7 +86,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
               </div>
               <form action={deleteTadabbur}>
                 <input type="hidden" name="id" value={s.id} />
-                <button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button>
+                <SubmitButton ghost className="btn-sm" pendingText="…" label="حذف الوقفة" confirm="حذف هذه الوقفة التدبرية؟"><Trash2 size={14} /></SubmitButton>
               </form>
             </div>
           ))}

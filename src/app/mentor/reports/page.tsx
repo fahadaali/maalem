@@ -62,11 +62,15 @@ export default async function MentorReportsPage({ searchParams }: { searchParams
                   <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-3">
                     {REPORT_ROWS.map(([label, key]) => (r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null))}
                   </dl>
-                  <form action={mentorReviewReport} className="border-t border-line pt-3">
-                    <input type="hidden" name="id" value={r.id} />
-                    <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} required defaultValue={r.feedback ?? ""} /></div>
-                    <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث التغذية الراجعة" : "حفظ وإشعار المشارك"}</SubmitButton>
-                  </form>
+                  {returned.has(r.id) ? (
+                    <p className="text-xs text-muted border-t border-line pt-3">مُرجَعٌ إلى صاحبه للتعديل — يُراجَع بعد أن يعيده.</p>
+                  ) : (
+                    <form action={mentorReviewReport} className="border-t border-line pt-3">
+                      <input type="hidden" name="id" value={r.id} />
+                      <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} required defaultValue={r.feedback ?? ""} /></div>
+                      <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث التغذية الراجعة" : "حفظ وإشعار المشارك"}</SubmitButton>
+                    </form>
+                  )}
                 </Card>
               ))}
             </div>

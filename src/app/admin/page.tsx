@@ -7,6 +7,8 @@ import { currentWeekNumber, getWeekByNumber, reportDueDate } from "@/lib/weeks";
 import { MANAGER_ROUTINE, PHASES } from "@/lib/program";
 import FormMessage from "@/components/FormMessage";
 import { activeCohort, cohortWhere, participantsWhere } from "@/lib/cohort";
+import { loadParticipantsOnce, waitingCounts } from "@/lib/participant-data";
+import { returnedIds } from "@/lib/returns";
 
 export const metadata = { title: "لوحة مدير المشروع" };
 
@@ -19,16 +21,31 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   const wd = weekdayIndex(now);
   const routine = MANAGER_ROUTINE.filter((r) => r.weekday === wd);
 
-  const [participants, reportsThisWeek, pendingField, pendingProjects, ungraded, unpublishedQuizzes, checklist, recent] = await Promise.all([
+  const [participants, pendingProjects, unpublishedQuizzes, checklist, recent, pendingExcuses] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), select: { id: true, name: true } }),
-    weekNo >= 0 && weekNo <= 12 ? db.weeklyReport.findMany({ where: { week: weekNo, user: await participantsWhere() }, select: { userId: true, reviewedAt: true } }) : [],
-    db.fieldLog.count({ where: { approvedAt: null, user: await participantsWhere() } }),
     db.graduationProject.count({ where: { status: "PROPOSED", user: await participantsWhere() } }),
-    db.submission.count({ where: { gradedAt: null, user: await participantsWhere() } }),
     db.quiz.count({ where: { published: false, ...(await cohortWhere()) } }),
     db.checklistItem.findMany({ where: { done: true } }),
     db.notification.findMany({ where: { user: { role: "ADMIN" } }, orderBy: { createdAt: "desc" }, take: 5, distinct: ["title", "body"] }),
+    db.excuseRequest.count({ where: { status: "PENDING", user: await participantsWhere() } }),
   ]);
+  /**
+   * ما ينتظر المراجعة من الصفوف التي يقرؤها كشف المشاركين وملف كل مشارك، بالقاعدة
+   * نفسها (`waitingCounts`): المُرجَع ينتظر صاحبه لا المدير. كانت اللوحة تعدّه
+   * بعدّها الخاص فيفترق رقمها عن رقم الكشف لما أُرجع.
+   */
+  const rowsOf = await loadParticipantsOnce(participants.map((p) => p.id));
+  const waiting = [...rowsOf.values()].map(waitingCounts);
+  const pendingField = waiting.reduce((s, w) => s + w.fieldLogs, 0);
+  const ungraded = waiting.reduce((s, w) => s + w.submissions, 0);
+  const inReportWeeks = weekNo >= 0 && weekNo <= 12;
+  // التقرير المُرجَع ليس مسلَّماً حتى يُعاد، كما في «مهامي»
+  const reportsThisWeek = inReportWeeks
+    ? [...rowsOf.values()].flatMap((r) => {
+        const returned = returnedIds(r.returns, "WEEKLY_REPORT");
+        return r.reports.filter((x) => x.week === weekNo && !returned.has(x.id)).map((x) => ({ userId: r.user.id, reviewedAt: x.reviewedAt }));
+      })
+    : [];
   const cohort = await activeCohort();
   const [unsignedCharter, missingDiagnostic, materialsCount] = await Promise.all([
     db.user.count({ where: await participantsWhere({ charterAcceptedAt: null }) }),
@@ -84,6 +101,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
             {unsignedCharter > 0 && <li className="py-2 flex justify-between"><Link href="/admin/participants" className="hover:underline">لم يوقّعوا ميثاق المشاركة</Link><Badge>{unsignedCharter}</Badge></li>}
             {missingDiagnostic > 0 && <li className="py-2 flex justify-between"><Link href="/admin/diagnostic" className="hover:underline">لم يعبّئوا التقييم التشخيصي القبلي</Link><Badge>{missingDiagnostic}</Badge></li>}
             {materialsCount === 0 && <li className="py-2 flex justify-between"><Link href="/admin/materials" className="hover:underline">مكتبة المواد فارغة — ارفع الكتب والقوالب</Link><Badge>0</Badge></li>}
+            {pendingExcuses > 0 && <li className="py-2 flex justify-between"><Link href="/admin/excuses" className="hover:underline">طلبات استئذان وتأجيل قيد النظر</Link><Badge>{pendingExcuses}</Badge></li>}
             {pendingProjects > 0 && <li className="py-2 flex justify-between"><Link href="/admin/projects" className="hover:underline">موضوعات مشاريع بانتظار الاعتماد</Link><Badge>{pendingProjects}</Badge></li>}
             {unpublishedQuizzes > 0 && <li className="py-2 flex justify-between"><Link href="/admin/quizzes" className="hover:underline">اختبارات غير منشورة</Link><Badge>{unpublishedQuizzes}</Badge></li>}
             {reportsThisWeek.filter((r) => !r.reviewedAt).length > 0 && <li className="py-2 flex justify-between"><Link href={`/admin/reports?week=${weekNo}`} className="hover:underline">تقارير لم تُراجع هذا الأسبوع</Link><Badge>{reportsThisWeek.filter((r) => !r.reviewedAt).length}</Badge></li>}
@@ -94,7 +112,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                 <div className="text-xs text-muted mt-1">{missing.map((m) => m.name).join("، ")}</div>
               </li>
             )}
-            {pendingProjects === 0 && unpublishedQuizzes === 0 && missing.length === 0 && unsignedCharter === 0 && missingDiagnostic === 0 && materialsCount > 0 && weekNo >= 0 && <li className="py-2 text-muted">لا بنود معلّقة.</li>}
+            {pendingExcuses === 0 && pendingProjects === 0 && unpublishedQuizzes === 0 && missing.length === 0 && unsignedCharter === 0 && missingDiagnostic === 0 && materialsCount > 0 && weekNo >= 0 && <li className="py-2 text-muted">لا بنود معلّقة.</li>}
           </ul>
         </Card>
         <Card title="آخر الأحداث" action={<Link href="/admin/notifications" className="text-xs text-muted underline">الكل</Link>}>

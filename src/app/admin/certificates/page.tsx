@@ -35,7 +35,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
         <div className="no-print mb-4 flex gap-2"><PrintButton label="طباعة الوثائق" /></div>
         {issued.length === 0 ? <Empty>لا وثائق صادرة.</Empty> : issued.map((p, i) => (
           <div key={p.id} className={i > 0 ? "mt-10 break-before-page" : ""}>
-            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} kind={p.certificate!.kind} cohort={cohort?.name} max={grades[i]?.maxes.continuous + grades[i]?.maxes.project} />
+            <CertificateSheet name={p.name} level={p.certificate!.level} total={p.certificate!.total} serial={p.certificate!.serial} issuedAt={p.certificate!.issuedAt} note={p.certificate!.note} kind={p.certificate!.kind} cohort={cohort?.name} max={grades[0] ? grades[0].maxes.continuous + grades[0].maxes.project : 100} />
           </div>
         ))}
       </div>
@@ -61,6 +61,9 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
                 const g = grades[i];
                 const c = p.certificate;
                 const f = finals.find((x) => x.userId === p.id);
+                const current = f ? finalTotalOf(f) : g.total;
+                // الوثيقة تُجمَّد بمجموعها لحظة إصدارها: إن اعتُمدت الدرجة أو عُدّلت بعدها افترقتا
+                const stale = !!c && Math.abs(c.total - current) >= 0.05;
                 return (
                   <tr key={p.id}>
                     <td className="font-medium whitespace-nowrap">{p.name}</td>
@@ -68,7 +71,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
                     <td>{f ? <Badge tone="ink">معتمدة</Badge> : <Badge tone="soft">غير معتمدة</Badge>}</td>
                     <td>{f ? levelOf(levels, finalTotalOf(f)).level : g.level}</td>
                     <td className="whitespace-nowrap">
-                      {c ? <><Badge tone="ink">{c.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"}</Badge><div className="text-xs text-muted mt-1" dir="ltr">{c.serial}</div><div className="text-xs text-muted">{formatShort(c.issuedAt)}</div></> : <Badge tone="soft">لم تصدر</Badge>}
+                      {c ? <><Badge tone="ink">{c.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"}</Badge><div className="text-xs text-muted mt-1" dir="ltr">{c.serial}</div><div className="text-xs text-muted">{formatShort(c.issuedAt)}</div>{stale && <div className="text-xs mt-1 font-medium">صدرت بمجموع {c.total} — تغيّر إلى {current}، حدّثها</div>}</> : <Badge tone="soft">لم تصدر</Badge>}
                     </td>
                     <td>
                       <form action={issueCertificate} className="flex gap-1 items-center">
@@ -81,7 +84,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
                       {c && (
                         <form action={revokeCertificate}>
                           <input type="hidden" name="userId" value={p.id} />
-                          <button className="btn btn-ghost btn-sm text-muted">سحب</button>
+                          <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm={`سحب وثيقة ${p.name}؟ يُلغى رقمها التسلسلي ولا تظهر له.`}>سحب</SubmitButton>
                         </form>
                       )}
                     </td>

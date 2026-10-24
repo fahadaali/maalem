@@ -56,7 +56,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
                         {f.adjustment !== 0 && <span className="text-xs text-muted">تعديل {f.adjustment > 0 ? "+" : ""}{f.adjustment}: {f.reason}</span>}
                         <form action={reopenFinalGrade}>
                           <input type="hidden" name="userId" value={p.id} />
-                          <button className="btn btn-ghost btn-sm text-muted">إلغاء الاعتماد</button>
+                          <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm={`إلغاء اعتماد درجة ${p.name}؟ تعود للاحتساب الآلي ويُمحى التعديل ومسوّغه.`}>إلغاء الاعتماد</SubmitButton>
                         </form>
                       </div>
                     ) : (

@@ -1,3 +1,4 @@
+import Link from "@/components/Link";
 import WeekChips from "@/components/WeekChips";
 import { Fragment } from "react";
 import { requireRole } from "@/lib/auth";
@@ -22,10 +23,14 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const parsed = Number(sp.week);
   const week = sp.week != null && Number.isInteger(parsed) ? parsed : Math.max(0, Math.min(13, resolveCurrentWeek(weeks)));
   const info = weeks.find((w) => w.number === week) ?? weeks[0];
-  const [participants, rows] = await Promise.all([
+  const [participants, rows, excuses] = await Promise.all([
     db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } }),
     db.attendance.findMany({ where: { week } }),
+    // طلبات الاستئذان عن لقاءات هذا الأسبوع: المقبول يُرصد «معذوراً» من صفحة الطلبات، والمعلّق يُرى هنا قبل الرصد
+    db.excuseRequest.findMany({ where: { week, kind: { in: ["ABSENCE_INPERSON", "ABSENCE_REMOTE"] }, status: { in: ["PENDING", "APPROVED"] }, user: await participantsWhere() }, select: { userId: true, kind: true, status: true } }),
   ]);
+  const excuseOf = (userId: string, type: string) => excuses.find((e) => e.userId === userId && e.kind === (type === "REMOTE" ? "ABSENCE_REMOTE" : "ABSENCE_INPERSON"));
+  const pendingExcuses = excuses.filter((e) => e.status === "PENDING").length;
   const cell = (userId: string, type: string) => rows.find((r) => r.userId === userId && r.type === type);
   const get = (userId: string, type: string) => cell(userId, type)?.status ?? "";
   const statuses = ["PRESENT", "LATE", "EXCUSED", "ABSENT"];
@@ -58,6 +63,12 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
             <span className="text-xs text-muted">ينسخ ما لم يُرصد في هذا الأسبوع فقط، ولا يمسّ ما رصدته.</span>
           </form>
         )}
+        {pendingExcuses > 0 && (
+          <div className="card card-muted text-sm mb-3 flex flex-wrap items-center justify-between gap-2">
+            <span>{pendingExcuses === 1 ? "طلب استئذان" : `${pendingExcuses} طلبات استئذان`} عن لقاءات هذا الأسبوع قيد النظر — قبولها يرصد صاحبها «معذوراً» هنا.</span>
+            <Link href="/admin/excuses" className="btn btn-secondary btn-sm">البتّ فيها</Link>
+          </div>
+        )}
         <AttendanceQuickFill />
         <form action={saveAttendance} data-attendance>
           <input type="hidden" name="week" value={week} />
@@ -80,13 +91,16 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
                     <td className="font-medium whitespace-nowrap">{p.name}</td>
                     {["INPERSON", "REMOTE"].map((t) => {
                       const c = cell(p.id, t);
+                      const ex = excuseOf(p.id, t);
                       return (
                         <Fragment key={t}>
                           <td>
-                            <select name={`att_${p.id}_${t}`} className="select" defaultValue={get(p.id, t)}>
+                            {/* المعذور باستئذانٍ مقبول لا تمسّه التعبئة السريعة */}
+                            <select name={`att_${p.id}_${t}`} className="select" defaultValue={get(p.id, t)} data-excused={ex?.status === "APPROVED" ? "1" : undefined} aria-describedby={ex ? `ex_${p.id}_${t}` : undefined}>
                               <option value="">— لم يُسجل —</option>
                               {statuses.map((s) => <option key={s} value={s}>{ATTENDANCE_LABELS[s]}</option>)}
                             </select>
+                            {ex && <div id={`ex_${p.id}_${t}`} className="text-[11px] text-muted mt-0.5">{ex.status === "APPROVED" ? "استئذان مقبول" : "استئذان قيد النظر"}</div>}
                           </td>
                           <td>
                             <select name={`part_${p.id}_${t}`} className="select" defaultValue={c?.participation ?? ""}>

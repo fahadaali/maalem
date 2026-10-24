@@ -56,6 +56,14 @@ async function pauseGate(userId: string, match: (o: Obligation) => boolean, back
 const keyOr = (keys: string[], href?: string) => (o: Obligation) =>
   keys.some((k) => (k.endsWith(":") ? o.key.startsWith(k) : o.key === k)) || (!!href && o.kind === "ASSIGNMENT" && !!o.related?.some((r) => r.href === href));
 
+/** تاريخٌ من النموذج «YYYY-MM-DD» لا يأتي بعد اليوم — قاعدةٌ واحدة للإضافة والتعديل، فلا يقبل أحدهما ما يرفضه الآخر */
+function pastDateKey(formData: FormData, path: string): string {
+  const dateKey = str(formData.get("date")) || todayKey();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || Number.isNaN(keyToDate(dateKey).getTime())) fail(path, "تاريخ غير صحيح");
+  if (dateKey > todayKey()) fail(path, "لا يُسجَّل إدخالٌ ليوم لم يأتِ بعد");
+  return dateKey;
+}
+
 // ——— بطاقة القراءة اليومية ———
 
 /** حقول البطاقة من النموذج بعد التحقق — للإضافة والتعديل معاً فلا تفترق قواعدهما */
@@ -126,6 +134,9 @@ export async function saveWeeklyReport(formData: FormData) {
   await pauseGate(user.id, keyOr([`report:${week}`]), path);
   const info = await getWeekByNumber(week);
   if (!info) fail("/app/reports", "أسبوع غير موجود");
+  // التقرير عمّا أُنجز في أسبوعه: لا يُكتب لأسبوعٍ لم يبدأ — والأسبوع الحالي بساعة البرنامج الواقفة في الإيقاف
+  const cur = await currentWeekNumber();
+  if (week > cur && cur < 15) fail(path, "يُفتح تقرير هذا الأسبوع مع بدايته");
 
   /**
    * المهام تُقرأ من جدول أسبوع الدفعة لا من مفاتيح النموذج: لو اعتُمدت المفاتيح
@@ -159,7 +170,7 @@ export async function saveWeeklyReport(formData: FormData) {
   };
   if (show.reading && (!data.reading || !data.benefits)) fail(path, "الورد المنجز والفوائد حقلان إلزاميان");
 
-  const existing = await db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, select: { id: true } });
+  const existing = await db.weeklyReport.findUnique({ where: { userId_week: { userId: user.id, week } }, select: { id: true, reviewedAt: true } });
   const report = await db.weeklyReport.upsert({
     where: { userId_week: { userId: user.id, week } },
     create: { userId: user.id, week, ...data },
@@ -175,6 +186,16 @@ export async function saveWeeklyReport(formData: FormData) {
   const resubmitted = existing ? await markResubmitted("WEEKLY_REPORT", existing.id, user) : false;
   if (!existing) {
     await notifyAdmins({ title: "تقرير أسبوعي جديد", body: `${user.name} سلّم تقرير الأسبوع ${week}`, url: `/admin/reports?week=${week}` });
+  } else if (existing.reviewedAt && !resubmitted) {
+    /**
+     * عدّله صاحبه بعد مراجعته: كان يبقى «تمت المراجعة» بتغذيةٍ راجعة على نصٍّ تبدّل.
+     * فيعود إلى طابور المراجعة، ويُشعَر المدير والمشرف المرافق ليقرآ الجديد.
+     */
+    await db.weeklyReport.update({ where: { id: existing.id }, data: { reviewedAt: null } });
+    const body = `${user.name} عدّل تقرير الأسبوع ${week} بعد مراجعته`;
+    await notifyAdmins({ title: "تقرير عُدّل بعد مراجعته", body, url: `/admin/reports?week=${week}` });
+    const me = await db.user.findUnique({ where: { id: user.id }, select: { mentorId: true } });
+    if (me?.mentorId) await notifyUsers([me.mentorId], { title: "تقرير عُدّل بعد مراجعته", body, url: `/mentor/reports?week=${week}` });
   }
   revalidatePath("/app", "layout");
   ok(path, resubmitted ? "أُعيد التقرير إلى مدير المشروع" : "تم حفظ التقرير الأسبوعي");
@@ -231,7 +252,7 @@ export async function submitAssignment(formData: FormData) {
 export async function addFieldLog(formData: FormData) {
   const user = await participant();
   await pauseGate(user.id, keyOr(["field"], "/app/field"), "/app/field");
-  const dateKey = str(formData.get("date")) || todayKey();
+  const dateKey = pastDateKey(formData, "/app/field");
   const hours = num(formData.get("hours"));
   const mentorName = str(formData.get("mentorName"));
   const note = str(formData.get("note"));
@@ -267,11 +288,10 @@ export async function updateFieldLog(formData: FormData) {
   const log = await db.fieldLog.findFirst({ where: { id, userId: user.id }, select: { approvedAt: true } });
   if (!log) fail("/app/field", "السجل غير موجود");
   if (log.approvedAt && !(await findOpenReturn("FIELD_LOG", id))) fail("/app/field", "اعتُمد هذا السجل فأُقفل");
-  const dateKey = str(formData.get("date")) || todayKey();
+  const dateKey = pastDateKey(formData, path);
   const hours = num(formData.get("hours"));
   const mentorName = str(formData.get("mentorName"));
   const note = str(formData.get("note"));
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) fail(path, "تاريخ غير صحيح");
   if (hours <= 0 || hours > 12) fail(path, "أدخل عدد ساعات صحيحاً");
   if (!mentorName || !note) fail(path, "اسم المشرف المرافق والملاحظة حقلان إلزاميان");
   await db.fieldLog.update({ where: { id }, data: { date: keyToDate(dateKey), hours, mentorName, note } });
@@ -285,7 +305,7 @@ export async function addLeadershipActivity(formData: FormData) {
   const user = await participant();
   await pauseGate(user.id, keyOr(["leadership"]), "/app/leadership");
   const title = str(formData.get("title"));
-  const dateKey = str(formData.get("date")) || todayKey();
+  const dateKey = pastDateKey(formData, "/app/leadership");
   const report = str(formData.get("report"));
   if (!title) fail("/app/leadership", "اكتب عنوان النشاط");
   await db.leadershipActivity.create({ data: { userId: user.id, title, date: keyToDate(dateKey), report: report || null } });
@@ -365,13 +385,18 @@ export async function saveLearningPlan(formData: FormData) {
   const weeklyPlan = str(formData.get("weeklyPlan"));
   const memorization = str(formData.get("memorization"));
   if (!goals) fail("/app/plan", "اكتب أهداف خطتك الفصلية");
+  const before = await db.learningPlan.findUnique({ where: { userId: user.id }, select: { goals: true, weeklyPlan: true, memorization: true, reviewedAt: true } });
+  const changed = !!before && (before.goals !== goals || before.weeklyPlan !== weeklyPlan || before.memorization !== memorization);
   const plan = await db.learningPlan.upsert({
     where: { userId: user.id },
     create: { userId: user.id, goals, weeklyPlan, memorization },
-    update: { goals, weeklyPlan, memorization },
+    // خطةٌ روجعت ثم تبدّل نصّها تعود إلى طابور المراجعة، فلا تبقى «رُوجعت» على ما لم يُقرأ
+    update: { goals, weeklyPlan, memorization, ...(changed && before?.reviewedAt ? { reviewedAt: null } : {}) },
   });
   // خطةٌ أُرجعت فأعادها صاحبها تعود إلى مراجعة المدير ويُشعَر بها
   const resubmitted = await markResubmitted("LEARNING_PLAN", plan.id, user);
+  if (!before) await notifyAdmins({ title: "خطة تعلم جديدة", body: `${user.name} كتب خطة التعلم الشخصية`, url: "/admin/reading?tab=plans" });
+  else if (changed && before.reviewedAt && !resubmitted) await notifyAdmins({ title: "خطة عُدّلت بعد مراجعتها", body: `${user.name} عدّل خطة التعلم بعد مراجعتك`, url: "/admin/reading?tab=plans" });
   revalidatePath("/app", "layout");
   ok("/app/plan", resubmitted ? "أُعيدت الخطة إلى مدير المشروع" : "تم حفظ خطة التعلم");
 }
@@ -384,6 +409,8 @@ export async function addTadabbur(formData: FormData) {
   const notes = str(formData.get("notes"));
   if (!topic || week < 0) fail("/app/plan", "اكتب موضوع الوقفة التدبرية والأسبوع");
   await db.tadabburStop.create({ data: { userId: user.id, week, topic, notes: notes || null } });
+  // بند الوقفات في «مهامي» وعدّاد الهيكل يقرآنها
+  revalidatePath("/app", "layout");
   ok("/app/plan", "تم تسجيل الوقفة التدبرية");
 }
 

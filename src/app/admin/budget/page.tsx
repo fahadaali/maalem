@@ -72,7 +72,7 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
                           <td>
                             <form action={deleteBudgetEntry}>
                               <input type="hidden" name="id" value={r.id} />
-                              <button className="btn btn-ghost btn-sm text-muted">حذف</button>
+                              <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm={`حذف بند «${r.item}» من الميزانية؟`}>حذف</SubmitButton>
                             </form>
                           </td>
                         </tr>

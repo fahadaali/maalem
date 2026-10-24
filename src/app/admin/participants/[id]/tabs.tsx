@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import Attachments from "@/components/Attachments";
 import ReportTasks from "@/components/ReportTasks";
 import MentorEvalForm from "@/components/MentorEvalForm";
+import RubricGradeForm from "@/components/RubricGradeForm";
 import CompetencyCard from "@/components/CompetencyCard";
 import Timeline from "@/components/Timeline";
 import ObligationList from "@/components/ObligationList";
@@ -12,7 +13,6 @@ import { addFeedbackSession, approveFieldLog, gradeSubmission, resetQuizAttempt,
 import { reviewItem } from "../actions";
 import { ItemActions, ItemPanel, MenuAction, ReturnedNote, itemLinks, type Panel } from "./parts";
 import { REPORT_ROWS } from "@/lib/report";
-import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, daysLabel, pagesText } from "@/lib/utils";
 import { EXCUSE_KINDS, EXCUSE_STATUS } from "@/lib/excuses";
 import { formatDateTime, formatShort, todayKey } from "@/lib/dates";
@@ -141,41 +141,6 @@ export async function OverviewTab({ ctx, grades }: { ctx: Ctx; grades: GradeBrea
 
 // ——— المهام والتقارير ———
 
-function GradeForm({ s, back }: { s: { id: string; completeness: number | null; referencing: number | null; application: number | null; punctuality: number | null; feedback: string | null; gradedAt: Date | null }; back: string }) {
-  const values: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: s.punctuality };
-  return (
-    <form action={gradeSubmission} className="mt-2">
-      <input type="hidden" name="id" value={s.id} />
-      <input type="hidden" name="back" value={back} />
-      <div className="table-wrap">
-        <table className="table">
-          <thead><tr><th>المعيار</th>{RUBRIC_LEVEL_LABELS.map((l) => <th key={l} className="text-center">{l}</th>)}</tr></thead>
-          <tbody>
-            {TASK_RUBRIC.map((r) => (
-              <tr key={r.key}>
-                <td className="font-medium whitespace-nowrap">{r.criterion}</td>
-                {r.levels.map((desc, i) => {
-                  const val = 4 - i;
-                  return (
-                    <td key={val}>
-                      <label className="flex items-start gap-1.5 cursor-pointer text-xs">
-                        <input type="radio" name={r.key} value={val} required defaultChecked={values[r.key] === val} className="accent-black mt-0.5" />
-                        <span>{desc}</span>
-                      </label>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="field mt-3"><label className="label">تغذية راجعة</label><textarea name="feedback" className="textarea" rows={2} defaultValue={s.feedback ?? ""} /></div>
-      <SubmitButton className="btn-sm">{s.gradedAt ? "تحديث التقييم" : "اعتماد التقييم"}</SubmitButton>
-    </form>
-  );
-}
-
 export async function WorkTab({ ctx }: { ctx: Ctx }) {
   const { userId, rows, program, panel, now } = ctx;
   const [subs, files, reports] = await Promise.all([
@@ -223,10 +188,14 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                       {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}
                       {mine.length > 0 && <div className="mt-2"><Attachments kind="SUBMISSION" refId={a.id} initial={mine} readOnly /></div>}
                       {s.feedback && <div className="text-sm mt-2 border-s-2 border-line ps-2"><span className="text-muted">التغذية الراجعة: </span>{s.feedback}</div>}
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-sm text-muted">{s.gradedAt ? "تعديل التقييم بالسلّم" : "التقييم بسلّم التقدير (ملحق 2)"}</summary>
-                        <GradeForm s={s} back={l.back} />
-                      </details>
+                      {returned ? (
+                        <p className="text-xs text-muted mt-2">مُرجَعٌ إليه للتعديل — يُقيَّم بعد أن يعيده، أو ألغِ الإرجاع من قائمة ⋮.</p>
+                      ) : (
+                        <details className="mt-2" open={!s.gradedAt}>
+                          <summary className="cursor-pointer text-sm text-muted">{s.gradedAt ? "تعديل التقييم بالسلّم" : "التقييم بسلّم التقدير (ملحق 2)"}</summary>
+                          <RubricGradeForm action={gradeSubmission} s={s} due={due} pause={pauseOf(program.weeks)} back={l.back} />
+                        </details>
+                      )}
                       <ItemPanel panel={panel} userId={userId} tab="work" kind="SUBMISSION" id={s.id} values={s} label={`تسليم «${a.title}»`} />
                     </>
                   )}
@@ -266,15 +235,19 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                     <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
                       {REPORT_ROWS.map(([label, key]) => (r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null))}
                     </dl>
-                    <details className="mt-3" open={!r.reviewedAt && !returned}>
-                      <summary className="cursor-pointer text-sm text-muted">{r.reviewedAt ? "تعديل المراجعة" : "المراجعة والتغذية الراجعة"}</summary>
-                      <form action={reviewReport} className="mt-2">
-                        <input type="hidden" name="id" value={r.id} />
-                        <input type="hidden" name="back" value={l.back} />
-                        <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} defaultValue={r.feedback ?? ""} /></div>
-                        <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث المراجعة" : "اعتماد المراجعة"}</SubmitButton>
-                      </form>
-                    </details>
+                    {returned ? (
+                      <p className="text-xs text-muted mt-3">مُرجَعٌ إليه للتعديل — يُراجَع بعد أن يعيده، أو ألغِ الإرجاع من قائمة ⋮.</p>
+                    ) : (
+                      <details className="mt-3" open={!r.reviewedAt}>
+                        <summary className="cursor-pointer text-sm text-muted">{r.reviewedAt ? "تعديل المراجعة" : "المراجعة والتغذية الراجعة"}</summary>
+                        <form action={reviewReport} className="mt-2">
+                          <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="back" value={l.back} />
+                          <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} defaultValue={r.feedback ?? ""} /></div>
+                          <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث المراجعة" : "اعتماد المراجعة"}</SubmitButton>
+                        </form>
+                      </details>
+                    )}
                     <ItemPanel panel={panel} userId={userId} tab="work" kind="WEEKLY_REPORT" id={r.id} values={r} label={`تقرير ${weekName(w.number)}`} />
                   </>
                 )}
@@ -462,7 +435,7 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
                       {r ? <Badge tone="ink">مُرجَع</Badge> : f.approvedAt ? <Badge tone="ink">معتمد</Badge> : <Badge>بانتظار الاعتماد</Badge>}
                       <ItemActions
                         userId={userId} tab="field" kind="FIELD_LOG" activity="FIELD_LOG" id={f.id} label={`سجل المعايشة ${formatShort(f.date)}`} returned={r}
-                        extra={!f.approvedAt ? <MenuAction action={approveFieldLog} fields={{ id: f.id, back: l.back }}>اعتماد</MenuAction> : undefined}
+                        extra={!f.approvedAt && !r ? <MenuAction action={approveFieldLog} fields={{ id: f.id, back: l.back }}>اعتماد</MenuAction> : undefined}
                       />
                     </div>
                   </div>

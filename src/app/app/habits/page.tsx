@@ -53,7 +53,7 @@ export default async function HabitsPage({ searchParams }: { searchParams: Promi
                   </div>
                   <form action={deleteHabit}>
                     <input type="hidden" name="id" value={h.id} />
-                    <button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button>
+                    <SubmitButton ghost className="btn-sm" pendingText="…" label="حذف العادة" confirm={`حذف «${h.name}» وكل أيامها المسجّلة؟`}><Trash2 size={14} /></SubmitButton>
                   </form>
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-1" dir="ltr">

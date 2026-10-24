@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { notifyUsers, notifyRole } from "@/lib/notify";
 import { num, str } from "@/lib/utils";
-import { formatGregorian, formatHijri, keyToDate, todayKey } from "@/lib/dates";
+import { formatDateTime, formatGregorian, formatHijri, keyToDate, todayKey } from "@/lib/dates";
 import { cookies } from "next/headers";
 import { PREVIEW_COOKIE } from "@/lib/roles";
 import { PHASES } from "@/lib/program";
@@ -23,7 +23,7 @@ import { ensureProgramData } from "@/lib/setup";
 import { seedAssignmentsFor } from "@/lib/seed";
 import { dropPendingAttachment, removeAttachments } from "@/lib/attachments";
 import { ACTIVITY_KINDS, isActivityKind } from "@/lib/activity";
-import { closeReturns } from "@/lib/items";
+import { closeReturns, findOpenReturn } from "@/lib/items";
 import { missingAssignments, weekName } from "@/lib/obligations";
 import { loadProgram } from "@/lib/participant-data";
 import { isReturnKind } from "@/lib/returns";
@@ -36,6 +36,12 @@ import { applyShift, loadResumeInputs, resumeItems, savePending, unfinished } fr
 import { ok, fail, safeBack } from "@/lib/redirects";
 
 const admin = () => requireRole("ADMIN");
+
+/** أُدّي الاختبار؟ إجابات المحاولات مرتّبة بترتيب أسئلته، فلا تُمسّ أسئلته بعدها */
+async function quizLocked(quizId: string): Promise<boolean> {
+  return (await db.quizAttempt.count({ where: { quizId } })) > 0;
+}
+const QUIZ_LOCKED = "أُدّي هذا الاختبار، فأسئلته مقفلة حتى لا تنزاح نتائج من أدّوه — أعد فتحه لهم أولاً أو أنشئ اختباراً جديداً";
 
 /** الترتيب التالي لسؤال في اختبار: بعد أعلى ترتيب قائم، فلا يتكرر الترتيب بعد حذف سؤال من الوسط */
 async function nextQuestionOrder(quizId: string): Promise<number> {
@@ -100,6 +106,8 @@ export async function addFeedbackSession(formData: FormData) {
 }
 
 // ——— الحضور ———
+const ATTENDANCE_STATUSES = new Set(["PRESENT", "LATE", "EXCUSED", "ABSENT"]);
+
 export async function saveAttendance(formData: FormData) {
   await admin();
   const week = num(formData.get("week"), -1);
@@ -107,7 +115,7 @@ export async function saveAttendance(formData: FormData) {
   const entries: { userId: string; type: string; status: string; participation: number | null; circleScore: number | null }[] = [];
   for (const [k, v] of formData.entries()) {
     const m = k.match(/^att_([^_]+)_(INPERSON|REMOTE)$/);
-    if (m && typeof v === "string") {
+    if (m && typeof v === "string" && (v === "" || ATTENDANCE_STATUSES.has(v))) {
       const rating = (name: string) => {
         const raw = str(formData.get(`${name}_${m[1]}_${m[2]}`));
         const n = Number(raw);
@@ -136,7 +144,9 @@ export async function reviewReport(formData: FormData) {
   await admin();
   const id = str(formData.get("id"));
   const feedback = str(formData.get("feedback"));
-  if (!(await db.weeklyReport.findUnique({ where: { id }, select: { id: true } }))) fail("/admin/reports", "التقرير غير موجود");
+  const existing = await db.weeklyReport.findUnique({ where: { id }, select: { id: true, week: true } });
+  if (!existing) fail("/admin/reports", "التقرير غير موجود");
+  if (await findOpenReturn("WEEKLY_REPORT", id)) fail(safeBack(str(formData.get("back")), `/admin/reports?week=${existing.week}`), "هذا التقرير مُرجَع لصاحبه — يُراجَع بعد أن يعيده، أو ألغِ الإرجاع أولاً");
   const r = await db.weeklyReport.update({ where: { id }, data: { feedback: feedback || null, reviewedAt: new Date() } });
   if (feedback) await notifyUsers([r.userId], { title: `تغذية راجعة على تقرير الأسبوع ${r.week}`, body: feedback.slice(0, 120), url: `/app/reports/${r.week}` });
   // ومن ملف المشارك يعود إليه عند التقرير نفسه
@@ -199,8 +209,17 @@ export async function updateAssignment(formData: FormData) {
   const competency = str(formData.get("competency"));
   const dueAt = str(formData.get("dueAt"));
   if (!title || week < 0 || !dueAt) fail(`/admin/tasks/${id}`, "العنوان والأسبوع وموعد التسليم حقول إلزامية");
-  await db.assignment.update({ where: { id }, data: { title, week, description: description || null, competency: competency || null, dueAt: new Date(dueAt + "+03:00") } });
-  ok(`/admin/tasks/${id}`, "تم تحديث المهمة");
+  const before = await db.assignment.findUnique({ where: { id }, select: { dueAt: true } });
+  if (!before) fail("/admin/tasks", "المهمة غير موجودة");
+  const due = new Date(dueAt + "+03:00");
+  if (Number.isNaN(due.getTime())) fail(`/admin/tasks/${id}`, "موعد غير صحيح");
+  await db.assignment.update({ where: { id }, data: { title, week, description: description || null, competency: competency || null, dueAt: due } });
+  // الموعد يتبدّل في «مهامي» وعدّادها فوراً، فيُخبَر أصحابه به لا يكتشفونه متأخرين
+  const moved = before.dueAt.getTime() !== due.getTime();
+  if (moved) await notifyRole("PARTICIPANT", { title: "تغيّر موعد مهمة", body: `${title}: الموعد الجديد ${formatDateTime(due)}`, url: `/app/tasks/${id}` });
+  revalidatePath("/admin/tasks");
+  revalidatePath("/app", "layout");
+  ok(`/admin/tasks/${id}`, moved ? "تم تحديث المهمة وإشعار المشاركين بموعدها الجديد" : "تم تحديث المهمة");
 }
 
 export async function deleteAssignment(formData: FormData) {
@@ -222,6 +241,8 @@ export async function gradeSubmission(formData: FormData) {
   const s = await db.submission.findUnique({ where: { id }, include: { assignment: true } });
   if (!s) fail("/admin/tasks", "التسليم غير موجود");
   const path = safeBack(str(formData.get("back")), `/admin/tasks/${s.assignmentId}`);
+  // المُرجَع ينتظر صاحبه: تقييمه الآن يُبقي الإرجاع مفتوحاً على تسليمٍ مقيَّم يُصفَّر تقييمه حين يعيده
+  if (await findOpenReturn("SUBMISSION", id)) fail(path, "هذا التسليم مُرجَع لصاحبه — يُقيَّم بعد أن يعيده، أو ألغِ الإرجاع أولاً");
   if (vals.some((v) => v < 1 || v > 4)) fail(path, "قيّم كل معيار من 1 إلى 4");
   const feedback = str(formData.get("feedback"));
   await db.submission.update({ where: { id }, data: { completeness: vals[0], referencing: vals[1], application: vals[2], punctuality: vals[3], feedback: feedback || null, gradedAt: new Date() } });
@@ -276,6 +297,7 @@ export async function addQuestion(formData: FormData) {
   const path = `/admin/quizzes/${quizId}`;
   const q = readQuestion(formData, path);
   if (!(await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } }))) fail("/admin/quizzes", "الاختبار غير موجود");
+  if (await quizLocked(quizId)) fail(path, QUIZ_LOCKED);
   const order = await nextQuestionOrder(quizId);
   await db.question.create({ data: { quizId, order, ...q } });
   if (str(formData.get("toBank")) === "on") {
@@ -311,6 +333,7 @@ export async function copyFromBank(formData: FormData) {
   if (!ids.length) fail(path, "اختر سؤالاً واحداً على الأقل");
   const quiz = await db.quiz.findUnique({ where: { id: quizId }, select: { id: true } });
   if (!quiz) fail("/admin/quizzes", "الاختبار غير موجود");
+  if (await quizLocked(quizId)) fail(path, QUIZ_LOCKED);
   const rows = await db.bankQuestion.findMany({ where: { id: { in: ids } } });
   const start = await nextQuestionOrder(quizId);
   await db.question.createMany({
@@ -325,6 +348,7 @@ export async function deleteQuestion(formData: FormData) {
   const id = str(formData.get("id"));
   const q = await db.question.findUnique({ where: { id }, select: { quizId: true } });
   if (!q) return;
+  if (await quizLocked(q.quizId)) fail(`/admin/quizzes/${q.quizId}`, QUIZ_LOCKED);
   await db.question.deleteMany({ where: { id } });
   revalidatePath(`/admin/quizzes/${q.quizId}`);
 }
@@ -357,6 +381,7 @@ export async function approveFieldLog(formData: FormData) {
   if (!log) fail(back, "السجل غير موجود");
   if (me.role === "MENTOR" && log.user.mentorId !== me.id) fail(back, "هذا المشارك ليس من مجموعتك");
   if (log.approvedAt) fail(back, "اعتُمد هذا السجل من قبل");
+  if (await findOpenReturn("FIELD_LOG", id)) fail(back, "هذا السجل مُرجَع لصاحبه — يُعتمد بعد أن يعيده");
   await db.fieldLog.update({ where: { id }, data: { approvedAt: new Date(), approvedBy: me.id } });
   await notifyUsers([log.userId], { title: "اعتماد سجل معايشة", body: `اعتُمدت ${log.hours} ساعة معايشة.`, url: "/app/field" });
   revalidatePath(back);
@@ -882,14 +907,18 @@ export async function approveFinalGrade(formData: FormData) {
   });
   await notifyUsers([userId], { title: "اعتماد الدرجة النهائية", body: `درجتك النهائية ${total} من 100`, url: "/app/portfolio" });
   revalidatePath("/admin/grades");
-  ok("/admin/grades", "تم اعتماد الدرجة النهائية");
+  const cert = await db.certificate.findUnique({ where: { userId }, select: { total: true } });
+  ok("/admin/grades", cert && Math.abs(cert.total - total) >= 0.05 ? `تم اعتماد الدرجة النهائية — وله وثيقة صادرة بمجموع ${cert.total} يخالف المعتمد ${total}، حدّثها من «وثائق الإتمام»` : "تم اعتماد الدرجة النهائية");
 }
 
 export async function reopenFinalGrade(formData: FormData) {
   await admin();
-  await db.finalGrade.deleteMany({ where: { userId: str(formData.get("userId")) } });
+  const userId = str(formData.get("userId"));
+  await db.finalGrade.deleteMany({ where: { userId } });
   revalidatePath("/admin/grades");
-  ok("/admin/grades", "أُلغي الاعتماد وعادت الدرجة للاحتساب الآلي");
+  // الوثيقة الصادرة تحمل مجموع الاعتماد الملغى: يُنبَّه المدير إلى تحديثها بعد إعادة الاعتماد
+  const cert = await db.certificate.findUnique({ where: { userId }, select: { total: true } });
+  ok("/admin/grades", cert ? `أُلغي الاعتماد وعادت الدرجة للاحتساب الآلي — وله وثيقة صادرة بمجموع ${cert.total}، حدّثها من «وثائق الإتمام» بعد إعادة الاعتماد` : "أُلغي الاعتماد وعادت الدرجة للاحتساب الآلي");
 }
 
 // ——— إعادة فتح اختبار لمشارك ———
@@ -1325,7 +1354,8 @@ export async function copyAttendanceFromWeek(formData: FormData) {
   if (week === from) fail(path, "اختر أسبوعاً مختلفاً للنسخ منه");
   const ids = (await db.user.findMany({ where: await participantsWhere(), select: { id: true } })).map((u) => u.id);
   if (!ids.length) fail(path, "لا مشاركين في الدفعة");
-  const source = await db.attendance.findMany({ where: { week: from, userId: { in: ids } } });
+  // العذر خاصٌّ بأسبوعه: «معذور» لا يُنسخ إلى أسبوعٍ لم يُستأذن عنه
+  const source = await db.attendance.findMany({ where: { week: from, userId: { in: ids }, status: { not: "EXCUSED" } } });
   if (!source.length) fail(path, `لا حضور مرصود في الأسبوع ${from}`);
   const existing = await db.attendance.findMany({ where: { week, userId: { in: ids } }, select: { userId: true, type: true } });
   const taken = new Set(existing.map((e) => `${e.userId}:${e.type}`));

@@ -1,3 +1,4 @@
+import Link from "@/components/Link";
 import { notFound } from "next/navigation";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -6,7 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import { saveWeeklyReport } from "../../actions";
 import { formatDateTime, keyToDate } from "@/lib/dates";
-import { getWeekByNumber, getWeekTasks, reportDueDate } from "@/lib/weeks";
+import { currentWeekNumber, getWeekByNumber, getWeekTasks, reportDueDate } from "@/lib/weeks";
 import { TASK_STATUS, publishedQuizWeeks, reportSections } from "@/lib/report";
 import { loadParticipant } from "@/lib/participant-data";
 import { openReturnFor } from "@/lib/returns";
@@ -35,7 +36,9 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
   // لا يُفتح من النموذج إلا ما يطلبه الأسبوع: حقلٌ فارغٌ لا يُطلب يُقرأ إنذاراً لا خبراً
   const show = reportSections(info, { quizWeeks, taskCount: tasks.length });
   const returned = report ? openReturnFor((await loadParticipant(user.id))?.returns ?? [], "WEEKLY_REPORT", report.id) : undefined;
-  const due = await reportDueDate(week);
+  const [due, cur] = await Promise.all([reportDueDate(week), currentWeekNumber()]);
+  // أسبوعٌ لم يبدأ لا تقرير له بعد — والحفظ يرفضه أيضاً، فلا يُكتب نموذجٌ يُرفض عند الإرسال
+  const notYet = week > cur && cur < 15 && !report;
   const saved = new Map(report?.tasks.map((t) => [t.taskId, t]) ?? []);
   // نطاق الصفحات من بطاقات الكتاب الأخير وحده، فلا يُخلط كتابان في سطر واحد
   const latestBook = cards[0]?.book;
@@ -55,6 +58,9 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
           <div className="whitespace-pre-wrap">{report.feedback}</div>
         </Alert>
       )}
+      {notYet ? (
+        <Alert>يُفتح تقرير هذا الأسبوع مع بدايته، ويُسلَّم قبل {formatDateTime(due)}. ترى مهامّه وورده في <Link href={`/app/week?week=${week}`} className="underline">بطاقة الأسبوع</Link>.</Alert>
+      ) : (
       <Card>
         {/* مفتاحٌ بالأسبوع: التنقّل بين الأسابيع من طرف العميل يبقي الحقول مركَّبة
             فلا تتبع قيمُها الأسبوعَ الجديد. وحقول المهام مسمّاة بمعرّفاتها، فلولا
@@ -104,9 +110,10 @@ export default async function WeeklyReportPage({ params, searchParams }: { param
             </>
           )}
           <SubmitButton>{report ? "تحديث التقرير" : "تسليم التقرير"}</SubmitButton>
-          {report && <span className="text-xs text-muted ms-3">آخر تسليم: {formatDateTime(report.submittedAt)}</span>}
+          {report && <span className="text-xs text-muted ms-3">آخر تسليم: {formatDateTime(report.submittedAt)}{report.reviewedAt && !returned ? " · روجع، وتعديله يعيده إلى المراجعة" : ""}</span>}
         </form>
       </Card>
+      )}
     </>
   );
 }
