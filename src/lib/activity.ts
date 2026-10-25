@@ -4,6 +4,7 @@ import { ATTENDANCE_LABELS } from "./utils";
 import { EXCUSE_KINDS } from "./excuses";
 import { getWeeks } from "./weeks";
 import { keyToDate } from "./dates";
+import { findOpenReturn } from "./items";
 
 /**
  * مركز الأنشطة: كل ما يُدخَل في المنصة — من المشاركين ومن مدير المشروع — في
@@ -40,6 +41,13 @@ type Kind = {
   list: (who: object, take: number) => Promise<ActivityItem[]>;
   undo: (id: string) => Promise<Snapshot | null>;
   restore: (payload: Record<string, unknown>) => Promise<void>;
+  /**
+   * لأختام المراجعة وحدها (التقييم، الاعتماد، المراجعة، التحكيم): سببٌ يمنع الإعادة، أو `null`.
+   * الختمُ حكمٌ على نصٍّ بعينه في حالٍ بعينها — فلا يُعاد على سجلٍّ أُرجع إلى صاحبه، ولا
+   * على ما عدّله صاحبه بعد التراجع، ولا فوق حكمٍ جديد صدر بعده. ولولا ذلك لعاد بالإعادة
+   * ما تمنعه أبواب التقييم نفسها.
+   */
+  restoreGuard?: (payload: Record<string, unknown>, undoneAt: Date) => Promise<string | null>;
 };
 
 /** تاريخٌ من حمولة JSON */
@@ -415,6 +423,14 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     restore: async (p) => {
       await db.submission.update({ where: { id: s(p.id) }, data: { completeness: nn(p.completeness), referencing: nn(p.referencing), application: nn(p.application), punctuality: nn(p.punctuality), feedback: sn(p.feedback), gradedAt: dn(p.gradedAt) } });
     },
+    restoreGuard: async (p, undoneAt) => {
+      const r = await db.submission.findUnique({ where: { id: s(p.id) }, select: { submittedAt: true, gradedAt: true } });
+      if (!r) return "لم يعد التسليم موجوداً";
+      if (await findOpenReturn("SUBMISSION", s(p.id))) return "التسليم مُرجَع لصاحبه — يُقيَّم بعد أن يعيده، أو ألغِ الإرجاع أولاً";
+      if (r.gradedAt) return "قُيّم التسليم من جديد بعد التراجع، فلا يُعاد التقييم القديم فوقه";
+      if (r.submittedAt > undoneAt) return "عدّل صاحبه تسليمه بعد التراجع، فالتقييم القديم لا يطابقه — قيّمه من جديد";
+      return null;
+    },
   },
 
   FIELD_APPROVAL: {
@@ -433,6 +449,13 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     restore: async (p) => {
       await db.fieldLog.update({ where: { id: s(p.id) }, data: { approvedAt: dn(p.approvedAt), approvedBy: sn(p.approvedBy) } });
     },
+    restoreGuard: async (p) => {
+      const r = await db.fieldLog.findUnique({ where: { id: s(p.id) }, select: { approvedAt: true } });
+      if (!r) return "لم يعد السجل موجوداً";
+      if (await findOpenReturn("FIELD_LOG", s(p.id))) return "السجل مُرجَع لصاحبه — يُعتمد بعد أن يعيده";
+      if (r.approvedAt) return "اعتُمد السجل من جديد بعد التراجع";
+      return null;
+    },
   },
 
   REPORT_REVIEW: {
@@ -450,6 +473,14 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     },
     restore: async (p) => {
       await db.weeklyReport.update({ where: { id: s(p.id) }, data: { feedback: sn(p.feedback), reviewedAt: dn(p.reviewedAt) } });
+    },
+    restoreGuard: async (p, undoneAt) => {
+      const r = await db.weeklyReport.findUnique({ where: { id: s(p.id) }, select: { submittedAt: true, reviewedAt: true } });
+      if (!r) return "لم يعد التقرير موجوداً";
+      if (await findOpenReturn("WEEKLY_REPORT", s(p.id))) return "التقرير مُرجَع لصاحبه — يُراجَع بعد أن يعيده، أو ألغِ الإرجاع أولاً";
+      if (r.reviewedAt) return "رُوجع التقرير من جديد بعد التراجع، فلا تُعاد المراجعة القديمة فوقها";
+      if (r.submittedAt > undoneAt) return "عدّل صاحبه تقريره بعد التراجع، فالتغذية الراجعة القديمة لا تطابقه — راجعه من جديد";
+      return null;
     },
   },
 
@@ -507,6 +538,15 @@ export const ACTIVITY_KINDS: Record<string, Kind> = {
     },
     restore: async (p) => {
       await db.graduationProject.update({ where: { id: s(p.id) }, data: { clarity: nn(p.clarity), grounding: nn(p.grounding), design: nn(p.design), integration: nn(p.integration), presentation: nn(p.presentation), judgeNote: sn(p.judgeNote), status: s(p.status) } });
+    },
+    restoreGuard: async (p, undoneAt) => {
+      const r = await db.graduationProject.findUnique({ where: { id: s(p.id) }, select: { status: true, updatedAt: true } });
+      if (!r) return "لم يعد المشروع موجوداً";
+      if (await findOpenReturn("PROJECT", s(p.id))) return "المشروع مُرجَع لصاحبه — يُحكَّم بعد أن يعيده، أو ألغِ الإرجاع أولاً";
+      if (r.status === "JUDGED") return "حُكِّم المشروع من جديد بعد التراجع، فلا يُعاد التحكيم القديم فوقه";
+      // التراجع نفسه آخرُ ما كتب على المشروع قبل ختم سجلّه: ما بعده تعديلٌ من صاحبه أو من المدير
+      if (r.updatedAt > undoneAt) return "تغيّر المشروع بعد التراجع، فالتحكيم القديم لا يطابقه — حكّمه من جديد";
+      return null;
     },
   },
 

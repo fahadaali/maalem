@@ -46,13 +46,6 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
   const finalTotal = u.finalGrade ? finalTotalOf(u.finalGrade) : null;
   // مستوى المعتمدة من مجموعها بعد التعديل، لا من المحتسَب قبله
   const level = finalTotal != null ? levelOf(levels, finalTotal).level : grades.level;
-  const S = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <section className="mb-6 break-inside-avoid">
-      <h2 className="text-lg border-b border-line pb-1 mb-2">{title}</h2>
-      {children}
-    </section>
-  );
-
   return (
     <div className="max-w-3xl mx-auto">
       <header className="text-center border-b border-line pb-4 mb-6">
@@ -188,5 +181,15 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         </>
       )}
     </div>
+  );
+}
+
+/** قسمٌ من الملف بعنوانه — خارج المكوّن، فلا يُنشأ مكوّنٌ جديد مع كل تصيير */
+function S({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-6 break-inside-avoid">
+      <h2 className="text-lg border-b border-line pb-1 mb-2">{title}</h2>
+      {children}
+    </section>
   );
 }

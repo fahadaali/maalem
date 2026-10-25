@@ -1649,9 +1649,14 @@ export async function restoreActivity(formData: FormData) {
   if (!row) fail(back, "لا سجل تراجع بهذا المعرّف");
   if (row.restoredAt) fail(back, "أُعيد هذا الإدخال من قبل");
   if (!isActivityKind(row.kind)) fail(back, "نوع إدخال غير معروف");
+  const spec = ACTIVITY_KINDS[row.kind];
+  const payload = JSON.parse(row.payload) as Record<string, unknown>;
+  // ختمُ مراجعةٍ لا يُعاد على ما تغيّر بعد التراجع عنه — كما لا يُختم من أبواب التقييم نفسها
+  const blocked = spec.restoreGuard ? await spec.restoreGuard(payload, row.undoneAt) : null;
+  if (blocked) fail(back, `لم يُعَد «${row.label}»: ${blocked}`);
 
   try {
-    await ACTIVITY_KINDS[row.kind].restore(JSON.parse(row.payload) as Record<string, unknown>);
+    await spec.restore(payload);
   } catch {
     // أشيع ما يمنع الإعادة: أدخل المشارك بديلاً بعد التراجع، والقيد يمنع إدخالين
     fail(back, "تعذّرت الإعادة — لعلّ إدخالاً جديداً حلّ مكانه. راجعه في صفحته أولاً");
