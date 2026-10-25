@@ -24,10 +24,14 @@ export default function FieldLogReview({ pending, approved, back, returned }: { 
               </div>
               <div className="text-sm mb-2">{l.note}</div>
               {l.files && l.files.length > 0 && <div className="mb-3"><Attachments kind="FIELD" initial={l.files} readOnly /></div>}
-              <div className="flex flex-wrap gap-2 items-center">
-                <form action={approveFieldLog}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><SubmitButton className="btn-sm">اعتماد</SubmitButton></form>
-                <form action={rejectFieldLog} className="flex gap-2"><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><input name="reason" className="input" placeholder="سبب الرفض (اختياري)" /><SubmitButton secondary className="btn-sm">رفض</SubmitButton></form>
-              </div>
+              {returned?.has(l.id) ? (
+                <p className="text-xs text-muted">مُرجَعٌ إلى صاحبه للتعديل — يُعتمد بعد أن يعيده.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <form action={approveFieldLog}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><SubmitButton className="btn-sm">اعتماد</SubmitButton></form>
+                  <form action={rejectFieldLog} className="flex gap-2"><input type="hidden" name="id" value={l.id} /><input type="hidden" name="back" value={back} /><input name="reason" className="input" placeholder="سبب الرفض (اختياري)" /><SubmitButton secondary className="btn-sm" confirm="رفض السجل يحذفه من سجلات صاحبه مع مرفقاته، ويصله إشعارٌ بالسبب. أترفضه؟">رفض</SubmitButton></form>
+                </div>
+              )}
             </Card>
           ))}
         </div>

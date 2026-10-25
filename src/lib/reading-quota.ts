@@ -136,7 +136,7 @@ export function readingByWeek(cards: CardRow[], weeks: LiveWeek[], exclude?: Rea
 export type ReadingTotals = {
   /** صفحات كل البطاقات المحتسبة، أينما وقعت تواريخها */
   read: number;
-  /** نصاب البرنامج كله: مجموع أنصبة الأسابيع 0–12 */
+  /** نصاب البرنامج كله: مجموع أنصبة الأسابيع 0–12 — بلا ما انقضى قبل الانضمام إن مُرِّر `joinedAt` */
   required: number;
   /** نصاب ما مضى من الأسابيع حتى `now` — للتأخر لا للدرجة */
   requiredSoFar: number;
@@ -150,7 +150,7 @@ export type ReadingTotals = {
  * حُصر كل أسبوع في نصابه لما نفعه ذلك شيئاً.
  *
  * «ما مضى» يُعدّ بأسبوعٍ انتهى خميسُه: الأسبوع الجاري لا يُطالَب بنصابه كاملاً
- * إلا بعد انقضاء أيام وِرده. و`joinedAt` يُسقط من «ما مضى» ما انقضى قبل الانضمام.
+ * إلا بعد انقضاء أيام وِرده. و`joinedAt` يُسقط ما انقضى قبل الانضمام من «ما مضى» ومن نصاب البرنامج معاً.
  */
 export function readingTotals(cards: CardRow[], weeks: LiveWeek[], realNow: Date, exclude?: ReadonlySet<string>, joinedAt?: Date): ReadingTotals {
   // والدفعة موقوفةً لا يكبر «ما مضى» بأسابيع الإيقاف — فلا تنقص الدرجة ولا يُذكَّر أحدٌ بوِردٍ لم يُطلب
@@ -162,10 +162,11 @@ export function readingTotals(cards: CardRow[], weeks: LiveWeek[], realNow: Date
   for (const w of weeks) {
     const q = weekQuota(w);
     if (!q) continue;
-    required += q.pages;
     const deadline = readingDeadline(w).getTime();
-    // المنضمّ بعد بدء البرنامج لا يُعدّ متأخراً بوِرد ما انقضى قبل انضمامه — كما في «مهامي»
-    if (deadline <= now.getTime() && (!joinedAt || deadline >= joinedAt.getTime())) requiredSoFar += q.pages;
+    // المنضمّ بعد بدء البرنامج لا يُطالَب بوِرد ما انقضى قبل انضمامه — لا في التأخر ولا في الدرجة، كما في «مهامي»
+    if (joinedAt && deadline < joinedAt.getTime()) continue;
+    required += q.pages;
+    if (deadline <= now.getTime()) requiredSoFar += q.pages;
   }
   return { read, required, requiredSoFar, ratio: required > 0 ? Math.min(read / required, 1) : 0 };
 }

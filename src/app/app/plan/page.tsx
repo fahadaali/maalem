@@ -1,3 +1,4 @@
+import DraftKeeper from "@/components/DraftKeeper";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Empty } from "@/components/ui";
@@ -37,7 +38,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         </div>
       )}
       <Card>
-        <form action={saveLearningPlan}>
+        <DraftKeeper formId="plan" storageKey={`plan:${user.id}`} />
+        <form id="plan" action={saveLearningPlan}>
           <div className="field">
             <label className="label">أهداف الخطة الفصلية للتعلم الذاتي</label>
             <textarea name="goals" className="textarea" rows={5} required defaultValue={plan?.goals ?? ""} placeholder="ما الذي أريد أن أتقنه بنهاية البرنامج؟ ثلاثة إلى خمسة أهداف قابلة للقياس" />
@@ -86,7 +88,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
               </div>
               <form action={deleteTadabbur}>
                 <input type="hidden" name="id" value={s.id} />
-                <button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button>
+                <SubmitButton ghost className="btn-sm" pendingText="…" label="حذف الوقفة" confirm="حذف هذه الوقفة التدبرية؟"><Trash2 size={14} /></SubmitButton>
               </form>
             </div>
           ))}

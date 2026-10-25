@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import Attachments from "@/components/Attachments";
 import ReportTasks from "@/components/ReportTasks";
 import MentorEvalForm from "@/components/MentorEvalForm";
+import RubricGradeForm from "@/components/RubricGradeForm";
 import CompetencyCard from "@/components/CompetencyCard";
 import Timeline from "@/components/Timeline";
 import ObligationList from "@/components/ObligationList";
@@ -12,7 +13,6 @@ import { addFeedbackSession, approveFieldLog, gradeSubmission, resetQuizAttempt,
 import { reviewItem } from "../actions";
 import { ItemActions, ItemPanel, MenuAction, ReturnedNote, itemLinks, type Panel } from "./parts";
 import { REPORT_ROWS } from "@/lib/report";
-import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
 import { ATTENDANCE_LABELS, PROJECT_STATUS_LABELS, daysLabel, pagesText } from "@/lib/utils";
 import { EXCUSE_KINDS, EXCUSE_STATUS } from "@/lib/excuses";
 import { formatDateTime, formatShort, todayKey } from "@/lib/dates";
@@ -28,6 +28,8 @@ import { daysLate, overdueLabel, weekName, type Obligation, type ObligationsResu
 import { itemAnchor, type FileTab } from "@/lib/items";
 import { openReturnFor, returnedIds } from "@/lib/returns";
 import type { GradeBreakdown } from "@/lib/grades";
+import { progressFrom, tallyText } from "@/lib/progress";
+import { DueBars, InterimBars, InterimNote } from "@/components/DueProgress";
 
 /**
  * تبويبات ملف المشارك عند المدير. يجلب كلُّ تبويبٍ ما يعرضه وحده — فالملف كاملاً
@@ -114,12 +116,21 @@ export async function OverviewTab({ ctx, grades }: { ctx: Ctx; grades: GradeBrea
             </ul>
           )}
         </Card>
-        <Card title={`التقييم المستمر (${grades.maxes.continuous})`}>
+        <Card title="المنجز من المستحق" action={<Badge tone="soft">{grades.due.percent != null ? `${grades.due.percent}%` : "—"}</Badge>}>
+          <DueBars due={grades.due} />
+        </Card>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card title="الدرجة المرحلية" action={<Badge tone="ink">{grades.interim.total ?? "—"} / {grades.maxes.continuous + grades.maxes.project}{grades.interim.level ? ` · ${grades.interim.level}` : ""}</Badge>}>
+          <InterimBars grades={grades} continuous={continuous} />
+          <InterimNote grades={grades} />
+        </Card>
+        <Card title={`الدرجة التراكمية (${grades.total} من ${grades.maxes.continuous + grades.maxes.project})`}>
           <div className="space-y-2">
             {continuous.map((c) => <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key] ?? 0} max={c.points} />)}
           </div>
           <div className="text-xs text-muted mt-3">
-            مشروع التخرج: {grades.project}/{grades.maxes.project} · {grades.stats.projectStatus ? PROJECT_STATUS_LABELS[grades.stats.projectStatus] : "لم يُحدد"} · الورد {grades.stats.readingPages} من {grades.stats.readingRequired} صفحة
+            على البرنامج كله، وبها تُعتمد الدرجة النهائية. مشروع التخرج: {grades.project}/{grades.maxes.project} · {grades.stats.projectStatus ? PROJECT_STATUS_LABELS[grades.stats.projectStatus] : "لم يُحدد"}
           </div>
         </Card>
       </div>
@@ -129,41 +140,6 @@ export async function OverviewTab({ ctx, grades }: { ctx: Ctx; grades: GradeBrea
 }
 
 // ——— المهام والتقارير ———
-
-function GradeForm({ s, back }: { s: { id: string; completeness: number | null; referencing: number | null; application: number | null; punctuality: number | null; feedback: string | null; gradedAt: Date | null }; back: string }) {
-  const values: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: s.punctuality };
-  return (
-    <form action={gradeSubmission} className="mt-2">
-      <input type="hidden" name="id" value={s.id} />
-      <input type="hidden" name="back" value={back} />
-      <div className="table-wrap">
-        <table className="table">
-          <thead><tr><th>المعيار</th>{RUBRIC_LEVEL_LABELS.map((l) => <th key={l} className="text-center">{l}</th>)}</tr></thead>
-          <tbody>
-            {TASK_RUBRIC.map((r) => (
-              <tr key={r.key}>
-                <td className="font-medium whitespace-nowrap">{r.criterion}</td>
-                {r.levels.map((desc, i) => {
-                  const val = 4 - i;
-                  return (
-                    <td key={val}>
-                      <label className="flex items-start gap-1.5 cursor-pointer text-xs">
-                        <input type="radio" name={r.key} value={val} required defaultChecked={values[r.key] === val} className="accent-black mt-0.5" />
-                        <span>{desc}</span>
-                      </label>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="field mt-3"><label className="label">تغذية راجعة</label><textarea name="feedback" className="textarea" rows={2} defaultValue={s.feedback ?? ""} /></div>
-      <SubmitButton className="btn-sm">{s.gradedAt ? "تحديث التقييم" : "اعتماد التقييم"}</SubmitButton>
-    </form>
-  );
-}
 
 export async function WorkTab({ ctx }: { ctx: Ctx }) {
   const { userId, rows, program, panel, now } = ctx;
@@ -175,11 +151,13 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
   const subOf = new Map(subs.map((s) => [s.assignmentId, s]));
   const reportOf = new Map(reports.map((r) => [r.week, r]));
   const weeks = program.weeks.filter((w) => w.number >= 0 && w.number <= 12);
+  // العناوين من المستحق حتى الآن، بقواعد «مهامي»: المُرجَع غير منجز، وما قبل الانضمام لا يُطالَب به
+  const due = progressFrom(rows, program, now);
 
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-xl mb-3">المهام المقيَّمة ({subs.length} من {program.assignments.length} مسلَّمة)</h2>
+        <h2 className="text-xl mb-3">المهام المقيَّمة <span className="text-base text-muted tabular-nums">({tallyText(due.tasks, "مستحقة")} · {program.assignments.length} في البرنامج)</span></h2>
         {program.assignments.length === 0 ? <Empty>لا مهام منشورة في الدفعة. أنشئها من «المهام والتقييم».</Empty> : (
           <div className="space-y-3">
             {program.assignments.map((a) => {
@@ -210,10 +188,14 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                       {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}
                       {mine.length > 0 && <div className="mt-2"><Attachments kind="SUBMISSION" refId={a.id} initial={mine} readOnly /></div>}
                       {s.feedback && <div className="text-sm mt-2 border-s-2 border-line ps-2"><span className="text-muted">التغذية الراجعة: </span>{s.feedback}</div>}
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-sm text-muted">{s.gradedAt ? "تعديل التقييم بالسلّم" : "التقييم بسلّم التقدير (ملحق 2)"}</summary>
-                        <GradeForm s={s} back={l.back} />
-                      </details>
+                      {returned ? (
+                        <p className="text-xs text-muted mt-2">مُرجَعٌ إليه للتعديل — يُقيَّم بعد أن يعيده، أو ألغِ الإرجاع من قائمة ⋮.</p>
+                      ) : (
+                        <details className="mt-2" open={!s.gradedAt}>
+                          <summary className="cursor-pointer text-sm text-muted">{s.gradedAt ? "تعديل التقييم بالسلّم" : "التقييم بسلّم التقدير (ملحق 2)"}</summary>
+                          <RubricGradeForm action={gradeSubmission} s={s} due={due} pause={pauseOf(program.weeks)} back={l.back} />
+                        </details>
+                      )}
                       <ItemPanel panel={panel} userId={userId} tab="work" kind="SUBMISSION" id={s.id} values={s} label={`تسليم «${a.title}»`} />
                     </>
                   )}
@@ -225,7 +207,7 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <h2 className="text-xl mb-3">التقارير الأسبوعية ({reports.length} من {weeks.length})</h2>
+        <h2 className="text-xl mb-3">التقارير الأسبوعية <span className="text-base text-muted tabular-nums">({tallyText(due.reports, "مستحقة")} · {weeks.length} في البرنامج)</span></h2>
         <div className="space-y-3">
           {weeks.map((w) => {
             const r = reportOf.get(w.number);
@@ -253,15 +235,19 @@ export async function WorkTab({ ctx }: { ctx: Ctx }) {
                     <dl className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
                       {REPORT_ROWS.map(([label, key]) => (r[key] ? <div key={key}><dt className="text-xs text-muted">{label}</dt><dd className="whitespace-pre-wrap">{r[key]}</dd></div> : null))}
                     </dl>
-                    <details className="mt-3" open={!r.reviewedAt && !returned}>
-                      <summary className="cursor-pointer text-sm text-muted">{r.reviewedAt ? "تعديل المراجعة" : "المراجعة والتغذية الراجعة"}</summary>
-                      <form action={reviewReport} className="mt-2">
-                        <input type="hidden" name="id" value={r.id} />
-                        <input type="hidden" name="back" value={l.back} />
-                        <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} defaultValue={r.feedback ?? ""} /></div>
-                        <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث المراجعة" : "اعتماد المراجعة"}</SubmitButton>
-                      </form>
-                    </details>
+                    {returned ? (
+                      <p className="text-xs text-muted mt-3">مُرجَعٌ إليه للتعديل — يُراجَع بعد أن يعيده، أو ألغِ الإرجاع من قائمة ⋮.</p>
+                    ) : (
+                      <details className="mt-3" open={!r.reviewedAt}>
+                        <summary className="cursor-pointer text-sm text-muted">{r.reviewedAt ? "تعديل المراجعة" : "المراجعة والتغذية الراجعة"}</summary>
+                        <form action={reviewReport} className="mt-2">
+                          <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="back" value={l.back} />
+                          <div className="field"><label className="label">تغذية راجعة للمشارك</label><textarea name="feedback" className="textarea" rows={2} defaultValue={r.feedback ?? ""} /></div>
+                          <SubmitButton secondary className="btn-sm">{r.reviewedAt ? "تحديث المراجعة" : "اعتماد المراجعة"}</SubmitButton>
+                        </form>
+                      </details>
+                    )}
                     <ItemPanel panel={panel} userId={userId} tab="work" kind="WEEKLY_REPORT" id={r.id} values={r} label={`تقرير ${weekName(w.number)}`} />
                   </>
                 )}
@@ -298,7 +284,7 @@ export async function ReadingTab({ ctx }: { ctx: Ctx }) {
 
   return (
     <div className="space-y-6">
-      <Card title="الورد القرائي بالصفحات" action={<Badge tone="ink">{totals.read} / {totals.required} صفحة</Badge>}>
+      <Card title="الورد القرائي بالصفحات" action={<Badge tone="ink" className="tabular-nums">{totals.read} من {totals.requiredSoFar} مستحقة · {totals.required} في البرنامج</Badge>}>
         <p className="text-xs text-muted mb-2">
           يُحسب الورد بصفحات البطاقات مقابل نصاب كل أسبوع في الجدول، تراكمياً. المطلوب حتى نهاية آخر أسبوع مضى: {totals.requiredSoFar} صفحة
           {totals.requiredSoFar > totals.read ? ` — ينقصه ${totals.requiredSoFar - totals.read}` : ""}.
@@ -449,7 +435,7 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
                       {r ? <Badge tone="ink">مُرجَع</Badge> : f.approvedAt ? <Badge tone="ink">معتمد</Badge> : <Badge>بانتظار الاعتماد</Badge>}
                       <ItemActions
                         userId={userId} tab="field" kind="FIELD_LOG" activity="FIELD_LOG" id={f.id} label={`سجل المعايشة ${formatShort(f.date)}`} returned={r}
-                        extra={!f.approvedAt ? <MenuAction action={approveFieldLog} fields={{ id: f.id, back: l.back }}>اعتماد</MenuAction> : undefined}
+                        extra={!f.approvedAt && !r ? <MenuAction action={approveFieldLog} fields={{ id: f.id, back: l.back }}>اعتماد</MenuAction> : undefined}
                       />
                     </div>
                   </div>
@@ -561,7 +547,8 @@ export async function FieldTab({ ctx }: { ctx: Ctx }) {
 // ——— الاختبارات والحضور ———
 
 export async function QuizzesTab({ ctx }: { ctx: Ctx }) {
-  const { userId, program } = ctx;
+  const { userId, program, rows, now } = ctx;
+  const due = progressFrom(rows, program, now);
   const [attempts, attendance, excuses, diagnostics, comps] = await Promise.all([
     db.quizAttempt.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
     db.attendance.findMany({ where: { userId }, orderBy: [{ week: "asc" }, { type: "asc" }] }),
@@ -585,7 +572,7 @@ export async function QuizzesTab({ ctx }: { ctx: Ctx }) {
 
   return (
     <div className="space-y-6">
-      <Card title={`الاختبارات التكوينية (${attempts.length} من ${quizzes.length})`}>
+      <Card title={`الاختبارات التكوينية (${tallyText(due.quizzes, "مستحقة")} · ${quizzes.length} منشورة)`}>
         {quizzes.length === 0 ? <p className="text-sm text-muted">لا اختبارات منشورة.</p> : (
           <div className="table-wrap">
             <table className="table">

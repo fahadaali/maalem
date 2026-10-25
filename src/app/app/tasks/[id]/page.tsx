@@ -1,3 +1,4 @@
+import DraftKeeper from "@/components/DraftKeeper";
 import { notFound } from "next/navigation";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -55,7 +56,8 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
         </Alert>
       )}
       <Card title={s ? "تسليمي" : "تسليم المهمة"}>
-        <form action={submitAssignment}>
+        <DraftKeeper formId="submission" storageKey={`submission:${user.id}:${a.id}`} />
+        <form id="submission" action={submitAssignment}>
           <input type="hidden" name="assignmentId" value={a.id} />
           <div className="field">
             <label className="label">وصف ما أنجزته</label>

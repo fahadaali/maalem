@@ -25,14 +25,14 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <FormMessage ok={ok} err={err} />
-      <PageHeader title="كشف الدرجات ومستويات الإتمام" subtitle={`تقييم مستمر ${contMax} + مشروع تخرج ${grades[0]?.maxes.project ?? 30}. الدرجات تُحتسب آلياً حتى تُعتمد، ثم تُجمَّد. ويمكن تعديلها بمسوّغ يُسجَّل.`} actions={<PrintButton />} />
+      <PageHeader title="كشف الدرجات ومستويات الإتمام" subtitle={`تقييم مستمر ${contMax} + مشروع تخرج ${grades[0]?.maxes.project ?? 30}. الدرجات تُحتسب آلياً على البرنامج كله حتى تُعتمد، ثم تُجمَّد. ويمكن تعديلها بمسوّغ يُسجَّل. وعمود «المرحلي» للمتابعة: كل مكوّن بما استُحقّ منه حتى الآن.`} actions={<PrintButton />} />
       <div className="table-wrap mb-6">
         <table className="table">
           <thead>
             <tr>
               <th>المشارك</th>
               {continuous.map((c) => <th key={c.key} className="text-center">{c.label.split(" ").slice(0, 2).join(" ")} ({c.points})</th>)}
-              <th className="text-center">المستمر ({contMax})</th><th className="text-center">المشروع ({grades[0]?.maxes.project ?? 30})</th><th className="text-center">المحتسَب</th><th className="text-center">النهائي المعتمد</th><th>المستوى</th><th>الاعتماد</th>
+              <th className="text-center">المستمر ({contMax})</th><th className="text-center">المشروع ({grades[0]?.maxes.project ?? 30})</th><th className="text-center" title="على البرنامج كله — وبه يُعتمد">المحتسَب</th><th className="text-center no-print" title="كل مكوّن بما استُحقّ منه حتى الآن — للمتابعة لا للاعتماد">المرحلي</th><th className="text-center">النهائي المعتمد</th><th>المستوى</th><th>الاعتماد</th>
             </tr>
           </thead>
           <tbody>
@@ -46,6 +46,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
                   {continuous.map((c) => <td key={c.key} className="text-center">{parts[c.key]}</td>)}
                   <td className="text-center">{g.continuous}</td><td className="text-center">{g.project}</td>
                   <td className="text-center">{g.total}</td>
+                  <td className="text-center text-muted no-print tabular-nums">{g.interim.total ?? "—"}</td>
                   <td className="text-center font-bold">{f ? finalTotalOf(f) : "—"}</td>
                   <td>{f ? levelOf(levels, finalTotalOf(f)).level : g.level}</td>
                   <td className="no-print">
@@ -55,7 +56,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
                         {f.adjustment !== 0 && <span className="text-xs text-muted">تعديل {f.adjustment > 0 ? "+" : ""}{f.adjustment}: {f.reason}</span>}
                         <form action={reopenFinalGrade}>
                           <input type="hidden" name="userId" value={p.id} />
-                          <button className="btn btn-ghost btn-sm text-muted">إلغاء الاعتماد</button>
+                          <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm={`إلغاء اعتماد درجة ${p.name}؟ تعود للاحتساب الآلي ويُمحى التعديل ومسوّغه.`}>إلغاء الاعتماد</SubmitButton>
                         </form>
                       </div>
                     ) : (
@@ -70,7 +71,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
                 </tr>
               );
             })}
-            {participants.length === 0 && <tr><td colSpan={11} className="text-center text-muted">لا مشاركون.</td></tr>}
+            {participants.length === 0 && <tr><td colSpan={continuous.length + 8} className="text-center text-muted">لا مشاركون.</td></tr>}
           </tbody>
         </table>
       </div>

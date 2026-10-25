@@ -21,6 +21,12 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
   const { ok, err } = await searchParams;
   const q = await db.quiz.findUnique({ where: { id }, include: { questions: { orderBy: { order: "asc" } }, attempts: { include: { user: true }, orderBy: { createdAt: "asc" } } } });
   if (!q) notFound();
+  /**
+   * إجابات المحاولة تُحفظ مرتّبةً بترتيب الأسئلة، فإضافة سؤالٍ أو حذفه بعد أن أُدّي
+   * الاختبار تُزيح إجابات من أدّوه عن أسئلتها في صفحة نتيجتهم. فتُقفل الأسئلة ما دامت
+   * له محاولات — ويُعاد فتحه لمن يلزمه من جدول النتائج.
+   */
+  const locked = q.attempts.length > 0;
   const [bank, weeks] = await Promise.all([
     db.bankQuestion.findMany({ where: await cohortWhere(), orderBy: { createdAt: "desc" }, take: 50 }),
     getActiveWeeks(),
@@ -50,7 +56,7 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
               <Card key={qq.id}>
                 <div className="flex justify-between gap-2">
                   <div className="font-medium">{i + 1}. {qq.text}</div>
-                  <form action={deleteQuestion}><input type="hidden" name="id" value={qq.id} /><button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button></form>
+                  {!locked && <form action={deleteQuestion}><input type="hidden" name="id" value={qq.id} /><SubmitButton ghost className="btn-sm" pendingText="…" label="حذف السؤال" confirm="حذف هذا السؤال؟"><Trash2 size={14} /></SubmitButton></form>}
                 </div>
                 <div className="text-xs text-muted mt-0.5">{QUESTION_KINDS[qq.kind as keyof typeof QUESTION_KINDS] ?? qq.kind}</div>
                 {qq.kind === "SHORT" ? (
@@ -94,6 +100,12 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
           )}
         </div>
         <div className="space-y-4">
+          {locked ? (
+            <Card title="الأسئلة مقفلة">
+              <p className="text-sm text-muted">أدّى هذا الاختبار {q.attempts.length === 1 ? "مشاركٌ واحد" : `${q.attempts.length} مشاركين`}، وإجاباتهم محفوظة بترتيب أسئلته — فلا تُضاف أسئلةٌ ولا تُحذف حتى لا تنزاح نتائجهم. لتعديله: أعد فتحه لكل من أدّاه من جدول النتائج، أو أنشئ اختباراً جديداً.</p>
+            </Card>
+          ) : (
+          <>
           <Card title="سؤال جديد">
             <form action={addQuestion}>
               <input type="hidden" name="quizId" value={q.id} />
@@ -128,7 +140,9 @@ export default async function AdminQuizDetail({ params, searchParams }: { params
               </form>
             )}
           </Card>
-          <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><button className="btn btn-ghost btn-sm text-muted">حذف الاختبار بالكامل</button></form>
+          </>
+          )}
+          <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><SubmitButton ghost className="btn-sm text-muted" pendingText="جارٍ الحذف…" confirm={`حذف «${q.title}» بأسئلته${q.attempts.length ? ` ونتائج ${q.attempts.length} مشاركاً` : ""}، ولا يُستعاد. أتحذفه؟`}>حذف الاختبار بالكامل</SubmitButton></form>
         </div>
       </div>
     </>

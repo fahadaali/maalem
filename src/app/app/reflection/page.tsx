@@ -36,7 +36,7 @@ export default async function ReflectionPage({ searchParams }: { searchParams: P
             </div>
             <form action={deleteReflection}>
               <input type="hidden" name="id" value={r.id} />
-              <button className="btn btn-ghost btn-sm" aria-label="حذف"><Trash2 size={14} /></button>
+              <SubmitButton ghost className="btn-sm" pendingText="…" label="حذف التأمل" confirm="حذف هذا التأمل؟"><Trash2 size={14} /></SubmitButton>
             </form>
           </div>
         ))}

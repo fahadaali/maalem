@@ -1,9 +1,10 @@
+import { tallyText } from "@/lib/progress";
 import { db } from "@/lib/db";
 import { computeGrades } from "@/lib/grades";
 import { computeCompetencies, overallAttainment } from "@/lib/competencies";
 import { PROGRAM } from "@/lib/program";
 import { activeCohort } from "@/lib/cohort";
-import { getContinuous, getProjectRubric } from "@/lib/content";
+import { finalTotalOf, getCompletionLevels, getContinuous, getProjectRubric, levelOf } from "@/lib/content";
 import { formatGregorian, formatHijri, formatShort } from "@/lib/dates";
 import { PROJECT_STATUS_LABELS, ATTENDANCE_LABELS } from "@/lib/utils";
 import { taskStatusLabel } from "@/lib/report";
@@ -14,7 +15,7 @@ import { taskStatusLabel } from "@/lib/report";
  * المشارك عنده)، والمشارك يُنبَّه إلى ذلك في صفحتيهما؛ والأرشفة تتبع تسليم صاحبه.
  */
 export default async function PortfolioSheet({ userId, includePrivate }: { userId: string; includePrivate: boolean }) {
-  const [continuous, rubric, cohort] = await Promise.all([getContinuous(), getProjectRubric(), activeCohort()]);
+  const [continuous, rubric, cohort, levels] = await Promise.all([getContinuous(), getProjectRubric(), activeCohort(), getCompletionLevels()]);
   const [u, grades, comps] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
@@ -41,6 +42,10 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
   ]);
   if (!u) return null;
   const now = new Date();
+  const { due } = grades;
+  const finalTotal = u.finalGrade ? finalTotalOf(u.finalGrade) : null;
+  // مستوى المعتمدة من مجموعها بعد التعديل، لا من المحتسَب قبله
+  const level = finalTotal != null ? levelOf(levels, finalTotal).level : grades.level;
   const S = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <section className="mb-6 break-inside-avoid">
       <h2 className="text-lg border-b border-line pb-1 mb-2">{title}</h2>
@@ -69,7 +74,10 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
           })}
           <tr><td className="font-medium">التقييم المستمر</td><td className="font-medium">{grades.continuous} / {grades.maxes.continuous}</td></tr>
           <tr><td className="font-medium">مشروع التخرج</td><td className="font-medium">{grades.project} / {grades.maxes.project}</td></tr>
-          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{u.finalGrade ? Math.max(0, Math.min(100, Math.round((u.finalGrade.computed + u.finalGrade.adjustment) * 10) / 10)) : grades.total} / {grades.maxes.continuous + grades.maxes.project} — {grades.level}{u.finalGrade ? " (معتمدة)" : " (تقديري)"}</td></tr>
+          <tr className="bg-paper-2"><td className="font-bold">المجموع</td><td className="font-bold">{finalTotal ?? grades.total} / {grades.maxes.continuous + grades.maxes.project} — {level}{u.finalGrade ? " (معتمدة)" : " (تراكمي تقديري)"}</td></tr>
+          {!u.finalGrade && grades.interim.total != null && (
+            <tr><td>الدرجة المرحلية (من المستحق حتى تاريخه)</td><td>{grades.interim.total} / {grades.maxes.continuous + grades.maxes.project} — {grades.interim.level} · الإنجاز من المستحق {due.percent ?? "—"}%</td></tr>
+          )}
         </tbody></table></div>
         {u.certificate && <p className="text-sm mt-2">{u.certificate.kind === "ATTENDANCE" ? "إفادة حضور" : "وثيقة إتمام"} رقم <span dir="ltr">{u.certificate.serial}</span> صادرة بتاريخ {formatShort(u.certificate.issuedAt)}.</p>}
         {u.finalGrade?.reason && <p className="text-xs text-muted mt-1">تعديل مبرَّر {u.finalGrade.adjustment > 0 ? "+" : ""}{u.finalGrade.adjustment}: {u.finalGrade.reason}</p>}
@@ -93,14 +101,14 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         <p className="text-sm">{u.attendance.map((a) => `أ${a.week} ${a.type === "INPERSON" ? "حضوري" : "بُعد"}: ${ATTENDANCE_LABELS[a.status]}`).join(" · ") || "لم يُسجَّل حضور."}</p>
       </S>
 
-      <S title={`الورد القرائي (${grades.stats.readingPages} من ${grades.stats.readingRequired} صفحة · ${u.readingCards.length} بطاقة)`}>
+      <S title={`الورد القرائي (${tallyText(due.reading, "صفحة مستحقة")} · ${u.readingCards.length} بطاقة)`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>التاريخ</th><th>الكتاب</th><th>الصفحات</th><th>أهم فائدة</th></tr></thead>
           <tbody>{u.readingCards.map((c) => <tr key={c.id}><td className="whitespace-nowrap">{formatShort(c.date)}</td><td>{c.book}</td><td className="whitespace-nowrap">{c.fromPage}–{c.toPage} ({c.toPage - c.fromPage + 1})</td><td>{c.benefit}{c.feedback && <div className="text-xs text-muted mt-1">ملاحظة مدير المشروع: {c.feedback}</div>}</td></tr>)}</tbody>
         </table></div>
       </S>
 
-      <S title={`التقارير الأسبوعية (${u.weeklyReports.length})`}>
+      <S title={`التقارير الأسبوعية (${tallyText(due.reports, "مستحقة")})`}>
         {u.weeklyReports.map((r) => (
           <div key={r.id} className="mb-3 text-sm">
             <div className="font-medium">الأسبوع {r.week}</div>
@@ -119,14 +127,14 @@ export default async function PortfolioSheet({ userId, includePrivate }: { userI
         {u.weeklyReports.length === 0 && <p className="text-sm text-muted">لا تقارير.</p>}
       </S>
 
-      <S title={`المهام (${u.submissions.length})`}>
+      <S title={`المهام (${tallyText(due.tasks, "مستحقة")} · قُيّم ${due.tasks.graded})`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>المهمة</th><th>التسليم</th><th>الدرجة</th></tr></thead>
           <tbody>{u.submissions.map((s) => <tr key={s.id}><td>{s.assignment.title}</td><td className="whitespace-nowrap">{formatShort(s.submittedAt)}</td><td>{s.gradedAt ? `${(s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0)}/16` : "—"}</td></tr>)}</tbody>
         </table></div>
       </S>
 
-      <S title={`سجل المعايشة الميدانية (${grades.stats.fieldHours} ساعة معتمدة)`}>
+      <S title={`سجل المعايشة الميدانية (${tallyText(due.field, "ساعة معتمدة من المستحقة")})`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>التاريخ</th><th>الساعات</th><th>المشرف المرافق</th><th>الملاحظة</th></tr></thead>
           <tbody>{u.fieldLogs.map((f) => <tr key={f.id}><td className="whitespace-nowrap">{formatShort(f.date)}</td><td>{f.hours}</td><td>{f.mentorName}</td><td>{f.note}</td></tr>)}</tbody>

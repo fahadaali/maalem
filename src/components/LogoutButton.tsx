@@ -6,12 +6,14 @@ import { logout } from "@/app/(auth)/actions";
 
 /**
  * زر الخروج يمسح ما يخصّ هذا الحساب على الجهاز قبل إنهاء الجلسة: صفحات مخزّنة
- * قد تُعرض لغيره بلا اتصال، ولوحته المحفوظة لصفحة المدخل. ولا يُلغى عامل
+ * قد تُعرض لغيره بلا اتصال، ولوحته المحفوظة لصفحة المدخل، ومسوّداته. ولا يُلغى عامل
  * الخدمة ولا اشتراك الدفع، فالجهاز في الغالب لصاحبه ويعود إليه.
  */
 async function forget() {
   try {
     localStorage.removeItem("maalem-home");
+    // ومسوّدات النماذج التي لم تُحفظ (DraftKeeper): نصوصُ صاحبها لا تبقى لمن يجلس بعده
+    for (const k of Object.keys(localStorage)) if (k.startsWith("maalem-draft:")) localStorage.removeItem(k);
   } catch {
     // لا تخزين متاح
   }

@@ -1,9 +1,10 @@
 import Link from "@/components/Link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Bell, Search } from "lucide-react";
 import { NavLink } from "./NavLink";
 import WarmTabs from "./WarmTabs";
+import NavProgress from "./NavProgress";
 import AppBadge from "@/components/AppBadge";
 import type { SessionUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/utils";
@@ -50,6 +51,10 @@ export default async function AppShell({ user, items, children, base, badges }: 
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
+      {/* يقرأ معاملات الرابط، فيُعزل في حدّ تعليقٍ لا يلفّ غيره — ولا يُعلَّق شيءٌ من المحتوى به */}
+      <Suspense fallback={null}>
+        <NavProgress />
+      </Suspense>
       {/* الشريط الجانبي (سطح المكتب) */}
       <aside className="shell-side md:w-64 flex-col border-e border-line p-4 sticky top-0 h-dvh">
         <Link href={base} className="display text-xl font-bold px-2 mb-6 block">

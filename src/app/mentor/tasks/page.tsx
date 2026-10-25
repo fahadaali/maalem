@@ -2,11 +2,12 @@ import Link from "@/components/Link";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Empty } from "@/components/ui";
-import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
 import Attachments from "@/components/Attachments";
 import { mentorGradeSubmission } from "../actions";
-import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
+import RubricGradeForm from "@/components/RubricGradeForm";
+import { extensionsFor } from "@/lib/deadlines";
+import { getWeeks, pauseOf } from "@/lib/weeks";
 import { formatDateTime } from "@/lib/dates";
 import { cohortWhere } from "@/lib/cohort";
 import { attachmentsByUser } from "@/lib/attachments";
@@ -19,7 +20,7 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
   const me = await requireRole("MENTOR");
   const sp = await searchParams;
   const [assignments, mentees] = await Promise.all([
-    db.assignment.findMany({ where: await cohortWhere(), orderBy: { week: "asc" }, select: { id: true, title: true, week: true } }),
+    db.assignment.findMany({ where: await cohortWhere(), orderBy: { week: "asc" }, select: { id: true, title: true, week: true, dueAt: true } }),
     db.user.findMany({ where: { mentorId: me.id, active: true }, select: { id: true, name: true } }),
   ]);
   const ids = mentees.map((m) => m.id);
@@ -33,6 +34,14 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
     : [];
   const filesByUser = selected ? await attachmentsByUser("SUBMISSION", selected.id) : new Map();
   const returned = await openReturnsOf("SUBMISSION", rows.map((s) => s.id));
+  // الموعد الساري بالتمديد المعتمد، وأيام الإيقاف — منهما يُقترح «الالتزام بالموعد» كما في لوحة المدير
+  const [extensions, weeks] = await Promise.all([selected ? extensionsFor(selected.id, ids) : new Map<string, Date>(), getWeeks()]);
+  const pause = pauseOf(weeks);
+  /** الأبعد من موعد المهمة وتمديد صاحبها، كما في `dueFor` */
+  const dueOf = (userId: string): Date => {
+    const e = extensions.get(userId);
+    return selected && e && e > selected.dueAt ? e : (selected?.dueAt ?? new Date());
+  };
 
   return (
     <>
@@ -59,7 +68,6 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
           ) : (
             <div className="space-y-4">
               {rows.map((s) => {
-                const defaults: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: s.punctuality };
                 return (
                   <Card
                     key={s.id}
@@ -70,34 +78,7 @@ export default async function MentorTasksPage({ searchParams }: { searchParams: 
                     <p className="text-sm whitespace-pre-wrap">{s.content}</p>
                     {s.link && <p className="text-sm mt-1"><a href={s.link} className="underline" target="_blank" rel="noreferrer" dir="ltr">{s.link}</a></p>}
                     <div className="mt-2"><Attachments kind="SUBMISSION" refId={s.assignmentId} initial={filesByUser.get(s.userId) ?? []} readOnly /></div>
-                    <form action={mentorGradeSubmission} className="border-t border-line pt-3 mt-3">
-                      <input type="hidden" name="id" value={s.id} />
-                      <div className="table-wrap">
-                        <table className="table">
-                          <thead><tr><th>المعيار</th>{RUBRIC_LEVEL_LABELS.map((l) => <th key={l} className="text-center">{l}</th>)}</tr></thead>
-                          <tbody>
-                            {TASK_RUBRIC.map((r) => (
-                              <tr key={r.key}>
-                                <td className="font-medium whitespace-nowrap">{r.criterion}</td>
-                                {r.levels.map((desc, i) => {
-                                  const val = 4 - i;
-                                  return (
-                                    <td key={val}>
-                                      <label className="flex items-start gap-1.5 cursor-pointer text-xs">
-                                        <input type="radio" name={r.key} value={val} required defaultChecked={defaults[r.key] === val} className="accent-black mt-0.5" />
-                                        <span>{desc}</span>
-                                      </label>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="field mt-3"><label className="label">تغذية راجعة</label><textarea name="feedback" className="textarea" rows={2} defaultValue={s.feedback ?? ""} /></div>
-                      <SubmitButton className="btn-sm">{s.gradedAt ? "تحديث التقييم" : "اعتماد التقييم"}</SubmitButton>
-                    </form>
+                    <RubricGradeForm action={mentorGradeSubmission} s={s} due={dueOf(s.userId)} pause={pause} returned={returned.has(s.id)} />
                   </Card>
                 );
               })}

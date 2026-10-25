@@ -46,7 +46,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
                   <div className="font-medium">{q.text}</div>
                   <form action={deleteBankQuestion}>
                     <input type="hidden" name="id" value={q.id} />
-                    <button className="btn btn-ghost btn-sm" aria-label="حذف السؤال"><Trash2 size={14} /></button>
+                    <SubmitButton ghost className="btn-sm" pendingText="…" label="حذف السؤال" confirm="حذف هذا السؤال من البنك؟ لا يمسّ الاختبارات التي نُسخ إليها."><Trash2 size={14} /></SubmitButton>
                   </form>
                 </div>
                 <div className="flex gap-1 mt-1 flex-wrap">

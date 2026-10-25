@@ -80,7 +80,7 @@ export default async function MinutesPage({ searchParams }: { searchParams: Prom
                 <form action={deleteMinutes} className="mt-2">
                   <input type="hidden" name="week" value={week} />
                   <input type="hidden" name="type" value={type} />
-                  <button className="btn btn-ghost btn-sm text-muted">حذف المحضر</button>
+                  <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm="حذف هذا المحضر؟ لا يُستعاد.">حذف المحضر</SubmitButton>
                 </form>
               )}
             </Card>

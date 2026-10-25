@@ -7,8 +7,8 @@ import FormMessage from "@/components/FormMessage";
 import { deleteAssignment, gradeSubmission, updateAssignment } from "../../actions";
 import { formatDateTime, toLocalInput } from "@/lib/dates";
 import { extensionsFor } from "@/lib/deadlines";
-import { getActiveWeeks } from "@/lib/weeks";
-import { RUBRIC_LEVEL_LABELS, TASK_RUBRIC } from "@/lib/program";
+import { getActiveWeeks, getWeeks, pauseOf } from "@/lib/weeks";
+import RubricGradeForm from "@/components/RubricGradeForm";
 import { getCompetencies } from "@/lib/content";
 import Attachments from "@/components/Attachments";
 import { attachmentsByUser } from "@/lib/attachments";
@@ -23,7 +23,8 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
   const { ok, err } = await searchParams;
   const a = await db.assignment.findUnique({ where: { id }, include: { submissions: { include: { user: true }, orderBy: { submittedAt: "asc" } } } });
   if (!a) notFound();
-  const activeWeeks = await getActiveWeeks();
+  const [activeWeeks, allWeeks] = await Promise.all([getActiveWeeks(), getWeeks()]);
+  const pause = pauseOf(allWeeks);
 
   const participants = await db.user.findMany({ where: await participantsWhere(), orderBy: { name: "asc" } });
   const filesByUser = await attachmentsByUser("SUBMISSION", a.id);
@@ -43,44 +44,18 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
       {a.submissions.length === 0 ? <Empty>لا تسليمات بعد.</Empty> : (
         <div className="space-y-4">
           {a.submissions.map((s) => {
-            const dueFor = extensions.get(s.userId) ?? a.dueAt;
+            // الأبعد من موعد المهمة وتمديد صاحبها — كما في ملفه وصفحة المشرف (`dueFor`): موعدٌ نُقل بعد التمديد لا يُقصّره التمديد
+            const ext = extensions.get(s.userId);
+            const dueFor = ext && ext > a.dueAt ? ext : a.dueAt;
             const late = s.submittedAt > dueFor;
             const total = s.gradedAt ? (s.completeness ?? 0) + (s.referencing ?? 0) + (s.application ?? 0) + (s.punctuality ?? 0) : null;
-            const defaults: Record<string, number | null> = { completeness: s.completeness, referencing: s.referencing, application: s.application, punctuality: late ? (s.punctuality ?? 2) : (s.punctuality ?? 3) };
             return (
-              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{extensions.has(s.userId) && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{returned.has(s.id) && <Badge>مُرجَع لصاحبه</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
+              <Card key={s.id} title={s.user.name} action={<div className="flex gap-1">{dueFor.getTime() !== a.dueAt.getTime() && <Badge tone="soft">مُدَّد له</Badge>}{late && <Badge>متأخر</Badge>}{returned.has(s.id) && <Badge>مُرجَع لصاحبه</Badge>}{total != null ? <Badge tone="ink">{total}/16</Badge> : <Badge>غير مقيّم</Badge>}</div>}>
                 <div className="text-xs text-muted mb-1">سُلّم {formatDateTime(s.submittedAt)}</div>
                 <div className="text-sm whitespace-pre-wrap mb-2">{s.content}</div>
                 {s.link && <a href={s.link} target="_blank" rel="noopener" className="text-sm underline break-all" dir="ltr">{s.link}</a>}
                 <div className="mt-2"><Attachments kind="SUBMISSION" refId={a.id} initial={filesByUser.get(s.userId) ?? []} readOnly /></div>
-                <form action={gradeSubmission} className="border-t border-line pt-3 mt-3">
-                  <input type="hidden" name="id" value={s.id} />
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead><tr><th>المعيار</th>{RUBRIC_LEVEL_LABELS.map((l) => <th key={l} className="text-center">{l}</th>)}</tr></thead>
-                      <tbody>
-                        {TASK_RUBRIC.map((r) => (
-                          <tr key={r.key}>
-                            <td className="font-medium whitespace-nowrap">{r.criterion}</td>
-                            {r.levels.map((desc, i) => {
-                              const val = 4 - i;
-                              return (
-                                <td key={val}>
-                                  <label className="flex items-start gap-1.5 cursor-pointer text-xs">
-                                    <input type="radio" name={r.key} value={val} required defaultChecked={defaults[r.key] === val} className="accent-black mt-0.5" />
-                                    <span>{desc}</span>
-                                  </label>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="field mt-3"><label className="label">تغذية راجعة</label><textarea name="feedback" className="textarea" rows={2} defaultValue={s.feedback ?? ""} /></div>
-                  <SubmitButton className="btn-sm">{s.gradedAt ? "تحديث التقييم" : "اعتماد التقييم"}</SubmitButton>
-                </form>
+                <RubricGradeForm action={gradeSubmission} s={s} due={dueFor} pause={pause} returned={returned.has(s.id)} />
               </Card>
             );
           })}
@@ -112,7 +87,7 @@ export default async function AdminTaskDetail({ params, searchParams }: { params
         </form>
         <form action={deleteAssignment} className="mt-3">
           <input type="hidden" name="id" value={a.id} />
-          <button className="btn btn-ghost btn-sm text-muted">حذف المهمة وتسليماتها</button>
+          <SubmitButton ghost className="btn-sm text-muted" pendingText="جارٍ الحذف…" confirm={`حذف «${a.title}» يحذف تسليماتها${a.submissions.length ? ` (${a.submissions.length})` : ""} وتقييماتها ومرفقاتها، ولا يُستعاد. أتحذفها؟`}>حذف المهمة وتسليماتها</SubmitButton>
         </form>
       </Card>
     </>

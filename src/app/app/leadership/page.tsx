@@ -48,7 +48,7 @@ export default async function LeadershipPage({ searchParams }: { searchParams: P
             </div>
             <div className="field">
               <label className="label">التاريخ</label>
-              <input type="date" name="date" className="input" defaultValue={todayKey()} required />
+              <input type="date" name="date" className="input" defaultValue={todayKey()} max={todayKey()} required />
             </div>
             <div className="field">
               <label className="label">تقرير النشاط (يمكن إكماله لاحقاً)</label>

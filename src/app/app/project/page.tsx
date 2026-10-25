@@ -1,3 +1,4 @@
+import DraftKeeper from "@/components/DraftKeeper";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader, Card, Badge, Alert } from "@/components/ui";
@@ -49,7 +50,8 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
         </Alert>
       )}
       <Card>
-        <form action={saveProject}>
+        <DraftKeeper formId="project" storageKey={`project:${user.id}`} />
+        <form id="project" action={saveProject}>
           <div className="field">
             <label className="label">موضوع المشروع</label>
             <input name="topic" className="input" required defaultValue={p?.topic ?? ""} disabled={judged} />

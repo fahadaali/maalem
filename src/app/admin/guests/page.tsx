@@ -62,7 +62,7 @@ export default async function GuestsPage({ searchParams }: { searchParams: Promi
                   </form>
                   <form action={deleteGuest} className="mt-2">
                     <input type="hidden" name="id" value={g.id} />
-                    <button className="btn btn-ghost btn-sm text-muted">حذف</button>
+                    <SubmitButton ghost className="btn-sm text-muted" pendingText="…" confirm={`حذف «${g.name}» من قائمة الخبراء؟`}>حذف</SubmitButton>
                   </form>
                 </details>
               </Card>

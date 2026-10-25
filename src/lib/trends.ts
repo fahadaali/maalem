@@ -1,8 +1,11 @@
 import { db } from "./db";
 import { participantsWhere } from "./cohort";
-import { getActiveWeeks, currentWeekNumber, weekResolver } from "./weeks";
-import { attendanceWeight } from "./grades";
-import { cardPages, weekQuota } from "./reading-quota";
+import { pauseOf, reportDue, resolveCurrentWeek, weekResolver } from "./weeks";
+import { programClock } from "./pause";
+import { cardPages, readingDeadline, weekQuota } from "./reading-quota";
+import { loadParticipantsOnce, loadProgram } from "./participant-data";
+import { attendanceWeight, progressFrom, sumProgress, tallyShort } from "./progress";
+import { returnedIds } from "./returns";
 
 /** نسبة مئوية محصورة في 100: بطاقات الأسبوع الافتتاحي مثلاً تزيد على المتوقع فلا تتجاوز الرسم */
 function pct(part: number, whole: number) {
@@ -20,38 +23,45 @@ export type Trends = {
   quizzes: WeekPoint[];
   participation: WeekPoint[];
   perParticipant: { label: string; value: number; note?: string }[];
-  totals: { attendance: number; reports: number; cards: number; field: number };
+  totals: { attendance: number; reports: number; cards: number; field: number; fieldDue: number; completion: number | null };
 };
 
-/** اتجاهات البرنامج أسبوعاً بأسبوع للدفعة النشطة. */
+/**
+ * اتجاهات البرنامج أسبوعاً بأسبوع للدفعة النشطة.
+ *
+ * والأسابيع المعروضة ما بدأ منها وحده: أسبوعٌ لم يأتِ كان يُرسم عموداً صفراً
+ * فيُقرأ تقصيراً، والإجماليات من المستحق حتى الآن (`progress.ts`) لا من
+ * البرنامج كله. والصفوف من المُحمِّل المشترك نفسه الذي تقرؤه الدرجات و«مهامي»،
+ * فلا يفترق ما يُعرض هنا عمّا يراه المشارك: التقرير المُرجَع ليس مسلَّماً حتى يُعاد،
+ * والمنضمّ متأخراً لا يُطالَب بما قبل انضمامه.
+ */
 export async function buildTrends(): Promise<Trends> {
   const where = await participantsWhere();
-  const [people, weekRows, now] = await Promise.all([
-    db.user.findMany({ where, select: { id: true, name: true } }),
-    getActiveWeeks(),
-    currentWeekNumber(),
-  ]);
+  const [people, program] = await Promise.all([db.user.findMany({ where, select: { id: true, name: true } }), loadProgram()]);
+  const weekRows = program.weeks.filter((w) => w.number >= 0 && w.number <= 12);
+  const now = new Date();
+  const clock = programClock(now, pauseOf(program.weeks)).getTime();
+  const cur = resolveCurrentWeek(program.weeks, now);
   const ids = people.map((p) => p.id);
   const weeks = weekRows.map((w) => ({ number: w.number, title: w.label }));
   const empty: Trends = {
     weeks, participants: people.length,
     attendance: [], reports: [], cards: [], quizzes: [], participation: [], perParticipant: [],
-    totals: { attendance: 0, reports: 0, cards: 0, field: 0 },
+    totals: { attendance: 0, reports: 0, cards: 0, field: 0, fieldDue: 0, completion: null },
   };
-  if (!ids.length || !weeks.length) return empty;
+  if (!ids.length || !weekRows.length) return empty;
 
-  const [attendance, reports, cards, attempts, fieldLogs] = await Promise.all([
-    db.attendance.findMany({ where: { userId: { in: ids } }, select: { userId: true, week: true, status: true, participation: true } }),
-    db.weeklyReport.findMany({ where: { userId: { in: ids } }, select: { userId: true, week: true } }),
-    db.readingCard.findMany({ where: { userId: { in: ids } }, select: { userId: true, date: true, fromPage: true, toPage: true } }),
-    db.quizAttempt.findMany({ where: { userId: { in: ids } }, select: { userId: true, score: true, total: true, quiz: { select: { week: true, title: true } } } }),
-    db.fieldLog.findMany({ where: { userId: { in: ids }, approvedAt: { not: null } }, select: { userId: true, hours: true } }),
-  ]);
+  const rows = await loadParticipantsOnce(ids);
+  const all = ids.map((id) => rows.get(id)).filter((r) => !!r);
+  const progress = new Map(all.map((r) => [r.user.id, progressFrom(r, program, now)]));
+  const sum = sumProgress([...progress.values()]);
 
-  const n = people.length;
-  const weekOf = weekResolver(weekRows);
+  const weekOf = weekResolver(program.weeks);
+  const quizWeek = new Map(program.quizzes.map((q) => [q.id, q.week]));
+  // ما بدأ من الأسابيع — وبعد انتهاء البرنامج كلها
+  const shown = weekRows.filter((w) => cur >= 15 || w.number <= cur);
   const label = (w: { number: number }) => String(w.number);
-  const mark = (w: { number: number }) => w.number === now;
+  const mark = (w: { number: number }) => w.number === cur;
 
   const attendancePoints: WeekPoint[] = [];
   const participationPoints: WeekPoint[] = [];
@@ -59,9 +69,9 @@ export async function buildTrends(): Promise<Trends> {
   const cardPoints: WeekPoint[] = [];
   const quizPoints: WeekPoint[] = [];
 
-  for (const w of weeks) {
-    const rows = attendance.filter((a) => a.week === w.number);
-    const counted = rows.filter((a) => a.status !== "EXCUSED");
+  for (const w of shown) {
+    const att = all.flatMap((r) => r.attendance.filter((a) => a.week === w.number));
+    const counted = att.filter((a) => a.status !== "EXCUSED");
     // قاعدة الاحتساب نفسها التي في كشف الدرجات: المتأخر نصف حضور
     const present = counted.reduce((s, a) => s + attendanceWeight(a.status), 0);
     attendancePoints.push({
@@ -69,57 +79,67 @@ export async function buildTrends(): Promise<Trends> {
       note: counted.length ? `${Math.round(present)} من ${counted.length} تسجيلاً` : "لم يُرصد الحضور",
     });
 
-    const scores = rows.map((a) => a.participation).filter((v): v is number => typeof v === "number");
-    if (scores.length) {
-      participationPoints.push({
-        label: label(w), emphasis: mark(w),
-        value: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10,
-        note: `${scores.length} بطاقة رصد`,
-      });
-    } else {
-      participationPoints.push({ label: label(w), value: 0, emphasis: mark(w), note: "لم تُرصد المشاركة" });
-    }
+    const scores = att.map((a) => a.participation).filter((v): v is number => typeof v === "number");
+    participationPoints.push(
+      scores.length
+        ? { label: label(w), emphasis: mark(w), value: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10, note: `${scores.length} بطاقة رصد` }
+        : { label: label(w), value: 0, emphasis: mark(w), note: "لم تُرصد المشاركة" },
+    );
 
-    const submitted = reports.filter((r) => r.week === w.number).length;
-    reportPoints.push({ label: label(w), value: pct(submitted, n), emphasis: mark(w), note: `${submitted} من ${n} مشاركاً` });
+    // التقرير: من يُطالَب به (انضمّ قبل موعده) ومن سلّمه غيرَ مُرجَع
+    const due = reportDue(w).getTime();
+    const owed = all.filter((r) => r.user.createdAt.getTime() <= due);
+    const submitted = owed.filter((r) => {
+      const returned = returnedIds(r.returns, "WEEKLY_REPORT");
+      return r.reports.some((x) => x.week === w.number && !returned.has(x.id));
+    }).length;
+    const open = due > clock;
+    reportPoints.push({
+      label: label(w), value: pct(submitted, owed.length), emphasis: mark(w),
+      note: `${submitted} من ${owed.length} مشاركاً${open ? " — لم يحن موعده بعد" : ""}`,
+    });
 
-    // صفحات الأسبوع من بطاقات الدفعة مقابل نصابه في الجدول لكل مشارك، لا عدد البطاقات
-    const quota = weekQuota(weekRows.find((x) => x.number === w.number) ?? { number: -1, reading: "" });
+    // صفحات الأسبوع من بطاقات الدفعة مقابل نصابه في الجدول لكل مُطالَبٍ به، لا عدد البطاقات
+    const quota = weekQuota(w);
     if (quota) {
-      const pages = cards.filter((c) => weekOf(c.date) === w.number).reduce((s, c) => s + cardPages(c), 0);
-      cardPoints.push({ label: label(w), value: pct(pages, n * quota.pages), emphasis: mark(w), note: `${pages} صفحة من ${n * quota.pages} مطلوبة` });
+      const deadline = readingDeadline(w).getTime();
+      const readers = all.filter((r) => r.user.createdAt.getTime() <= deadline);
+      const pages = readers.reduce((s, r) => {
+        const returned = returnedIds(r.returns, "READING_CARD");
+        return s + r.cards.filter((c) => !returned.has(c.id) && weekOf(c.date) === w.number).reduce((t, c) => t + cardPages(c), 0);
+      }, 0);
+      const need = readers.length * quota.pages;
+      cardPoints.push({
+        label: label(w), value: pct(pages, need), emphasis: mark(w),
+        note: `${pages} صفحة من ${need} مطلوبة${deadline > clock ? " — الأسبوع جارٍ" : ""}`,
+      });
     }
 
-    const weekAttempts = attempts.filter((a) => a.quiz.week === w.number && a.total > 0);
-    if (weekAttempts.length) {
-      const avg = weekAttempts.reduce((s, a) => s + (a.score / a.total) * 100, 0) / weekAttempts.length;
-      quizPoints.push({ label: label(w), value: Math.round(avg), emphasis: mark(w), note: `${weekAttempts.length} محاولة` });
-    } else {
-      quizPoints.push({ label: label(w), value: 0, emphasis: mark(w), note: "لا اختبار مُصحَّح" });
-    }
+    const weekAttempts = all.flatMap((r) => r.attempts).filter((a) => quizWeek.get(a.quizId) === w.number && a.total > 0);
+    quizPoints.push(
+      weekAttempts.length
+        ? { label: label(w), value: Math.round(weekAttempts.reduce((s, a) => s + (a.score / a.total) * 100, 0) / weekAttempts.length), emphasis: mark(w), note: `${weekAttempts.length} محاولة` }
+        : { label: label(w), value: 0, emphasis: mark(w), note: "لا اختبار مُصحَّح" },
+    );
   }
 
-  const requiredPages = weekRows.reduce((s, w) => s + (weekQuota(w)?.pages ?? 0), 0);
   const perParticipant = people
     .map((p) => {
-      const rows = attendance.filter((a) => a.userId === p.id && a.status !== "EXCUSED");
-      const present = rows.reduce((s, a) => s + attendanceWeight(a.status), 0);
-      const rep = reports.filter((r) => r.userId === p.id).length;
-      const crd = cards.filter((c) => c.userId === p.id).reduce((s, c) => s + cardPages(c), 0);
+      const pr = progress.get(p.id);
+      const att = pr ? pct(pr.attendance.done, pr.attendance.due) : 0;
       return {
         label: p.name,
-        value: pct(present, rows.length),
-        note: `${rep} تقريراً · ${crd} صفحة`,
-        sort: pct(present, rows.length) + rep + crd / 100,
+        value: att,
+        note: pr ? `التقارير ${tallyShort(pr.reports)} · الورد ${tallyShort(pr.reading)} صفحة · الإنجاز ${pr.percent ?? "—"}%` : undefined,
+        sort: (pr?.percent ?? 0) * 1000 + att,
       };
     })
     .sort((a, b) => b.sort - a.sort)
     .map(({ label: l, value, note }) => ({ label: l, value, note }));
 
-  const countedAll = attendance.filter((a) => a.status !== "EXCUSED");
   return {
     weeks,
-    participants: n,
+    participants: people.length,
     attendance: attendancePoints,
     reports: reportPoints,
     cards: cardPoints,
@@ -127,10 +147,12 @@ export async function buildTrends(): Promise<Trends> {
     participation: participationPoints,
     perParticipant,
     totals: {
-      attendance: pct(countedAll.reduce((s, a) => s + attendanceWeight(a.status), 0), countedAll.length),
-      reports: pct(reports.length, n * weeks.filter((w) => w.number >= 0 && w.number <= 12).length),
-      cards: pct(cards.reduce((s, c) => s + cardPages(c), 0), n * requiredPages),
-      field: Math.round(fieldLogs.reduce((s, f) => s + f.hours, 0) * 10) / 10,
+      attendance: pct(sum.attendance.done, sum.attendance.due),
+      reports: pct(sum.reports.done, sum.reports.due),
+      cards: pct(sum.reading.done, sum.reading.due),
+      field: sum.field.done,
+      fieldDue: sum.field.due,
+      completion: sum.percent,
     },
   };
 }

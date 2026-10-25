@@ -15,6 +15,7 @@ import ReturnedBanner from "@/components/ReturnedBanner";
 import Attachments from "@/components/Attachments";
 import { programExpectations } from "@/lib/content";
 import { toItem } from "@/lib/attachments";
+import { progressFrom } from "@/lib/progress";
 
 export const metadata = { title: "المعايشة الميدانية" };
 
@@ -38,6 +39,8 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
   const editable = (l: (typeof logs)[number]) => !l.approvedAt || !!returnOf(l.id);
   const editing = edit ? logs.find((l) => l.id === edit && editable(l)) : undefined;
   const returnedLogs = logs.filter((l) => returnOf(l.id));
+  // المستحق حتى الآن بقواعد «مهامي»: ساعات ما انقضى من أسابيع المعايشة
+  const fieldDue = rows ? progressFrom(rows, program).field : null;
 
   return (
     <>
@@ -76,8 +79,13 @@ export default async function FieldPage({ searchParams }: { searchParams: Promis
           </form>
         </Card>
         <Card title="الساعات">
-          <Progress label="ساعات معتمدة" value={approved} max={expected.fieldHours} />
-          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من {expected.fieldHours}{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
+          {fieldDue && fieldDue.due > 0 ? (
+            <Progress label={`معتمدة من المستحق حتى الآن (${fieldDue.due})`} value={Math.min(approved, fieldDue.due)} max={fieldDue.due} />
+          ) : (
+            <p className="text-xs text-muted mb-2">لم تُستحقّ ساعات معايشة بعد — تبدأ في أسابيعها من الجدول.</p>
+          )}
+          <div className="mt-3"><Progress label="البرنامج كله" value={approved} max={fieldDue?.total || expected.fieldHours} /></div>
+          <div className="text-xs text-muted mt-2">{approved} ساعة معتمدة من {fieldDue?.total || expected.fieldHours}{pending > 0 ? ` · ${pending} ساعة بانتظار الاعتماد` : ""}</div>
         </Card>
       </div>
 

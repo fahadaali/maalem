@@ -1,10 +1,12 @@
 import Link from "@/components/Link";
 import { requireParticipantView } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { PageHeader, Card, Progress, Stat } from "@/components/ui";
+import { PageHeader, Card, Stat } from "@/components/ui";
 import { computeGrades } from "@/lib/grades";
 import { PORTFOLIO_NOTE } from "@/lib/program";
-import { getContinuous, programExpectations } from "@/lib/content";
+import { finalTotalOf, getCompletionLevels, getContinuous, levelOf } from "@/lib/content";
+import { tallyText } from "@/lib/progress";
+import { InterimBars, InterimNote } from "@/components/DueProgress";
 import { PROJECT_STATUS_LABELS } from "@/lib/utils";
 import SubmitButton from "@/components/SubmitButton";
 import FormMessage from "@/components/FormMessage";
@@ -16,7 +18,7 @@ export const metadata = { title: "ملف الإنجاز" };
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireParticipantView();
   const { ok, err } = await searchParams;
-  const [g, plan, reflections, tadabbur, habits, feedback, me, fg, expected] = await Promise.all([
+  const [g, plan, reflections, tadabbur, habits, feedback, me, fg, continuous, levels] = await Promise.all([
     computeGrades(user.id),
     db.learningPlan.findUnique({ where: { userId: user.id } }),
     db.reflection.count({ where: { userId: user.id } }),
@@ -25,18 +27,21 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     db.feedbackSession.findMany({ where: { userId: user.id }, orderBy: { date: "desc" } }),
     db.user.findUnique({ where: { id: user.id }, select: { portfolioSubmittedAt: true } }),
     db.finalGrade.findUnique({ where: { userId: user.id } }),
-    programExpectations(),
+    getContinuous(),
+    getCompletionLevels(),
   ]);
-  const finalTotal = fg ? Math.max(0, Math.min(100, Math.round((fg.computed + fg.adjustment) * 10) / 10)) : null;
-  const parts: Record<string, number> = { attendance: g.attendance, reading: g.reading, quizzes: g.quizzes, tasks: g.tasks, field: g.field, leadership: g.leadership };
+  const finalTotal = fg ? finalTotalOf(fg) : null;
+  // مستوى المعتمدة من مجموعها بعد التعديل — قد يعبر التعديلُ حدَّ مستوى
+  const finalLevel = finalTotal != null ? levelOf(levels, finalTotal) : null;
+  const { due } = g;
 
   const items = [
     { label: "خطة التعلم الشخصية", value: plan ? "مسلّمة" : "لم تُسلَّم", href: "/app/plan" },
-    { label: "الورد القرائي", value: `${g.stats.readingPages} / ${g.stats.readingRequired} صفحة · ${g.stats.cards} بطاقة`, href: "/app/reading" },
-    { label: "التقارير الأسبوعية", value: `${g.stats.reportsSubmitted} / ${expected.reports}`, href: "/app/reports" },
-    { label: "المهام المسلّمة", value: `${g.stats.submitted} / ${g.stats.assignments}`, href: "/app/tasks?type=tasks" },
-    { label: "الاختبارات", value: `${g.stats.quizCount} اختبار · متوسط ${g.stats.quizAvgPct}%`, href: "/app/quizzes" },
-    { label: "سجل المعايشة", value: `${g.stats.fieldHours} ساعة معتمدة`, href: "/app/field" },
+    { label: "الورد القرائي", value: `${tallyText(due.reading, "صفحة مستحقة")} · ${g.stats.cards} بطاقة`, href: "/app/reading" },
+    { label: "التقارير الأسبوعية", value: tallyText(due.reports, "مستحقة"), href: "/app/reports" },
+    { label: "المهام المسلّمة", value: `${tallyText(due.tasks, "مستحقة")} · قُيّم ${due.tasks.graded}`, href: "/app/tasks?type=tasks" },
+    { label: "الاختبارات", value: `${tallyText(due.quizzes, "مستحقة")} · متوسط ${g.stats.quizAvgPct}%`, href: "/app/quizzes" },
+    { label: "سجل المعايشة", value: `${tallyText(due.field, "ساعة معتمدة من المستحقة")}${due.field.pending ? ` · ${due.field.pending} بانتظار الاعتماد` : ""}`, href: "/app/field" },
     { label: "الدور القيادي", value: `${g.stats.leadershipActivities} نشاط · تقييم ${g.stats.peerAvg}/5`, href: "/app/leadership" },
     { label: "الوقفات التدبرية", value: `${tadabbur} / 3`, href: "/app/plan" },
     { label: "مشروع التخرج", value: g.stats.projectStatus ? PROJECT_STATUS_LABELS[g.stats.projectStatus] : "لم يُحدد", href: "/app/project" },
@@ -53,18 +58,19 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       />
       <FormMessage ok={ok} err={err} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Stat label={finalTotal != null ? "المجموع المعتمد" : "المجموع"} value={finalTotal ?? g.total} hint={finalTotal != null ? "درجة نهائية معتمدة" : `من ${g.maxes.continuous + g.maxes.project} · تقديري`} />
-        <Stat label="التقييم المستمر" value={g.continuous} hint={`من ${g.maxes.continuous}`} />
-        <Stat label="مشروع التخرج" value={g.project} hint={`من ${g.maxes.project}`} />
-        <Stat label="المستوى الحالي" value={g.level} hint={g.certificate} />
+        {finalTotal != null ? (
+          <Stat label="المجموع المعتمد" value={finalTotal} hint="درجة نهائية معتمدة" />
+        ) : (
+          <Stat label="الدرجة المرحلية" value={g.interim.total ?? "—"} hint={g.interim.total != null ? `من ${g.maxes.continuous + g.maxes.project} على المستحق حتى الآن` : "تظهر حين يُستحقّ شيء"} />
+        )}
+        <Stat label="الإنجاز من المستحق" value={due.percent != null ? `${due.percent}%` : "—"} hint="متوسط بنودك المستحقة" />
+        <Stat label="الدرجة التراكمية" value={g.total} hint={`من ${g.maxes.continuous + g.maxes.project} على البرنامج كله`} />
+        <Stat label="المستوى" value={finalLevel ? finalLevel.level : (g.interim.level ?? g.level)} hint={finalLevel ? finalLevel.certificate : "بحسب الدرجة المرحلية"} />
       </div>
-      <Card title="تفصيل التقييم المستمر" className="mb-4">
-        <div className="space-y-3">
-          {(await getContinuous()).map((c) => (
-            <Progress key={c.key} label={`${c.label} (${c.points})`} value={parts[c.key] ?? 0} max={c.points} />
-          ))}
-        </div>
-        <p className="text-xs text-muted mt-3">الدرجات تقديرية وتُحدَّث آلياً مع كل تسليم واعتماد؛ الدرجة النهائية تُعتمد من مدير المشروع في الأسبوع 13.</p>
+      <Card title="الدرجة المرحلية بمكوّناتها" className="mb-4">
+        <InterimBars grades={g} continuous={continuous} />
+        <InterimNote grades={g} />
+        <p className="text-xs text-muted mt-1">الدرجات تُحدَّث آلياً مع كل تسليم واعتماد؛ والدرجة النهائية يعتمدها مدير المشروع في الأسبوع 13.</p>
       </Card>
       <Card title="محتويات الملف" className="mb-4">
         <ul className="divide-y divide-line text-sm">
