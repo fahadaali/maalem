@@ -7,6 +7,7 @@
     "build": "npx tsx scripts/build-boot.mts && node scripts/build-sw.mjs && node scripts/copy-pdf-worker.mjs && node scripts/sync-schema-sql.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
